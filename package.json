@@ -27,7 +27,7 @@
     "audit:dev": "npm audit --audit-level=critical"
   },
   "devDependencies": {
-    "@arethetypeswrong/cli": "^0.17.0",
+    "@arethetypeswrong/cli": "^0.18.5",
     "@commitlint/cli": "^19.5.0",
     "@commitlint/config-conventional": "^19.5.0",
     "@types/react": "~19.0.0",
