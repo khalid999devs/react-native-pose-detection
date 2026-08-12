@@ -82,3 +82,7 @@ downscaled
 prebuilding
 CISA
 CERT
+pbxproj
+xcodeproj
+IPHONEOS
+Podfiles

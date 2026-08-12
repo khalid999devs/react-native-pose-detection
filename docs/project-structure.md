@@ -10,8 +10,8 @@ react-native-pose-detection/
 │       ├── src/               TypeScript: public API, types, validation
 │       ├── ios/               Swift
 │       ├── android/           Kotlin
-│       ├── plugin/            Expo config plugin
-│       └── cli/               fetch-model, doctor
+│       ├── plugin/            Expo config plugin, model manifest, downloader
+│       └── cli/               bin shim, the implementation lives in plugin/
 └── example/                   one app exercising everything
 ```
 
@@ -28,6 +28,28 @@ src/
 ├── logging.ts             setLogLevel, addLogListener
 └── native/                Expo module bindings, and the contract they must satisfy
 ```
+
+## `packages/core/plugin`
+
+```text
+plugin/src/
+├── index.ts               the config plugin: withPoseDetection
+├── manifest.ts            pinned URLs, checksums, byte sizes
+├── download.ts            cache, resume, verify
+├── install.ts             copy in, remove what was there
+├── pbxproj.ts             Xcode target registration
+├── cli.ts                 fetch-model, doctor, clear-cache
+├── withAndroidModel.ts    assets copy + CAMERA permission
+└── withIosModel.ts        Resources copy + Xcode + NSCameraUsageDescription
+```
+
+The plugin and the CLI are one implementation. `cli/index.js` is a shim that calls into
+`plugin/build`, so `npx expo prebuild` and `npx react-native-pose-detection fetch-model` cannot
+drift apart in what they install or how they verify it.
+
+Nothing here imports from `src/`. The plugin runs in Node at build time on a developer's
+machine; the runtime code runs on a phone. The `ModelVariant` union is spelled out in both,
+which is the one duplication that buys that separation.
 
 `native/contract.ts` is the interface both platforms implement. It exists so the public API can
 compile and be reviewed before either native project does, and so a native change that breaks the

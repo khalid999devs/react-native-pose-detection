@@ -28,3 +28,4 @@ What this costs us, and what it rules out.
 | [0003](./0003-pin-mediapipe-0-10-21.md) | Pin MediaPipe to 0.10.21 |
 | [0004](./0004-pin-model-revision-not-latest.md) | Pin the model revision, not `latest` |
 | [0005](./0005-select-narrows-the-buffer.md) | `select` narrows the landmark buffer |
+| [0006](./0006-checksums-are-fatal-except-in-the-cache.md) | A checksum mismatch is fatal, except in the cache |

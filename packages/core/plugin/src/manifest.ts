@@ -1,0 +1,72 @@
+// Mirrors the ModelVariant union in src/types/camera.ts. The plugin compiles as a separate
+// Node program, so it cannot import from the runtime sources without dragging them into a
+// build that only ever runs on a developer machine at prebuild time.
+export type ModelVariant = 'lite' | 'full' | 'heavy';
+
+export const MODEL_VARIANTS: readonly ModelVariant[] = ['lite', 'full', 'heavy'];
+
+export const DEFAULT_MODEL: ModelVariant = 'full';
+
+const BASE_URL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker';
+
+/**
+ * Revision `1`, never `latest`. The two paths carry the same weights but differ by four zip
+ * timestamp bytes on the `full` bundle, which is enough to fail a checksum on one variant only.
+ * See docs/adr/0004-pin-model-revision-not-latest.md.
+ */
+const REVISION = 'float16/1';
+
+export type ModelEntry = {
+  readonly variant: ModelVariant;
+  readonly fileName: string;
+  readonly url: string;
+  readonly bytes: number;
+  readonly sha256: string;
+};
+
+function entry(variant: ModelVariant, bytes: number, sha256: string): ModelEntry {
+  const fileName = `pose_landmarker_${variant}.task`;
+  return {
+    variant,
+    fileName,
+    url: `${BASE_URL}/pose_landmarker_${variant}/${REVISION}/${fileName}`,
+    bytes,
+    sha256,
+  };
+}
+
+const MODEL_MANIFEST: Readonly<Record<ModelVariant, ModelEntry>> = {
+  lite: entry(
+    'lite',
+    5_777_746,
+    '59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a',
+  ),
+  full: entry(
+    'full',
+    9_398_198,
+    '5134a3aad27a58b93da0088d431f366da362b44e3ccfbe3462b3827a839011b1',
+  ),
+  heavy: entry(
+    'heavy',
+    30_664_242,
+    '64437af838a65d18e5ba7a0d39b465540069bc8aae8308de3e318aad31fcbc7b',
+  ),
+};
+
+/** Matches any installed model, not just the selected one, so a variant switch cleans up. */
+export const MODEL_FILE_PATTERN = /^pose_landmarker_(?:lite|full|heavy)\.task$/;
+
+function isModelVariant(value: unknown): value is ModelVariant {
+  return typeof value === 'string' && MODEL_VARIANTS.includes(value as ModelVariant);
+}
+
+export function resolveModel(variant: string): ModelEntry {
+  if (!isModelVariant(variant)) {
+    throw new Error(`Unknown model "${variant}". Expected one of: ${MODEL_VARIANTS.join(', ')}.`);
+  }
+  return MODEL_MANIFEST[variant];
+}
+
+export function formatBytes(bytes: number): string {
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}

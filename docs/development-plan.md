@@ -76,21 +76,27 @@ changes when it is swapped.
 
 **Goal:** `npx expo prebuild` puts the right model in both native projects. No manual steps.
 
-- [ ] Model manifest: URL + SHA-256 + byte size for lite / full / heavy. Values are already
+- [x] Model manifest: URL + SHA-256 + byte size for lite / full / heavy. Values are already
       verified and recorded in [ADR 0004](./adr/0004-pin-model-revision-not-latest.md),
       pin `/float16/1/`, never `latest`
-- [ ] Downloader: cache at `~/.cache/react-native-pose-detection/`, verify, resume, clear progress output
-- [ ] Config plugin
-  - [ ] `withDangerousMod` copy into `android/app/src/main/assets/`
-  - [ ] iOS resource copy + Xcode project registration
-  - [ ] `withInfoPlist` camera permission, `withAndroidManifest` permission
-  - [ ] **Removes the previous model** on variant change, never two at once
-- [ ] CLI `fetch-model <variant>` for bare RN
-- [ ] Offline behavior: cache hit works with no network; miss fails with an actionable message
+- [x] Downloader: cache at `~/.cache/react-native-pose-detection/`, verify, resume, clear progress output
+- [x] Config plugin
+  - [x] `withDangerousMod` copy into `android/app/src/main/assets/`
+  - [x] iOS resource copy + Xcode project registration
+  - [x] `withInfoPlist` camera permission, `withAndroidManifest` permission
+  - [x] **Removes the previous model** on variant change, never two at once
+- [x] CLI `fetch-model <variant>` for bare RN, plus `doctor` and `clear-cache`
+- [x] Offline behavior: cache hit works with no network; miss fails with an actionable message
+- [x] Checksum policy: fatal on download, self-healing in the cache,
+      [ADR 0006](./adr/0006-checksums-are-fatal-except-in-the-cache.md)
 
 **Exit:** a fresh Expo app installs, prebuilds, and has exactly one `.task` in each native
 project. Switching `full` → `lite` and re-prebuilding leaves only `lite`. Second prebuild
 hits the cache and makes no network call.
+
+**Verified** against a fresh `create-expo-app` project on SDK 57 / RN 0.86: prebuild installs
+one model per platform and registers it in the app target, `full` → `lite` leaves exactly one
+file and one Xcode reference, and a cache hit makes zero network calls.
 
 ---
 
