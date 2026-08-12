@@ -209,6 +209,18 @@ CI, and it breaks changelog generation for the release it lands in.
 - Public API changes need docs in the same PR
 - New props, events, or trigger conditions need a control in `example/`
 
+### Demo
+
+Anything a user can see or interact with needs a **screen recording or screenshot on both
+iOS and Android**. Camera, overlay, triggers, calibration, and example-app changes all
+qualify.
+
+This is not decoration. A diff cannot show that the overlay lines up, that a trigger fires
+once per rep instead of twice, or that the feature was ever run on the second platform.
+Reviewers have no other way to check.
+
+Docs, CI, and internal refactors can delete the section.
+
 ### Title
 
 PR titles follow the same Conventional Commits format as commit messages, they become the
