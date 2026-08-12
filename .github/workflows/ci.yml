@@ -255,6 +255,11 @@ jobs:
       - name: Assert the CLI left the Xcode project unchanged
         run: git diff --exit-code -- example/bare/ios
 
+      # The library has no Gradle build of its own, so its JVM tests run through this app's.
+      - name: Kotlin unit tests
+        working-directory: example/bare/android
+        run: ./gradlew :react-native-pose-detection:testDebugUnitTest --no-daemon
+
       - name: Build
         working-directory: example/bare/android
         run: ./gradlew :app:assembleDebug --no-daemon

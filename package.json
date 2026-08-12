@@ -18,6 +18,7 @@
     "format:check": "prettier --check .",
     "spell": "cspell '**/*.{ts,tsx,md,json}' --no-progress",
     "test": "rm -rf .test-build && tsc -p packages/core/tsconfig.test.json && node --test \".test-build/tests/**/*.test.js\"",
+    "test:kotlin": "cd example/bare/android && ./gradlew :react-native-pose-detection:testDebugUnitTest",
     "deadcode": "knip",
     "audit:deps": "./scripts/no-runtime-deps.sh",
     "audit:license": "./scripts/no-runtime-deps.sh && license-checker-rseidelsohn --start packages/core --production --onlyAllow 'MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;0BSD;Unlicense;CC0-1.0'",

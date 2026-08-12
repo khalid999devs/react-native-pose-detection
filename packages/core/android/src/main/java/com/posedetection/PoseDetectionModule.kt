@@ -107,8 +107,10 @@ class PoseDetectionModule : Module() {
                 Prop("analysisResolution") { view: PoseCameraView, value: String? ->
                     view.setAnalysisResolution(value ?: "auto")
                 }
-                Prop("data") { view: PoseCameraView, value: Map<*, *>? ->
-                    view.setData(parseData(value))
+                // `Any?` and a cast, like `overlay`: a star-projected Map has no registered type
+                // converter, and that failure would only show up on a device.
+                Prop("data") { view: PoseCameraView, value: Any? ->
+                    view.setData(parseData(value as? Map<*, *>))
                 }
                 // Resolved by JavaScript, in ANGLE_JOINT_NAMES order. Re-deriving the set here
                 // would be a second implementation of one rule, and a way for them to disagree.

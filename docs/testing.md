@@ -113,6 +113,24 @@ architecture and nothing has been tried on the old one.
 The device regression tests above will run on a schedule rather than per PR, since they need
 hardware a runner does not have.
 
+## Running the native tests
+
+The library has no Gradle build of its own, so its JVM tests run through an example app's:
+
+```bash
+npm run test:kotlin
+```
+
+`FrameRingBuffer` and the wire encoder are deliberately free of JNI, which is what lets them run
+on a plain JVM. A byte-order or block-offset mistake is cheap to find there and expensive to find
+on a device.
+
+The other half of that guard is `wireParity.test.ts`, which runs in `npm test` and reads the
+Kotlin. The wire format is written twice, once per language, and nothing at runtime compares them:
+a buffer encoded against a stale constant decodes into plausible wrong numbers rather than
+failing. That test asserts the header slots, the flags, the landmark count and stride, and the
+angle table's order and contents still agree.
+
 ## Writing a native test
 
 Geometry and evaluator tests take fixture landmark sets rather than live camera data:

@@ -1,6 +1,5 @@
 package com.posedetection
 
-import expo.modules.kotlin.jni.NativeArrayBuffer
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -153,7 +152,7 @@ internal class FrameRingBuffer {
     }
 
     /** A bare header. Decodes to no frames rather than to a malformed buffer. */
-    fun empty(): NativeArrayBuffer = synchronized(lock) { emptyBuffer() }
+    fun empty(): ByteBuffer = emptyBuffer()
 
     private fun reset() {
         head = 0
@@ -192,8 +191,13 @@ internal class FrameRingBuffer {
         }
     }
 
-    /** Everything buffered since the last call. Empties the buffer and the dropped count. */
-    fun drain(): NativeArrayBuffer {
+    /**
+     * Everything buffered since the last call. Empties the buffer and the dropped count.
+     *
+     * A plain buffer, not the one JavaScript receives: wrapping it for JNI is one call the caller
+     * makes, and keeping that out of here is what lets the encoding be tested on a JVM.
+     */
+    fun drain(): ByteBuffer {
         synchronized(lock) {
             val layout = this.layout ?: return emptyBuffer()
             val frames = count
@@ -219,12 +223,12 @@ internal class FrameRingBuffer {
             dropped = 0
             head = 0
             buffer.rewind()
-            return NativeArrayBuffer.wrap(buffer)
+            return buffer
         }
     }
 
     /** The most recent frame, or a bare header when no pose has been seen. */
-    fun snapshot(): NativeArrayBuffer {
+    fun snapshot(): ByteBuffer {
         synchronized(lock) {
             val layout = this.layout ?: return emptyBuffer()
             if (!hasLatest) return emptyBuffer()
@@ -237,7 +241,7 @@ internal class FrameRingBuffer {
 
             bodyView(buffer, 1).put(latest, 0, stride)
             buffer.rewind()
-            return NativeArrayBuffer.wrap(buffer)
+            return buffer
         }
     }
 
@@ -275,13 +279,10 @@ internal class FrameRingBuffer {
         return floats
     }
 
-    private fun emptyBuffer(): NativeArrayBuffer {
-        val buffer =
-            ByteBuffer
-                .allocateDirect(Wire.HEADER_FLOAT64S * Wire.BYTES_PER_FLOAT64)
-                .order(ByteOrder.nativeOrder())
-        return NativeArrayBuffer.wrap(buffer)
-    }
+    private fun emptyBuffer(): ByteBuffer =
+        ByteBuffer
+            .allocateDirect(Wire.HEADER_FLOAT64S * Wire.BYTES_PER_FLOAT64)
+            .order(ByteOrder.nativeOrder())
 
     companion object {
         /** Two seconds at 30 fps, which is longer than any stall a drain recovers from. */

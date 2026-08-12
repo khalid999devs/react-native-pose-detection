@@ -184,5 +184,12 @@ internal object Skeleton {
             "rightAnkle" to intArrayOf(RIGHT_KNEE, RIGHT_ANKLE, RIGHT_FOOT_INDEX),
         )
 
+    /**
+     * The 12 angle joints in wire order. Derived from the table above rather than listed again, so
+     * a reorder there cannot leave a second list disagreeing with it. `mapOf` keeps insertion
+     * order, and that order is `ANGLE_JOINT_NAMES` in `src/types/joints.ts`.
+     */
+    val ANGLE_JOINT_NAMES: Array<String> = ANGLE_TRIPLES.keys.toTypedArray()
+
     fun angleTriple(joint: String): IntArray? = ANGLE_TRIPLES[joint]
 }

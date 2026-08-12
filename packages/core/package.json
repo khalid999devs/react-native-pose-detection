@@ -22,7 +22,7 @@
     "build",
     "src",
     "ios",
-    "android/src",
+    "android/src/main",
     "android/build.gradle",
     "android/proguard-rules.pro",
     "plugin/build",

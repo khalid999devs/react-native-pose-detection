@@ -21,6 +21,7 @@ import com.google.mediapipe.framework.image.BitmapImageBuilder
 import com.google.mediapipe.tasks.core.Delegate
 import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarkerResult
 import expo.modules.kotlin.AppContext
+import expo.modules.kotlin.jni.NativeArrayBuffer
 import expo.modules.kotlin.viewevent.EventDispatcher
 import expo.modules.kotlin.views.ExpoView
 import java.util.concurrent.Executors
@@ -121,16 +122,29 @@ class PoseCameraView(
     @Volatile
     private var frameScratch = FloatArray(0)
 
-    /** Velocity is a difference, so it needs the frame before this one. Inference thread only. */
+    /**
+     * Velocity is a difference, so it needs the frame before this one. Written on the inference
+     * thread; `previousFrameMs` is also cleared from main on a camera switch, which is what makes
+     * it volatile and the other two not: they are only read when it is greater than zero.
+     */
     private var previousComX = Float.NaN
     private var previousComY = Float.NaN
+
+    @Volatile
     private var previousFrameMs = 0.0
+
+    /** At most one tick in flight. Without it a detached view queues one per frame and floods on reattach. */
+    private val tickPending = AtomicBoolean(false)
 
     /** Last emission, so `throttled` and `batched` can decide whether this frame is due. */
     private val lastEmitMs = AtomicLong(0)
 
     /** Allocation-free because it captures nothing: the tick is per emission, not per frame. */
-    private val emitFramesTick = Runnable { onFrames(EMPTY_PAYLOAD) }
+    private val emitFramesTick =
+        Runnable {
+            tickPending.set(false)
+            onFrames(EMPTY_PAYLOAD)
+        }
 
     // Props. Applied together in onPropsUpdated rather than one at a time, so a render that changes
     // three of them rebinds the session once.
@@ -175,6 +189,10 @@ class PoseCameraView(
             ),
         )
         addView(container)
+
+        // Props have not arrived yet. Without this a frame landing first would find no layout and
+        // be dropped, and `snapshotFrame()` would answer empty for reasons nobody could see.
+        applyFrameLayout()
     }
 
     // region props
@@ -612,8 +630,11 @@ class PoseCameraView(
         val comY = scratch[cursor + 1]
         cursor += 2
 
-        val elapsedSeconds = (timestampMs - previousFrameMs) / MILLIS_PER_SECOND
-        if (previousFrameMs > 0.0 && elapsedSeconds > 0.0) {
+        // A gap means a switch, a pause, or a backgrounded app. The positions on either side are
+        // real, the difference between them is not a movement that happened at that speed.
+        val elapsedMs = timestampMs - previousFrameMs
+        val elapsedSeconds = elapsedMs / MILLIS_PER_SECOND
+        if (previousFrameMs > 0.0 && elapsedSeconds > 0.0 && elapsedMs <= MAX_VELOCITY_GAP_MS) {
             scratch[cursor] = ((comX - previousComX) / elapsedSeconds).toFloat()
             scratch[cursor + 1] = ((comY - previousComY) / elapsedSeconds).toFloat()
         } else {
@@ -634,12 +655,11 @@ class PoseCameraView(
         val processingMs =
             if (dispatchNanos == 0L) 0.0 else (System.nanoTime() - dispatchNanos) / NANOS_PER_MILLI
 
-        deliver(layout, scratch, timestampMs, processingMs)
+        deliver(scratch, timestampMs, processingMs)
     }
 
     /** The delivery mode decides only two things: whether this frame is kept, and whether to tick. */
     private fun deliver(
-        layout: FrameShape,
         scratch: FloatArray,
         timestampMs: Double,
         processingMs: Double,
@@ -664,7 +684,9 @@ class PoseCameraView(
 
         if (!due || mode == DataMode.OFF) return
         lastEmitMs.set(now)
-        post(emitFramesTick)
+        // A tick already queued has not been answered yet, so a second one would ask for the same
+        // drain twice. mainHandler rather than View.post: that one holds runnables while detached.
+        if (tickPending.compareAndSet(false, true)) mainHandler.post(emitFramesTick)
     }
 
     private fun fillWorldBuffer(
@@ -724,6 +746,7 @@ class PoseCameraView(
                 // the analysis thread can still be stamped after this read, which costs at most a
                 // frame or two drawn with the new mirroring.
                 staleBefore.set((detector?.lastTimestampMs ?: 0L) + 1)
+                previousFrameMs = 0.0
                 syncOverlayMirroring()
 
                 // Anything still waiting from an earlier switch is settled first, so no promise is
@@ -807,16 +830,16 @@ class PoseCameraView(
         if (frameScratch.size != next.floatsPerFrame) frameScratch = FloatArray(next.floatsPerFrame)
     }
 
-    fun drainFrames() = frames.drain()
+    fun drainFrames(): NativeArrayBuffer = NativeArrayBuffer.wrap(frames.drain())
 
-    fun snapshotFrame() = frames.snapshot()
+    fun snapshotFrame(): NativeArrayBuffer = NativeArrayBuffer.wrap(frames.snapshot())
 
     /**
      * Always empty until the trigger evaluator exists to mint a ticket. The contract already says
      * an unknown or spent one returns an empty buffer, so this is that case and not a stub.
      */
     @Suppress("UNUSED_PARAMETER")
-    fun takeTriggerSnapshot(snapshotId: Int) = frames.empty()
+    fun takeTriggerSnapshot(snapshotId: Int): NativeArrayBuffer = NativeArrayBuffer.wrap(frames.empty())
 
     fun currentState(): Map<String, Any?> =
         mapOf(
@@ -1005,6 +1028,9 @@ class PoseCameraView(
         const val DEFAULT_FLUSH_MS = 500L
         const val MILLIS_PER_SECOND = 1_000.0
         const val NANOS_PER_MILLI = 1_000_000.0
+
+        /** Six frames at 30 fps. Longer than a stutter, shorter than anything worth measuring across. */
+        const val MAX_VELOCITY_GAP_MS = 200.0
         val EMPTY_PAYLOAD = emptyMap<String, Any?>()
         val EMPTY_NAMES = emptyArray<String>()
         val EMPTY_INDICES = IntArray(0)
