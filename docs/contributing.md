@@ -142,6 +142,24 @@ Squash merge is the only method enabled, and head branches delete themselves aft
 pull request title becomes the commit subject, which is why it has to follow
 [Conventional Commits](#commits).
 
+### Who can do what
+
+| | Contributor | Maintainer |
+| --- | --- | --- |
+| Open a pull request | yes | yes |
+| Approve a pull request | no, review comments only | yes |
+| Merge to main | no | yes, after approving |
+| Push directly to main | no | yes |
+| Bypass a required check | no | yes |
+
+Approval can only come from a code owner, and `CODEOWNERS` assigns every path to the
+maintainer. In practice that means every change to `main` is reviewed and merged by
+@khalid999devs.
+
+Nobody can approve their own pull request, which GitHub enforces regardless of permissions.
+The maintainer's own pull requests are therefore merged using admin bypass rather than a
+self-approval.
+
 ## Commits
 
 Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/). This is
