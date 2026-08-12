@@ -74,26 +74,29 @@ public API by accident.
 
 | Gate | Command | Protects against |
 | --- | --- | --- |
-| npm audit (prod) | `npm run audit:deps` | shipped vulnerabilities at high or above |
+| Zero runtime deps | `npm run audit:deps` | a dependency reaching a consumer's app at all |
 | npm audit (dev) | `npm run audit:dev` | build-chain vulnerabilities at critical |
 | License check | `npm run audit:license` | copyleft contamination |
 | CodeQL | `.github/workflows/codeql.yml` | static analysis on JavaScript and TypeScript, per PR and weekly |
 | Dependabot | `.github/dependabot.yml` | security advisories, and GitHub Actions whose tag moved or was yanked |
 
-The production audit uses `--omit=dev` because **this package ships zero JavaScript
-dependencies**, nothing in `node_modules` reaches a user's app. Dev-chain advisories (Metro,
-Expo tooling) are gated separately at `critical`, since "fixing" them often means downgrading
-React Native, which is worse than the advisory.
+`audit:deps` asserts that `react-native-pose-detection` declares no `dependencies`, which is the
+whole of what a consumer installs. It does not run `npm audit --omit=dev`: since the example apps
+exist, that walks Expo's build tooling, and reporting prebuild-time advisories under a
+consumer-facing gate describes risk nobody carries. Dev-chain advisories are gated separately at
+`critical`, because "fixing" them usually means downgrading React Native, which is worse than the
+advisory. The moment a runtime dependency is added, `audit:deps` fails and says to audit it
+properly.
 
 The license allowlist is `MIT · Apache-2.0 · BSD-2/3 · ISC · 0BSD · Unlicense · CC0`.
 This is not ceremony: pose estimation is full of AGPL-3.0 models and toolkits, Ultralytics
 YOLO-pose among them. And a single AGPL dependency would make this package unusable in the
 closed-source apps it is built for.
 
-`audit:license` runs `scripts/no-production-deps.sh` first. `license-checker` prints an error and
-still exits 0 on an empty dependency tree, which made this gate one that could never fail. The
-script proves the production tree is empty instead of inferring it from an error message, and
-falls through to the real license scan the moment a runtime dependency is added.
+`audit:license` runs `scripts/no-runtime-deps.sh` first, then scans from `packages/core` rather
+than from the repository root. The root's production tree is the two example apps, which no
+consumer installs; the package's is what ships. `license-checker` prints an error and still exits
+0 on an empty tree, which once made this gate one that could never fail.
 
 ### Dependabot policy
 
@@ -162,6 +165,8 @@ One job per line, in `.github/workflows/ci.yml`, plus CodeQL in its own workflow
 | `swift` | macOS, gated on the above | `swiftlint lint --strict` |
 | `package` | ubuntu, Node 22.22.1 **and** 24 | `check:package`, the tarball guard, and a smoke test of the packed CLI |
 | `security` | ubuntu | `audit:deps`, `audit:license`, `audit:dev` |
+| `android-expo` | ubuntu | Prebuilds `example/expo`, builds the APK, asserts four ABIs and one model |
+| `android-bare` | ubuntu | Installs the model into `example/bare` with the CLI, runs `doctor`, builds the APK, asserts four ABIs, one model, and that the module was autolinked |
 | `commits` | ubuntu, pull requests only | commitlint from the base commit to HEAD |
 | CodeQL | ubuntu | Per PR and weekly, JavaScript and TypeScript |
 

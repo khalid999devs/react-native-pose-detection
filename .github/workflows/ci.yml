@@ -169,6 +169,114 @@ jobs:
       - run: npm run audit:license
       - run: npm run audit:dev
 
+  android-expo:
+    name: 'Android: build the Expo example'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - run: npm ci
+      # The example imports the package's build output, not its sources.
+      - run: npm run build
+
+      # The model is 9.4 MB from Google's CDN and its checksum is pinned, so a cache hit is
+      # byte-identical to a download. A miss just downloads it.
+      - name: Cache the pose model
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/react-native-pose-detection
+          key: pose-model-full-float16-1
+
+      - name: Generate the native project
+        working-directory: example/expo
+        run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Assert the config plugin did its work
+        working-directory: example/expo
+        run: |
+          test -f android/app/src/main/assets/pose_landmarker_full.task
+          grep -q 'android.permission.CAMERA' android/app/src/main/AndroidManifest.xml
+
+      - name: Build
+        working-directory: example/expo/android
+        run: ./gradlew :app:assembleDebug --no-daemon
+
+      - name: Assert the APK carries every ABI and exactly one model
+        working-directory: example/expo
+        run: |
+          apk=$(find android/app/build/outputs/apk -name '*.apk' | head -1)
+          for abi in arm64-v8a armeabi-v7a x86 x86_64; do
+            unzip -l "$apk" | grep -q "lib/$abi/libmediapipe_tasks_jni.so" \
+              || { echo "missing $abi"; exit 1; }
+          done
+          test "$(unzip -l "$apk" | grep -c '\.task$')" -eq 1
+
+  android-bare:
+    name: 'Android: build the bare example'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - run: npm ci
+      - run: npm run build
+
+      - name: Cache the pose model
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/react-native-pose-detection
+          key: pose-model-full-float16-1
+
+      # No prebuild here, and that is the point: the native projects are committed, so this is
+      # the CLI installing into a project that already exists.
+      - name: Install the model through the CLI
+        working-directory: example/bare
+        run: npx react-native-pose-detection fetch-model full
+
+      - name: Doctor
+        working-directory: example/bare
+        run: npx react-native-pose-detection doctor
+
+      # The committed pbxproj already carries the model reference. If the CLI writes anything
+      # different, the two have drifted and one of them is wrong.
+      - name: Assert the CLI left the Xcode project unchanged
+        run: git diff --exit-code -- example/bare/ios
+
+      - name: Build
+        working-directory: example/bare/android
+        run: ./gradlew :app:assembleDebug --no-daemon
+
+      - name: Assert the APK carries every ABI and exactly one model
+        working-directory: example/bare
+        run: |
+          apk=$(find android/app/build/outputs/apk -name '*.apk' | head -1)
+          for abi in arm64-v8a armeabi-v7a x86 x86_64; do
+            unzip -l "$apk" | grep -q "lib/$abi/libmediapipe_tasks_jni.so" \
+              || { echo "missing $abi"; exit 1; }
+          done
+          test "$(unzip -l "$apk" | grep -c '\.task$')" -eq 1
+
+      # Autolinking is the whole reason this app exists: no config plugin ran, so if the module
+      # is not on the app's classpath, nothing else here would have noticed.
+      - name: Assert the module was autolinked
+        working-directory: example/bare/android
+        run: |
+          ./gradlew :app:dependencies --configuration debugRuntimeClasspath --no-daemon \
+            | grep -q 'project :react-native-pose-detection'
+
   commits:
     name: 'Commits: conventional format'
     runs-on: ubuntu-latest
@@ -184,5 +292,5 @@ jobs:
       - run: npm ci
       - run: npx commitlint --from ${{ github.event.pull_request.base.sha }} --to HEAD --verbose
 
-  # Phase 6 adds the device matrix:
+  # android-expo and android-bare are two of the eight cells. Phase 6 adds the rest:
   #   platform (ios, android) × install (expo, bare) × architecture (old, new)

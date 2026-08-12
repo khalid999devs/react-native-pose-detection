@@ -105,11 +105,13 @@ currently enforces.
 | Install | Expo prebuild, bare |
 | Architecture | old, new |
 
-**The matrix is not wired yet.** `.github/workflows/ci.yml` ends with a comment reserving it for
-Phase 6, and it cannot run before then because the two example apps it would build,
-`example/expo` and `example/bare`, do not exist. When it lands, all eight cells build both apps on
-every PR, and the device regression tests above run on a schedule rather than per PR, since they
-need hardware a runner does not have.
+**Two of the eight cells are wired.** `android-expo` and `android-bare` build the two example
+apps on every push, one through the config plugin and one through the CLI. The iOS cells wait on
+the Swift module, and the architecture axis is a single value today because both apps run the new
+architecture and nothing has been tried on the old one.
+
+The device regression tests above will run on a schedule rather than per PR, since they need
+hardware a runner does not have.
 
 ## Writing a native test
 

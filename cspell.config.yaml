@@ -6,6 +6,9 @@ ignorePaths:
   - '**/build/**'
   - '**/package-lock.json'
   - '**/*.lock'
+  - 'example/*/android/**'
+  - 'example/*/ios/**'
+  - '.test-build/**'
 dictionaryDefinitions:
   - name: project
     path: ./.cspell-project.txt

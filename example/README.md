@@ -1,8 +1,9 @@
 # Example apps
 
-**Neither app is written yet.** This directory holds only this file. Both are Phase 6 work in the
-[development plan](../docs/development-plan.md), which is also why nothing in this repository has
-ever run on a device. What follows is the specification they get built against.
+**Both apps exist and build for Android.** The Expo app is what first compiled the Kotlin and
+produced an APK; the bare app is what first ran the Xcode project writer against a real
+`project.pbxproj`. Both are short of the specification below, because most of the screens need an
+engine that is not written yet. Nothing here has run on a physical device.
 
 Real applications, not smoke tests. They are the **reference implementation**, the manual QA
 harness, and the demo. And they are never published to npm.
@@ -32,6 +33,19 @@ The CI matrix in [testing](../docs/testing.md#ci-matrix) is what will build both
 platforms and both architectures. It is reserved by a comment at the end of
 `.github/workflows/ci.yml` and cannot be wired up before these two apps exist, because they are
 what it would build.
+
+### What the bare app found
+
+Two things, both invisible from the Expo side:
+
+1. **A bare app needs Expo modules wired in by hand.** This package is an Expo module, so the
+   `expo` package has to be installed and its Gradle autolinking hooked up, and the tool that is
+   supposed to do that (`npx install-expo-modules`) supports React Native 0.78 at the newest.
+   The [installation guide](../guides/installation.md#bare-react-native) now carries the four
+   edits, and this app is the working copy of them.
+2. **`doctor` failed a project that was correct.** It reported the camera permission as missing
+   from the app manifest, when this package declares that permission itself and the Android
+   manifest merger adds it. It now says where the permission came from instead of failing.
 
 **`expo/` is the one with all the screens.** The bare app is deliberately small: the basic
 camera, the scenarios panel, and a doctor readout. Duplicating eleven screens across two apps
@@ -111,7 +125,7 @@ example/
 │       ├── scenarios/        stress runners, each returning a pass/fail report
 │       └── theme/            shared UI so screens stay short
 ├── bare/
-│   ├── App.tsx               basic camera, scenarios panel, doctor readout
+│   ├── App.tsx               one file: camera, controls, and how the model got installed
 │   └── ios/ · android/       committed, because a bare app has no prebuild step
 └── README.md
 ```
@@ -124,8 +138,6 @@ prebuild to regenerate them, so the CLI has to work against native projects that
 which is exactly the case the config plugin never sees.
 
 ## Running
-
-Once they exist:
 
 ```bash
 npm install
@@ -145,9 +157,13 @@ Bare React Native:
 ```bash
 cd example/bare
 npx react-native-pose-detection fetch-model full
-cd ios && pod install && cd ..
-npx react-native run-ios      # or run-android
+npx react-native-pose-detection doctor
+cd ios && pod install && cd ..   # once iOS ships
+npx react-native run-android
 ```
+
+The model is gitignored, so `fetch-model` is the first step on a fresh clone. `doctor` should
+print nine ticks; anything else is a bug in the CLI or in this app, and both are ours.
 
 A **physical device is required** for both. Simulators have no camera and the GPU delegate
 behaves differently on them.

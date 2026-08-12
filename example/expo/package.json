@@ -1,0 +1,23 @@
+{
+  "name": "pose-example-expo",
+  "version": "0.0.0",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "prebuild": "expo prebuild --clean",
+    "prebuild:android": "expo prebuild --platform android --clean"
+  },
+  "dependencies": {
+    "expo": "^57.0.12",
+    "react": "^19.2.3",
+    "react-native": "0.86.2",
+    "react-native-pose-detection": "*"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.18",
+    "typescript": "^6.0.3"
+  }
+}

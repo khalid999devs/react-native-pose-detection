@@ -72,6 +72,11 @@ file in the project holds the number. Reporting that as a failure would train yo
 output, which is worse than not checking it. Bare React Native writes the value into
 `android/build.gradle`, and it gets checked there.
 
+`android.permission.CAMERA` never fails. This package declares the permission in its own
+manifest and the Android manifest merger adds it to your app, so an app manifest without it is
+still correct; `doctor` says where the permission came from rather than calling a working project
+broken. `NSCameraUsageDescription` does fail, because iOS has no equivalent merge.
+
 Two models in one directory is a `✗`. That's the failure this command exists to catch, because
 which one wins at load time is not something your app gets to decide.
 

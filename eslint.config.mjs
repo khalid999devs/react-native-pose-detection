@@ -13,9 +13,15 @@ export default tseslint.config(
   },
   ...tseslint.configs.recommended,
   {
-    // Both are CommonJS entry points by convention: Expo resolves app.plugin.js itself, and the
-    // bin is loaded by Node before any bundler is involved. Neither can be ESM.
-    files: ['packages/core/app.plugin.js', 'packages/core/cli/index.js'],
+    // CommonJS by convention, not by choice: Expo resolves app.plugin.js itself, the bin is
+    // loaded by Node before any bundler is involved, and Metro and Babel read their configs
+    // through require.
+    files: [
+      'packages/core/app.plugin.js',
+      'packages/core/cli/index.js',
+      'example/*/metro.config.js',
+      'example/*/babel.config.js',
+    ],
     rules: { '@typescript-eslint/no-require-imports': 'off' },
   },
   {

@@ -8,6 +8,7 @@ Logcat
 Metal
 NNAPI
 Podfiles
+Pressable
 Ultralytics
 abifilters
 analyse
@@ -34,6 +35,7 @@ euro
 executorch
 gpu
 gradle
+gradlew
 hysteresis
 isometrics
 jank
@@ -79,6 +81,7 @@ tarball
 tarballs
 tflite
 toolkits
+unbuilt
 unmount
 unmounting
 unreviewed

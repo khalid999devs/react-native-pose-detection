@@ -252,6 +252,9 @@ Zero jump-detection code present.
 **Goal:** the numbers in the docs are measured, and CI stops regressions.
 
 - [ ] **CI matrix**, iOS + Android × Expo + bare × old + new arch, every PR
+  - [x] Android × Expo, building the example and asserting all four ABIs and one model
+  - [x] Android × bare, building the example through the CLI, plus `doctor`, an autolinking
+        assertion, and a check that the CLI leaves the committed Xcode project unchanged
 - [ ] Camera-switch stress test, 100 switches, detection on: no crash, no leak, counters preserved
 - [ ] Leak test, 100 mount/unmount cycles, memory returns to baseline
 - [ ] Memory budget test, 10 min against the table in `guides/performance.md`, all profiles
@@ -266,6 +269,12 @@ Zero jump-detection code present.
 - [ ] **Example apps**, see [example/README.md](../example/README.md). Two of them:
       `example/expo` through the config plugin, `example/bare` through the CLI. The two
       install paths share almost no code, so a bug in one is invisible in the other
+  - [x] `example/expo` builds for Android. It is what first compiled the Kotlin, and it proved
+        the config plugin, autolinking, the native link and the packaged model end to end
+  - [x] `example/bare`, the only thing that exercises the CLI install path. It proved the
+        Xcode writer against a real project, and that the bare install path needs Expo modules
+        wired by hand because `install-expo-modules` stops at React Native 0.78
+  - [ ] Either app running on a physical device
   - [ ] Screens: Home · Basic · Playground · Triggers · Data modes · Performance · Recipes · Angles · Static input · Console · Scenarios
   - [ ] Playground exposes **every prop** with requested-vs-resolved shown side by side
   - [ ] Scenarios panel: camera-switch ×100, remount ×50, detection toggle ×20, overlay toggle ×50,

@@ -8,3 +8,9 @@ ios/Pods/
 android/build/
 package-lock.json
 *.md
+
+# Generated: by prebuild in example/expo, by the React Native template in example/bare. Neither
+# is written in this repository's style, and reformatting them would obscure the diff from
+# upstream. example/bare commits its copy on purpose, see example/README.md.
+example/*/android/
+example/*/ios/

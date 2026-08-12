@@ -11,13 +11,31 @@ npm run build
 npm run check
 ```
 
-**There is no app to run yet.** `example/expo` and `example/bare` are Phase 6 work and the
-directory holds only its README, so `cd example && npx expo prebuild` has nothing to prebuild.
-Until they land, the loop is `npm run check` for the JavaScript side and a Gradle
-`assembleDebug` against a host app of your own for the Android side.
+For the Android side, `example/expo` is the loop:
 
-When the example apps do exist, a **physical device is required** for anything touching the
-camera. Simulators have no camera and MediaPipe's GPU delegate behaves differently there.
+```bash
+npm run build
+cd example/expo
+npx expo prebuild --platform android --clean
+cd android && ./gradlew :app:assembleDebug
+```
+
+For the CLI install path, `example/bare` is the loop. Its native projects are committed, so
+there is no prebuild step:
+
+```bash
+cd example/bare
+npx react-native-pose-detection fetch-model full
+npx react-native-pose-detection doctor
+(cd android && ./gradlew :app:assembleDebug)
+```
+
+A **physical device is required** for anything touching the camera. Simulators have no camera and
+MediaPipe's GPU delegate behaves differently there.
+
+**React Native is pinned to 0.86.2**, the version Expo SDK 57 ships. 0.87 raises the Android
+Gradle Plugin to 9.2.1, which requires Gradle 9.4.1, which ships a Kotlin standard library newer
+than Expo's own autolinking plugin can read. The Android build does not survive that chain.
 
 ## Layout
 
@@ -31,7 +49,7 @@ packages/core/
   cli/          fetch-model
 example/
   expo/         Expo app, the config-plugin install path   (Phase 6)
-  bare/         bare React Native app, the CLI install path (Phase 6)
+  bare/         bare React Native app, the CLI install path
 docs/           this directory
 ```
 

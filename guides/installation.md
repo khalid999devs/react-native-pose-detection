@@ -45,14 +45,77 @@ Full plugin options: [config plugin reference](./reference/config-plugin.md).
 ## Bare React Native
 
 ```bash
-npm i react-native-pose-detection
+npm i react-native-pose-detection expo
 npx react-native-pose-detection fetch-model full
 cd ios && pod install   # once iOS ships
 ```
 
+`expo` is not a typo and it does not turn your app into an Expo app. This package is built with
+the Expo Modules API, and that API's autolinking is what finds the native module. You need the
+`expo` package for autolinking. You do not need the config plugin, `app.json`, or prebuild.
+
+### Wiring Expo modules into an existing app
+
+The documented tool for this is `npx install-expo-modules@latest`, and on a recent React Native
+it will not run: version 0.16.0 knows Expo SDK 53 and React Native 0.78 at the newest, and stops
+with `Unable to find compatible Expo SDK version`. Until it catches up, the four edits are below.
+A working copy of all of them is [`example/bare`](../example/bare), which CI builds on every push.
+
+`android/settings.gradle`, above `include ':app'`:
+
+```groovy
+pluginManagement {
+  def expoPluginsPath = new File(
+    providers.exec {
+      workingDir(rootDir)
+      commandLine("node", "--print", "require.resolve('expo-modules-autolinking/package.json', { paths: [require.resolve('expo/package.json')] })")
+    }.standardOutput.asText.get().trim(),
+    "../android/expo-gradle-plugin"
+  ).absolutePath
+  includeBuild(expoPluginsPath)
+}
+
+plugins { id("expo-autolinking-settings") }
+
+extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
+  ex.autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)
+}
+expoAutolinking.useExpoModules()
+expoAutolinking.useExpoVersionCatalog()
+```
+
+`android/build.gradle`, next to the React Native line:
+
+```groovy
+apply plugin: "expo-root-project"
+```
+
+`MainApplication.kt`, so Expo modules are registered with the host:
+
+```kotlin
+import expo.modules.ExpoReactHostFactory
+
+override val reactHost: ReactHost by lazy {
+  ExpoReactHostFactory.getDefaultReactHost(applicationContext, PackageList(this).packages)
+}
+```
+
+`MainActivity.kt`, so Expo modules see the activity callbacks:
+
+```kotlin
+import expo.modules.ReactActivityDelegateWrapper
+
+override fun createReactActivityDelegate(): ReactActivityDelegate =
+    ReactActivityDelegateWrapper(
+        this,
+        BuildConfig.IS_NEW_ARCHITECTURE_ENABLED,
+        DefaultReactActivityDelegate(this, mainComponentName, fabricEnabled),
+    )
+```
+
 ### iOS
 
-`ios/<App>/Info.plist`:
+`ios/<App>/Info.plist`. There is no manifest merging on iOS, so this key has to be yours:
 
 ```xml
 <key>NSCameraUsageDescription</key>
@@ -67,17 +130,22 @@ platform :ios, '15.1'
 
 ### Android
 
-`android/app/src/main/AndroidManifest.xml`:
-
-```xml
-<uses-permission android:name="android.permission.CAMERA" />
-```
-
 `android/build.gradle`:
 
 ```groovy
 minSdkVersion = 24
 ```
+
+The camera permission is **already declared** in this package's manifest and the merger adds it
+to your app. Declaring it again is fine, and worth doing so your own manifest tells the truth
+about what the app uses:
+
+```xml
+<uses-permission android:name="android.permission.CAMERA" />
+```
+
+Granting it at runtime is still yours to do. The native view reports `PERMISSION_DENIED` and
+stops rather than prompting, because when to ask is a product decision.
 
 ## Verify
 

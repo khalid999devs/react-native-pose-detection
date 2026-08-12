@@ -17,8 +17,13 @@ react-native-pose-detection/
     └── bare/                  bare React Native app: install path only, via the CLI
 ```
 
-`ios/` and both example apps are Phase 6 and Phase 5 work, so the tree above is where they go
-rather than what is currently checked in.
+`packages/core/ios` is Phase 5 work, so the tree above is where it goes rather than what is
+checked in. Both example apps exist and build for Android.
+
+`example/bare` commits its `android/` and `ios/` directories; `example/expo` does not. That is
+the difference between the two install paths, not an inconsistency: an Expo app regenerates its
+native projects with prebuild, and a bare app has no prebuild to regenerate them with. The model
+is gitignored in both, so a fresh clone fetches it.
 
 ## `packages/core/src`
 

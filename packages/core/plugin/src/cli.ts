@@ -437,12 +437,14 @@ async function doctorCommand(): Promise<number> {
   const manifest = await readIfPresent(
     join(projectRoot, 'android', 'app', 'src', 'main', 'AndroidManifest.xml'),
   );
+  // Absent from the app manifest is not a failure: this package declares the permission in its
+  // own manifest, and the merger adds it. Reporting that as broken is how doctor gets ignored.
   checks.push(
     manifest === null
       ? skip('android.permission.CAMERA', 'no AndroidManifest.xml, run prebuild first')
       : manifest.includes('android.permission.CAMERA')
       ? pass('android.permission.CAMERA', 'AndroidManifest.xml')
-      : fail('android.permission.CAMERA', 'missing from AndroidManifest.xml'),
+      : pass('android.permission.CAMERA', 'merged in from this package, not in the app manifest'),
   );
 
   if (projectName !== null) {

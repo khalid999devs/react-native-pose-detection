@@ -1,0 +1,43 @@
+// Paths are resolved through node rather than `../node_modules`: this app is a workspace, so its
+// dependencies are hoisted to the repository root and the relative paths the template ships with
+// do not exist. A consumer outside a monorepo can keep the template's defaults.
+pluginManagement {
+  def reactNativeGradlePlugin = new File(
+    providers.exec {
+      workingDir(rootDir)
+      commandLine("node", "--print", "require.resolve('@react-native/gradle-plugin/package.json', { paths: [require.resolve('react-native/package.json')] })")
+    }.standardOutput.asText.get().trim()
+  ).getParentFile().absolutePath
+  includeBuild(reactNativeGradlePlugin)
+
+  def expoPluginsPath = new File(
+    providers.exec {
+      workingDir(rootDir)
+      commandLine("node", "--print", "require.resolve('expo-modules-autolinking/package.json', { paths: [require.resolve('expo/package.json')] })")
+    }.standardOutput.asText.get().trim(),
+    "../android/expo-gradle-plugin"
+  ).absolutePath
+  includeBuild(expoPluginsPath)
+}
+
+plugins {
+  id("com.facebook.react.settings")
+  id("expo-autolinking-settings")
+}
+
+// This package is an Expo module, so a bare app still needs Expo's autolinking. It does not need
+// the config plugin: the model arrives through the CLI instead, and nothing here runs prebuild.
+extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
+  ex.autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)
+}
+expoAutolinking.useExpoModules()
+expoAutolinking.useExpoVersionCatalog()
+
+rootProject.name = 'PoseExampleBare'
+
+include ':app'
+
+// A second include, at settings level rather than inside pluginManagement: the first one only
+// resolves the settings plugin, this one substitutes react-native-gradle-plugin on the root
+// buildscript classpath, which is where the unversioned AGP and Kotlin entries get their versions.
+includeBuild(expoAutolinking.reactNativeGradlePlugin)

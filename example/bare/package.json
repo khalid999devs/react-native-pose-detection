@@ -1,0 +1,30 @@
+{
+  "name": "pose-example-bare",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "start": "react-native start",
+    "android": "react-native run-android",
+    "ios": "react-native run-ios",
+    "fetch-model": "react-native-pose-detection fetch-model full",
+    "doctor": "react-native-pose-detection doctor"
+  },
+  "dependencies": {
+    "expo": "^57.0.12",
+    "react": "^19.2.3",
+    "react-native": "0.86.2",
+    "react-native-pose-detection": "*"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.28.4",
+    "@babel/runtime": "^7.28.4",
+    "@react-native-community/cli": "20.1.0",
+    "@react-native-community/cli-platform-android": "20.1.0",
+    "@react-native-community/cli-platform-ios": "20.1.0",
+    "@react-native/babel-preset": "0.86.2",
+    "@react-native/metro-config": "0.86.2",
+    "@react-native/typescript-config": "0.86.2",
+    "@types/react": "^19.2.18",
+    "typescript": "^6.0.3"
+  }
+}

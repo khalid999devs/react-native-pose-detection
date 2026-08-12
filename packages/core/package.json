@@ -75,7 +75,7 @@
     "expo": "^57.0.12",
     "expo-module-scripts": "^56.0.3",
     "react": "^19.2.3",
-    "react-native": "^0.87.0"
+    "react-native": "0.86.2"
   },
   "engines": {
     "node": ">=22.22.1"

@@ -4,6 +4,10 @@
   "workspaces": {
     "packages/core": {
       "entry": ["plugin/src/index.ts", "plugin/src/cli.ts"]
+    },
+    "example/bare": {
+      "expo": false,
+      "ignoreDependencies": ["@babel/runtime"]
     }
   }
 }

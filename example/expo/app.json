@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "Pose Detection",
+    "slug": "pose-detection-example",
+    "version": "0.0.0",
+    "orientation": "portrait",
+    "newArchEnabled": true,
+    "android": {
+      "package": "com.posedetection.example"
+    },
+    "ios": {
+      "bundleIdentifier": "com.posedetection.example",
+      "supportsTablet": true
+    },
+    "plugins": [
+      [
+        "react-native-pose-detection",
+        {
+          "model": "full",
+          "cameraPermissionText": "This example uses the camera to detect your pose on device."
+        }
+      ]
+    ],
+    "updates": {
+      "enabled": false
+    }
+  }
+}
