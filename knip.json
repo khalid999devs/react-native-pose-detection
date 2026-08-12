@@ -1,0 +1,10 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "ignoreBinaries": ["swiftlint", "swiftformat", "ktlint"],
+  "ignoreDependencies": ["@types/react", "expo", "react", "react-native"],
+  "workspaces": {
+    "packages/core": {
+      "entry": ["src/index.ts"]
+    }
+  }
+}

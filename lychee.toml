@@ -1,0 +1,8 @@
+# Markdown link checking
+exclude_path = ["node_modules", "ideation", "**/build"]
+exclude = [
+  "^https://github\\.com/khalid999devs/react-native-pose-detection",  # not published yet
+]
+accept = [200, 206, 429]
+max_retries = 2
+timeout = 20

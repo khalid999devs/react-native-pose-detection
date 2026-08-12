@@ -1,0 +1,9 @@
+build/
+lib/
+dist/
+node_modules/
+ideation/
+ios/Pods/
+android/build/
+package-lock.json
+*.md

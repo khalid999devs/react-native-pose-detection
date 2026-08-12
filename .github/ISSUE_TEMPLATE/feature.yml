@@ -1,0 +1,27 @@
+name: Feature request
+description: Suggest a capability
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This library ships **primitives, not policy**. If your idea needs to know what activity
+        the user is doing — rep counting, form scoring, sport-specific detection — it belongs in
+        `guides/recipes/` as a trigger config, not in the library. Recipe contributions are very
+        welcome.
+
+  - type: textarea
+    attributes:
+      label: What do you want to do
+      description: The goal, not the proposed API.
+    validations: { required: true }
+
+  - type: textarea
+    attributes:
+      label: Why triggers or existing props can't do it
+    validations: { required: true }
+
+  - type: textarea
+    attributes:
+      label: Proposed API
+      render: tsx

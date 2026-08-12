@@ -1,0 +1,149 @@
+# react-native-pose-detection
+
+Real-time pose detection for React Native and Expo. 33 body landmarks, iOS and Android,
+powered by MediaPipe.
+
+> **Pre-release — not yet published.** Follow along in the [development plan](./docs/development-plan.md).
+
+```bash
+npm i react-native-pose-detection
+```
+
+```json
+{ "plugins": [["react-native-pose-detection", { "model": "full" }]] }
+```
+
+```tsx
+import { PoseCamera } from 'react-native-pose-detection';
+
+export default function App() {
+  return <PoseCamera style={{ flex: 1 }} />;
+}
+```
+
+That's a live camera with a skeleton drawn natively, tuned to the device it's running on,
+with **zero data crossing to JavaScript**.
+
+---
+
+## Why this one
+
+| | |
+|---|---|
+| **No model files to hunt down** | The config plugin fetches, verifies, and installs the model. Other libraries make you download a `.task` by hand and place it in two native folders. |
+| **Zero peer dependencies** | No VisionCamera, no Reanimated. Works on both old and new architecture. |
+| **Zero bridge cost by default** | Landmarks stay native. Data crossing to JS is something you opt into. |
+| **Logic runs natively** | Declare thresholds; the state machine runs on the camera thread and calls you ~once per event, not 30× per second. |
+| **Tunes itself** | Measures the device, settles on the fastest configuration it can sustain, and remembers it. Backs off when the phone gets hot. |
+| **Honest numbers** | Measured app-size and memory figures, enforced in CI. |
+
+## Requirements
+
+| | |
+|---|---|
+| React Native | 0.74+ |
+| Expo SDK | 51+ (development build or EAS) |
+| iOS | 15.1+ |
+| Android | API 24+ |
+
+**Expo Go is not supported** — this package contains native code. Use a
+[development build](https://docs.expo.dev/develop/development-builds/introduction/).
+
+Full setup, including bare React Native: [installation guide](./guides/installation.md).
+
+## Counting reps in 20 lines
+
+Logic is declared, evaluated natively, and reported once per rep:
+
+```tsx
+<PoseCamera
+  style={{ flex: 1 }}
+  triggers={[
+    {
+      id: 'squat',
+      enter: { angle: 'leftKnee', below: 90 },
+      exit:  { angle: 'leftKnee', above: 160 },
+      emit: 'cycle',
+      debounceMs: 300,
+    },
+  ]}
+  onTrigger={(e) => setReps(e.count)}
+/>
+```
+
+Thirty reps means thirty bridge crossings, not nine hundred.
+More: [triggers](./guides/triggers.md) · [recipes](./guides/recipes/README.md).
+
+## Reading landmarks directly
+
+Nothing crosses until you ask. Pick the cheapest mode that does the job:
+
+```tsx
+<PoseCamera data={{ mode: 'batched', flushMs: 500 }} onPoseBatch={handle} />
+```
+
+| Mode | Crossings/sec | Data loss |
+|---|---|---|
+| `off` *(default)* | 0 | — |
+| `batched` | 2 | none |
+| `throttled` | 10 | intermediate frames |
+| `live` | 30 | none |
+
+[Data delivery guide](./guides/data-delivery.md).
+
+## Choosing a model
+
+One model ships — whichever you select.
+
+| Model | Android installed | Best for |
+|---|---|---|
+| `lite` | ~19.7 MB | budget Android, high frame rates |
+| `full` *(default)* | ~23.2 MB | most apps |
+| `heavy` | ~43.4 MB | accuracy-critical, flagships |
+
+Changing it is one word in `app.json` plus `npx expo prebuild`.
+[Full size breakdown](./guides/performance.md#app-size).
+
+## Documentation
+
+**[📘 Guides →](./guides/README.md)** — everything for using the library
+
+| | |
+|---|---|
+| [Getting started](./guides/getting-started.md) | Install → live skeleton |
+| [Installation](./guides/installation.md) | Expo, bare RN, EAS, release builds |
+| [Camera control](./guides/camera-control.md) | Switching, pausing, the three toggles |
+| [Data delivery](./guides/data-delivery.md) | Getting landmarks out efficiently |
+| [Triggers](./guides/triggers.md) | Native business logic |
+| [Performance](./guides/performance.md) | Profiles, calibration, app size, memory |
+| [Static input](./guides/static-input.md) | Images and video files |
+| [Recipes](./guides/recipes/README.md) | Squat, push-up, jump, plank |
+| [Debugging](./guides/debugging.md) | Live log streaming, off by default |
+| [Troubleshooting](./guides/troubleshooting.md) | When something breaks |
+| [API reference](./guides/README.md#api-reference) | Props, methods, events, types |
+
+## Getting the best performance
+
+Four decisions are yours; the rest is automatic.
+
+1. **Keep `data.mode: 'off'` and use triggers** — the single biggest lever
+2. **Pick `lite` if you target budget Android** — 5.5 MB and noticeably faster
+3. **Use `select`** to compute only the joints you need
+4. **Set `active={isFocused}`** so the camera stops when the screen isn't visible
+
+Details in the [performance guide](./guides/performance.md).
+
+## Contributing
+
+Contributions are welcome — especially device testing on hardware we don't have.
+
+**[🛠 Developer documentation →](./docs/README.md)**
+
+Start with [project structure](./docs/project-structure.md), then
+[architecture](./docs/architecture.md) and [contributing](./docs/contributing.md).
+Decisions that look surprising are usually recorded in [ADRs](./docs/adr/README.md) —
+read those before proposing a reversal.
+
+## License
+
+MIT

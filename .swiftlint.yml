@@ -1,0 +1,29 @@
+included:
+  - packages/core/ios
+
+excluded:
+  - packages/core/ios/build
+
+opt_in_rules:
+  - empty_count
+  - force_unwrapping
+  - implicitly_unwrapped_optional
+  - unowned_variable_capture
+  - redundant_nil_coalescing
+  - toggle_bool
+
+disabled_rules:
+  - todo # enforced by review, not lint
+
+line_length:
+  warning: 120
+  error: 160
+
+# The frame path must not allocate; force-unwrapping there is also a crash risk.
+force_cast: error
+force_try: error
+force_unwrapping: error
+
+identifier_name:
+  min_length: 2
+  excluded: [x, y, z, i, j, n, a, b, dx, dy, ms]

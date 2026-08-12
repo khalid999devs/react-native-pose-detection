@@ -1,0 +1,17 @@
+version: '0.2'
+language: en
+ignorePaths:
+  - '**/node_modules/**'
+  - 'ideation/**'
+  - '**/build/**'
+  - '**/package-lock.json'
+  - '**/*.lock'
+dictionaryDefinitions:
+  - name: project
+    path: ./.cspell-project.txt
+    addWords: true
+dictionaries:
+  - project
+  - typescript
+  - node
+  - softwareTerms

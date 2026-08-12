@@ -1,0 +1,7 @@
+{
+  "*.{ts,tsx}": ["eslint --fix --max-warnings=0", "prettier --write"],
+  "*.{js,mjs,cjs,json,yml,yaml}": ["prettier --write"],
+  "*.md": ["markdownlint-cli2 --fix", "cspell --no-must-find-files"],
+  "*.swift": ["swiftformat", "swiftlint lint --quiet --strict"],
+  "*.kt": ["ktlint -F"]
+}

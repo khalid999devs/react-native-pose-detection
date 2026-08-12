@@ -1,0 +1,69 @@
+{
+  "name": "react-native-pose-detection",
+  "version": "0.0.0",
+  "description": "Real-time pose detection for React Native and Expo. 33 landmarks, iOS and Android, powered by MediaPipe.",
+  "main": "build/index.js",
+  "types": "build/index.d.ts",
+  "sideEffects": false,
+  "files": [
+    "build",
+    "src",
+    "ios",
+    "android/src",
+    "android/build.gradle",
+    "plugin/build",
+    "cli/build",
+    "app.plugin.js",
+    "expo-module.config.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "expo-module build",
+    "clean": "expo-module clean",
+    "lint": "expo-module lint",
+    "prepare": "expo-module prepare",
+    "prepublishOnly": "expo-module prepublishOnly"
+  },
+  "keywords": [
+    "react-native",
+    "expo",
+    "pose-detection",
+    "pose-estimation",
+    "mediapipe",
+    "blazepose",
+    "landmarks",
+    "computer-vision",
+    "fitness",
+    "on-device",
+    "ios",
+    "android"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/khalid999devs/react-native-pose-detection.git"
+  },
+  "bugs": {
+    "url": "https://github.com/khalid999devs/react-native-pose-detection/issues"
+  },
+  "homepage": "https://github.com/khalid999devs/react-native-pose-detection#readme",
+  "author": "khalid999devs <khalidahammeduzzal@gmail.com>",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "expo": "*",
+    "react": "*",
+    "react-native": "*"
+  },
+  "devDependencies": {
+    "expo": "^54.0.0",
+    "expo-module-scripts": "^4.1.9",
+    "react": "19.1.0",
+    "react-native": "0.81.4"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

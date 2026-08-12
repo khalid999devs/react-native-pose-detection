@@ -1,0 +1,44 @@
+name: Bug report
+description: Something doesn't work
+labels: [bug]
+body:
+  - type: textarea
+    attributes:
+      label: What happened
+    validations: { required: true }
+
+  - type: textarea
+    attributes:
+      label: Minimal reproduction
+      description: The smallest PoseCamera config that shows the problem.
+      render: tsx
+    validations: { required: true }
+
+  - type: input
+    attributes:
+      label: Device and OS version
+      placeholder: Pixel 7a, Android 14
+    validations: { required: true }
+
+  - type: textarea
+    attributes:
+      label: getProfile() output
+      description: '`console.log(cam.current.getProfile())`. Required for anything performance-related.'
+      render: json
+
+  - type: textarea
+    attributes:
+      label: Logs
+      description: "Run with `setLogLevel('debug')` and paste the entries around the failure. See guides/debugging.md."
+      render: text
+
+  - type: dropdown
+    attributes:
+      label: Setup
+      options: [Expo (dev build), Expo (EAS), Bare React Native]
+    validations: { required: true }
+
+  - type: input
+    attributes:
+      label: Package version
+    validations: { required: true }

@@ -1,0 +1,18 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+    groups:
+      dev-tooling:
+        patterns:
+          ['eslint*', 'prettier', 'typescript*', '@commitlint/*', 'markdownlint*', 'cspell', 'knip']
+    ignore:
+      # Pinned deliberately — see docs/adr/0003
+      - dependency-name: 'com.google.mediapipe:tasks-vision'
+      - dependency-name: 'MediaPipeTasksVision'
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: monthly }

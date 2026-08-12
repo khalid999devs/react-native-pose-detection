@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  code:
+    name: Code — lint, format, types, dead code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run typecheck
+      - run: npm run deadcode
+
+  docs:
+    name: Docs — markdown, spelling, links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run lint:md
+      - run: npm run spell
+      - uses: lycheeverse/lychee-action@v2
+        with:
+          args: '--config lychee.toml --no-progress "**/*.md"'
+
+  native:
+    name: Native — Swift & Kotlin lint
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install swiftlint swiftformat ktlint
+      - run: swiftlint lint --strict
+        continue-on-error: true # no Swift sources until Phase 5
+      - run: ktlint 'packages/core/android/**/*.kt'
+        continue-on-error: true # no Kotlin sources until Phase 3
+
+  package:
+    name: Package — exports, types, tarball
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run check:package
+      - name: Assert no model files in tarball
+        run: |
+          # expo-module-scripts prints a preamble before the JSON
+          npm pack --dry-run --json -w react-native-pose-detection \
+            | sed -n '/^\[/,$p' > /tmp/pack.json
+          if grep -qE '\.(task|tflite|mlmodel)"' /tmp/pack.json; then
+            echo "::error::A model file leaked into the tarball. See docs/adr/0002."
+            exit 1
+          fi
+          SIZE=$(node -p "JSON.parse(require('fs').readFileSync('/tmp/pack.json'))[0].unpackedSize")
+          echo "unpacked: $SIZE bytes"
+          if [ "$SIZE" -gt 2000000 ]; then
+            echo "::error::Tarball exceeds 2 MB — something leaked into files[]."
+            exit 1
+          fi
+
+  security:
+    name: Security — audit & licenses
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run audit:deps
+      - run: npm run audit:license
+      - run: npm run audit:dev
+
+  commits:
+    name: Commits — conventional format
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx commitlint --from ${{ github.event.pull_request.base.sha }} --to HEAD --verbose
+
+  # Phase 6 adds the device matrix:
+  #   platform (ios, android) × install (expo, bare) × architecture (old, new)

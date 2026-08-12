@@ -1,0 +1,49 @@
+{
+  "name": "react-native-pose-detection-monorepo",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "example"
+  ],
+  "scripts": {
+    "build": "npm run build -w react-native-pose-detection",
+    "typecheck": "tsc --noEmit -p packages/core/tsconfig.json",
+    "lint": "eslint . --max-warnings=0",
+    "lint:fix": "eslint . --fix",
+    "lint:md": "markdownlint-cli2",
+    "lint:swift": "swiftlint lint --strict",
+    "lint:kotlin": "ktlint 'packages/core/android/**/*.kt'",
+    "lint:native": "npm run lint:swift && npm run lint:kotlin",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "spell": "cspell '**/*.{ts,tsx,md,json}' --no-progress",
+    "deadcode": "knip",
+    "audit:deps": "npm audit --audit-level=high --omit=dev",
+    "audit:license": "license-checker-rseidelsohn --production --onlyAllow 'MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;0BSD;Unlicense;CC0-1.0'",
+    "check:package": "publint packages/core && attw --pack packages/core",
+    "check": "npm run lint && npm run format:check && npm run typecheck && npm run lint:md && npm run spell && npm run deadcode",
+    "check:all": "npm run check && npm run lint:native && npm run audit:deps && npm run audit:license",
+    "prepare": "husky",
+    "audit:dev": "npm audit --audit-level=critical"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.17.0",
+    "@commitlint/cli": "^19.5.0",
+    "@commitlint/config-conventional": "^19.5.0",
+    "@types/react": "~19.0.0",
+    "cspell": "^8.15.0",
+    "eslint": "^9.14.0",
+    "husky": "^9.1.6",
+    "knip": "^5.36.0",
+    "license-checker-rseidelsohn": "^4.4.2",
+    "lint-staged": "^15.2.10",
+    "markdownlint-cli2": "^0.14.0",
+    "prettier": "^3.3.3",
+    "publint": "^0.2.12",
+    "typescript": "^5.6.3",
+    "typescript-eslint": "^8.13.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

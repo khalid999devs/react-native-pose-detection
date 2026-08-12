@@ -1,0 +1,61 @@
+# Images and video files
+
+Same detector, no camera.
+
+```ts
+import { detectOnImage, detectOnVideo } from 'react-native-pose-detection';
+```
+
+## Images
+
+```ts
+const poses = await detectOnImage(uri, { maxPoses: 1 });
+// → PoseFrame[]   (one entry per detected pose)
+```
+
+| Option | Default | Notes |
+|---|---|---|
+| `maxPoses` | `1` | 1–5 |
+| `angles` | `true` | |
+| `worldLandmarks` | `false` | |
+| `smoothing` | `false` | meaningless for a single frame |
+
+Accepts a local file URI, a `content://` URI on Android, or a bundled asset.
+
+## Video
+
+```ts
+const frames = await detectOnVideo(uri, {
+  fps: 10,
+  onProgress: (p) => setProgress(p),   // 0…1
+});
+```
+
+| Option | Default | Notes |
+|---|---|---|
+| `fps` | `10` | sampling rate, not the video's own frame rate |
+| `maxPoses` | `1` | |
+| `startMs` / `endMs` | full clip | trim a range |
+| `smoothing` | `true` | temporal, so it applies here |
+| `onProgress` | — | called on the JS thread, throttled |
+
+Runs `VIDEO` mode with monotonic timestamps, so temporal tracking and smoothing behave the
+same as they do live.
+
+## Notes
+
+**Memory.** A long clip at high `fps` produces a lot of frames — 10 minutes at 30 fps is 18,000
+`PoseFrame`s. Prefer a low `fps` and trim with `startMs`/`endMs`. Frames are yielded
+incrementally to `onProgress` consumers rather than all retained, but the returned array holds
+everything.
+
+**Cancellation:**
+
+```ts
+const task = detectOnVideo(uri, { fps: 10 });
+task.cancel();
+```
+
+**No calibration.** Static input runs at full quality — there's no live frame budget to hit,
+so the profile and thermal systems don't apply. Long video jobs still respect the thermal
+ladder's `critical` state.
