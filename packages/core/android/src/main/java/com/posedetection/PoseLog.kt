@@ -38,7 +38,8 @@ internal enum class LogCategory {
  * never invoked, so nothing is built or allocated. Formatting outside the lambda turns that into
  * a per-frame cost at 30 fps. See docs/logging.md.
  *
- * Entries go to Logcat only. The ring buffer and the flush to JavaScript are not built yet.
+ * Entries always go to Logcat, so native-only debugging works with no JavaScript listener
+ * attached. They are additionally buffered for JavaScript while a listener is.
  */
 internal object PoseLog {
     private const val TAG = "PoseDetection"
@@ -47,6 +48,102 @@ internal object PoseLog {
 
     // 3 bits of level per category, packed into one int. One atomic read per call site.
     private val mask = AtomicInteger(0)
+
+    /** Bounded and drop-oldest, like the frame buffer: a listener that stalls costs a fixed size. */
+    private const val CAPACITY = 256
+    private val entryLevels = arrayOfNulls<LogLevel>(CAPACITY)
+    private val entryCategories = arrayOfNulls<LogCategory>(CAPACITY)
+    private val entryMessages = arrayOfNulls<String>(CAPACITY)
+    private val entryTimestamps = LongArray(CAPACITY)
+
+    private val ring = Any()
+    private var head = 0
+    private var count = 0
+    private var dropped = 0
+
+    @Volatile
+    private var streaming = false
+
+    /**
+     * One view flushes, whoever attached first. Without this every camera on screen would drain
+     * the same buffer and each would receive an arbitrary share of the entries.
+     */
+    private var owner: Any? = null
+
+    fun startStream() {
+        synchronized(ring) {
+            streaming = true
+            head = 0
+            count = 0
+            dropped = 0
+        }
+    }
+
+    fun stopStream() {
+        synchronized(ring) {
+            streaming = false
+            count = 0
+            dropped = 0
+        }
+    }
+
+    val isStreaming: Boolean
+        get() = streaming
+
+    fun claimStream(candidate: Any): Boolean =
+        synchronized(ring) {
+            if (owner == null) owner = candidate
+            owner === candidate
+        }
+
+    fun releaseStream(candidate: Any) {
+        synchronized(ring) { if (owner === candidate) owner = null }
+    }
+
+    /**
+     * Everything buffered since the last call, oldest first, plus how many were dropped. The maps
+     * are built here rather than at the call site: a disabled channel must not build anything.
+     */
+    fun drain(into: MutableList<Map<String, Any?>>): Int {
+        synchronized(ring) {
+            val start = (head - count + CAPACITY) % CAPACITY
+            for (index in 0 until count) {
+                val slot = (start + index) % CAPACITY
+                into.add(
+                    mapOf(
+                        "level" to (entryLevels[slot]?.name?.lowercase() ?: "info"),
+                        "category" to (entryCategories[slot]?.name?.lowercase() ?: "engine"),
+                        "message" to (entryMessages[slot] ?: ""),
+                        "timestamp" to entryTimestamps[slot].toDouble(),
+                    ),
+                )
+                entryMessages[slot] = null
+            }
+
+            val droppedCount = dropped
+            head = 0
+            count = 0
+            dropped = 0
+            return droppedCount
+        }
+    }
+
+    private fun record(
+        level: LogLevel,
+        category: LogCategory,
+        message: String,
+    ) {
+        synchronized(ring) {
+            if (!streaming) return
+            entryLevels[head] = level
+            entryCategories[head] = category
+            entryMessages[head] = message
+            entryTimestamps[head] = android.os.SystemClock.elapsedRealtime()
+
+            head = (head + 1) % CAPACITY
+            if (count == CAPACITY) dropped += 1 else count += 1
+        }
+    }
 
     fun setLevel(level: LogLevel) {
         var packed = 0
@@ -113,6 +210,8 @@ internal object PoseLog {
         category: LogCategory,
         message: String,
     ) {
+        record(level, category, message)
+
         val line = "[${category.name.lowercase()}] $message"
         when (level) {
             LogLevel.ERROR -> Log.e(TAG, line)

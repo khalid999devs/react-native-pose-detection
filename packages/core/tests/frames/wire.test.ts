@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { ANGLE_JOINT_NAMES } from '../src/types/joints';
+import { ANGLE_JOINT_NAMES } from '../../src/types/joints';
 import {
   FRAME_META_FLOAT64S,
   HEADER_FLOAT64S,
   HEADER_INDEX,
   expectedByteLength,
-} from '../src/wire';
-import { resolveAngleJoints } from '../src/wire';
+} from '../../src/frames/wire';
+import { resolveAngleJoints } from '../../src/frames/wire';
 
 test('the header has a slot for every field the decoder reads', () => {
   const slots = Object.values(HEADER_INDEX);

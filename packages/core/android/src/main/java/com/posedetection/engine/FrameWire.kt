@@ -1,5 +1,6 @@
-package com.posedetection
+package com.posedetection.engine
 
+import com.posedetection.Skeleton
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -90,6 +91,14 @@ internal class FrameShape(
         (if (worldLandmarks) Wire.FLAG_WORLD_LANDMARKS else 0) or
             (if (angleCount > 0) Wire.FLAG_ANGLES else 0)
 
+    /**
+     * The buffer one frame is encoded into, sized for this shape and owned by it. It lives here
+     * rather than beside the shape so that adopting a new layout is a single volatile write. Two
+     * fields left a window where an old shape could be read with a new, longer scratch, and the
+     * frame written into it would carry zeros past the old cursor.
+     */
+    val scratch = FloatArray(floatsPerFrame)
+
     fun sameAs(other: FrameShape): Boolean =
         worldLandmarks == other.worldLandmarks &&
             jointIndices.contentEquals(other.jointIndices) &&
@@ -99,6 +108,63 @@ internal class FrameShape(
         val ALL_JOINTS = IntArray(Skeleton.LANDMARK_COUNT) { it }
         private val EMPTY_TRIPLE = intArrayOf(0, 0, 0)
     }
+}
+
+/**
+ * Builds the buffer JavaScript decodes. The live ring buffer and the static-input path both write
+ * through this, so the layout exists once: a second copy of these offsets is how the two would
+ * come to disagree while each looked right on its own.
+ */
+internal object WireWriter {
+    /**
+     * Native order, not Java's big-endian default: JavaScript reads this memory through typed
+     * arrays in the same process, which use the platform's order and cannot be told otherwise.
+     */
+    fun allocate(
+        shape: FrameShape,
+        frameCount: Int,
+        droppedCount: Int,
+    ): ByteBuffer {
+        val buffer =
+            ByteBuffer
+                .allocateDirect(Wire.byteLength(frameCount, shape.floatsPerFrame))
+                .order(ByteOrder.nativeOrder())
+
+        val header = buffer.asDoubleBuffer()
+        header.put(Wire.INDEX_FRAME_COUNT, frameCount.toDouble())
+        header.put(Wire.INDEX_DROPPED_COUNT, droppedCount.toDouble())
+        header.put(Wire.INDEX_FLOATS_PER_FRAME, shape.floatsPerFrame.toDouble())
+        header.put(Wire.INDEX_JOINT_COUNT, shape.jointCount.toDouble())
+        header.put(Wire.INDEX_ANGLE_COUNT, shape.angleCount.toDouble())
+        header.put(Wire.INDEX_FLAGS, shape.flags.toDouble())
+        return buffer
+    }
+
+    /** Positioned at the first per-frame timestamp, which follows the header. */
+    fun meta(buffer: ByteBuffer): java.nio.DoubleBuffer {
+        val doubles = buffer.asDoubleBuffer()
+        doubles.position(Wire.HEADER_FLOAT64S)
+        return doubles
+    }
+
+    /** The body starts where the Float64 header and per-frame metadata end. */
+    fun body(
+        buffer: ByteBuffer,
+        frameCount: Int,
+    ): java.nio.FloatBuffer {
+        buffer.position(
+            (Wire.HEADER_FLOAT64S + frameCount * Wire.FRAME_META_FLOAT64S) * Wire.BYTES_PER_FLOAT64,
+        )
+        val floats = buffer.asFloatBuffer()
+        buffer.position(0)
+        return floats
+    }
+
+    /** A bare header. Decodes to no frames rather than to a malformed buffer. */
+    fun empty(): ByteBuffer =
+        ByteBuffer
+            .allocateDirect(Wire.HEADER_FLOAT64S * Wire.BYTES_PER_FLOAT64)
+            .order(ByteOrder.nativeOrder())
 }
 
 /**
@@ -164,7 +230,7 @@ internal class FrameRingBuffer {
     }
 
     /** A bare header. Decodes to no frames rather than to a malformed buffer. */
-    fun empty(): ByteBuffer = emptyBuffer()
+    fun empty(): ByteBuffer = WireWriter.empty()
 
     private fun reset() {
         head = 0
@@ -203,9 +269,9 @@ internal class FrameRingBuffer {
     /** Claims a ticket, once. An unknown or spent one is an empty buffer, never an error. */
     fun takeSnapshot(ticket: Int): ByteBuffer {
         synchronized(lock) {
-            val layout = this.layout ?: return emptyBuffer()
+            val layout = this.layout ?: return WireWriter.empty()
             val slot = ticketIds.indexOf(ticket)
-            if (ticket == 0 || slot < 0) return emptyBuffer()
+            if (ticket == 0 || slot < 0) return WireWriter.empty()
 
             ticketIds[slot] = 0
             return encodeOne(layout, ticketFrames[slot], ticketTimestamps[slot], ticketProcessing[slot])
@@ -250,13 +316,12 @@ internal class FrameRingBuffer {
      */
     fun drain(): ByteBuffer {
         synchronized(lock) {
-            val layout = this.layout ?: return emptyBuffer()
+            val layout = this.layout ?: return WireWriter.empty()
             val frames = count
-            val buffer = allocate(layout, frames, dropped)
+            val buffer = WireWriter.allocate(layout, frames, dropped)
 
             if (frames > 0) {
-                val doubles = buffer.asDoubleBuffer()
-                doubles.position(Wire.HEADER_FLOAT64S)
+                val doubles = WireWriter.meta(buffer)
                 val start = (head - frames + CAPACITY) % CAPACITY
                 for (index in 0 until frames) {
                     val slot = (start + index) % CAPACITY
@@ -264,7 +329,7 @@ internal class FrameRingBuffer {
                     doubles.put(meta[slot * Wire.FRAME_META_FLOAT64S + 1])
                 }
 
-                val floats = bodyView(buffer, frames)
+                val floats = WireWriter.body(buffer, frames)
                 for (index in 0 until frames) {
                     floats.put(slots, ((start + index) % CAPACITY) * stride, stride)
                 }
@@ -281,8 +346,8 @@ internal class FrameRingBuffer {
     /** The most recent frame, or a bare header when no pose has been seen. */
     fun snapshot(): ByteBuffer {
         synchronized(lock) {
-            val layout = this.layout ?: return emptyBuffer()
-            if (!hasLatest) return emptyBuffer()
+            val layout = this.layout ?: return WireWriter.empty()
+            if (!hasLatest) return WireWriter.empty()
 
             return encodeOne(layout, latest, latestTimestamp, latestProcessingMs)
         }
@@ -294,55 +359,15 @@ internal class FrameRingBuffer {
         timestampMs: Double,
         processingMs: Double,
     ): ByteBuffer {
-        val buffer = allocate(layout, 1, 0)
-        val doubles = buffer.asDoubleBuffer()
-        doubles.position(Wire.HEADER_FLOAT64S)
+        val buffer = WireWriter.allocate(layout, 1, 0)
+        val doubles = WireWriter.meta(buffer)
         doubles.put(timestampMs)
         doubles.put(processingMs)
 
-        bodyView(buffer, 1).put(frame, 0, stride)
+        WireWriter.body(buffer, 1).put(frame, 0, stride)
         buffer.rewind()
         return buffer
     }
-
-    private fun allocate(
-        layout: FrameShape,
-        frames: Int,
-        droppedCount: Int,
-    ): ByteBuffer {
-        // Native order, not Java's big-endian default: JavaScript reads this memory through typed
-        // arrays in the same process, which use the platform's order and cannot be told otherwise.
-        val buffer =
-            ByteBuffer
-                .allocateDirect(Wire.byteLength(frames, layout.floatsPerFrame))
-                .order(ByteOrder.nativeOrder())
-
-        val header = buffer.asDoubleBuffer()
-        header.put(Wire.INDEX_FRAME_COUNT, frames.toDouble())
-        header.put(Wire.INDEX_DROPPED_COUNT, droppedCount.toDouble())
-        header.put(Wire.INDEX_FLOATS_PER_FRAME, layout.floatsPerFrame.toDouble())
-        header.put(Wire.INDEX_JOINT_COUNT, layout.jointCount.toDouble())
-        header.put(Wire.INDEX_ANGLE_COUNT, layout.angleCount.toDouble())
-        header.put(Wire.INDEX_FLAGS, layout.flags.toDouble())
-        return buffer
-    }
-
-    private fun bodyView(
-        buffer: ByteBuffer,
-        frames: Int,
-    ): java.nio.FloatBuffer {
-        // asFloatBuffer() views from the current position, so the body starts where the Float64
-        // header and per-frame metadata end.
-        buffer.position((Wire.HEADER_FLOAT64S + frames * Wire.FRAME_META_FLOAT64S) * Wire.BYTES_PER_FLOAT64)
-        val floats = buffer.asFloatBuffer()
-        buffer.position(0)
-        return floats
-    }
-
-    private fun emptyBuffer(): ByteBuffer =
-        ByteBuffer
-            .allocateDirect(Wire.HEADER_FLOAT64S * Wire.BYTES_PER_FLOAT64)
-            .order(ByteOrder.nativeOrder())
 
     companion object {
         /** Two seconds at 30 fps, which is longer than any stall a drain recovers from. */

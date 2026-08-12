@@ -5,7 +5,7 @@ provides primitives; domain logic is yours. These are starting points, not defau
 
 Tune every threshold against your own users and camera placement.
 
-These validate today but do not fire: the native trigger evaluator is not built yet. See
+These run on Android. iOS has no module yet, so nothing fires there. See
 [triggers](../triggers.md).
 
 | | |

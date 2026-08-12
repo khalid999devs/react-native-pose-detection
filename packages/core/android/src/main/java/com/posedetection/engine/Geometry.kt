@@ -1,5 +1,6 @@
-package com.posedetection
+package com.posedetection.engine
 
+import com.posedetection.Skeleton
 import kotlin.math.abs
 import kotlin.math.acos
 import kotlin.math.sqrt

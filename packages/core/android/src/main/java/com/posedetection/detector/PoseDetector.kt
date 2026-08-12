@@ -1,4 +1,4 @@
-package com.posedetection
+package com.posedetection.detector
 
 import android.content.Context
 import android.graphics.Bitmap
@@ -10,6 +10,8 @@ import com.google.mediapipe.tasks.vision.core.ImageProcessingOptions
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarker
 import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarkerResult
+import com.posedetection.LogCategory
+import com.posedetection.PoseLog
 
 internal enum class DelegateRequest { AUTO, GPU, CPU }
 
@@ -67,13 +69,7 @@ internal class PoseDetector private constructor(
         dispatchNanos[slot] = System.nanoTime()
         dispatchCursor = slot + 1
 
-        val options =
-            ImageProcessingOptions
-                .builder()
-                .setRotationDegrees(-rotationDegrees)
-                .build()
-
-        landmarker.detectAsync(image, options, timestamp)
+        landmarker.detectAsync(image, rotationOptions(rotationDegrees), timestamp)
         return timestamp
     }
 
@@ -82,7 +78,39 @@ internal class PoseDetector private constructor(
             .onFailure { PoseLog.warn(LogCategory.DETECTOR) { "closing the landmarker threw: ${it.message}" } }
     }
 
+    /** IMAGE and VIDEO mode are synchronous, so there is no result listener to route. */
+    fun detectImage(image: MPImage): PoseLandmarkerResult = landmarker.detect(image)
+
+    fun detectVideo(
+        image: MPImage,
+        timestampMs: Long,
+    ): PoseLandmarkerResult = landmarker.detectForVideo(image, timestampMs)
+
     companion object {
+        /**
+         * A detector for a file rather than a camera. CPU rather than the GPU probe: a still input
+         * runs once, and the probe would cost more than the inference it is choosing for.
+         */
+        fun createForStillInput(
+            context: Context,
+            modelFileName: String,
+            maxPoses: Int,
+            video: Boolean,
+        ): PoseDetector {
+            val landmarker =
+                build(
+                    context = context,
+                    modelFileName = modelFileName,
+                    delegate = Delegate.CPU,
+                    maxPoses = maxPoses,
+                    minConfidence = 0.5f,
+                    runningMode = if (video) RunningMode.VIDEO else RunningMode.IMAGE,
+                    onResult = null,
+                    onError = null,
+                )
+            return PoseDetector(landmarker, Delegate.CPU, modelFileName)
+        }
+
         /** The plugin installs exactly one model, so listing beats being told which variant. */
         fun findModelAsset(context: Context): String? =
             context.assets
@@ -207,6 +235,28 @@ internal class PoseDetector private constructor(
 
             return PoseLandmarker.createFromOptions(context, options)
         }
+
+        /**
+         * Built once. The builder, the AutoValue instance and the boxed rotation it holds were
+         * three allocations per frame for a value with four possible states that changes when the
+         * device turns, not when a frame arrives.
+         */
+        private val ROTATION_OPTIONS =
+            Array(QUARTER_TURNS) { quarter ->
+                ImageProcessingOptions
+                    .builder()
+                    .setRotationDegrees(-(quarter * DEGREES_PER_QUARTER))
+                    .build()
+            }
+
+        fun rotationOptions(rotationDegrees: Int): ImageProcessingOptions {
+            val quarter = ((rotationDegrees % FULL_TURN) / DEGREES_PER_QUARTER) and (QUARTER_TURNS - 1)
+            return ROTATION_OPTIONS[quarter]
+        }
+
+        private const val QUARTER_TURNS = 4
+        private const val DEGREES_PER_QUARTER = 90
+        private const val FULL_TURN = 360
 
         private const val PROBE_SIZE = 256
 

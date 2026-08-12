@@ -1,4 +1,4 @@
-package com.posedetection
+package com.posedetection.camera
 
 import android.content.Context
 import android.util.Size
@@ -13,6 +13,9 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
+import com.posedetection.ErrorCode
+import com.posedetection.LogCategory
+import com.posedetection.PoseLog
 import java.util.concurrent.Executor
 
 internal enum class Facing { FRONT, BACK }

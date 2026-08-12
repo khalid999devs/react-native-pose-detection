@@ -3,9 +3,8 @@
 The library ships a diagnostic channel that is **completely off by default** and costs nothing
 until you turn it on.
 
-*Half built: `setLogLevel()` reaches native and takes effect, and native writes to Logcat.
-The batched stream back to JavaScript is not built, so `addLogListener` and the `onLog` prop
-receive nothing yet. Read the entries with `adb logcat` until it lands.*
+*Android only. Entries reach Logcat whatever is attached, so `adb logcat` works with no listener,
+and are batched to JavaScript roughly every 250 ms while one is. iOS has no module yet.*
 
 ## Turning it on
 

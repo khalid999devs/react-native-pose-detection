@@ -1,8 +1,8 @@
-import { PoseConfigError } from './errors';
-import type { Landmark, MutableLandmark, PoseFrame } from './types/frame';
-import { LANDMARK_OFFSET, LANDMARK_STRIDE } from './types/frame';
-import type { JointName } from './types/joints';
-import { JOINT_INDEX } from './types/joints';
+import { PoseConfigError } from '../errors';
+import type { Landmark, MutableLandmark, PoseFrame } from '../types/frame';
+import { LANDMARK_OFFSET, LANDMARK_STRIDE } from '../types/frame';
+import type { JointName } from '../types/joints';
+import { JOINT_INDEX } from '../types/joints';
 
 // `PoseFrame.selection` is the same frozen array on every frame of a session, so the position
 // lookup is built once per selection rather than scanned per access.

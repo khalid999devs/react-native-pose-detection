@@ -1,9 +1,6 @@
 # Images and video files
 
-**Not available yet.** `detectOnImage` and `detectOnVideo` are not exported and there is nothing
-native behind them. They are part of the Phase 4 engine and ship in `0.1.0` with the rest of it,
-see the [development plan](../docs/development-plan.md). This page is the contract they are being
-built to, so that the shape is settled before anyone writes against it.
+*Android only. iOS has no module yet.*
 
 Same detector, no camera.
 

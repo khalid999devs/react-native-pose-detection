@@ -1,5 +1,5 @@
-import { getNativeModule } from './native';
-import type { NativeCameraPermission } from './native';
+import { getNativeModule } from '../native';
+import type { NativeCameraPermission } from '../native';
 
 /**
  * `denied` can be asked again. `blocked` cannot: the system will not show a dialog, and the only

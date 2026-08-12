@@ -4,9 +4,22 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Color
 import androidx.core.content.ContextCompat
+import com.posedetection.camera.Facing
+import com.posedetection.detector.StaticDetection
+import com.posedetection.detector.StaticOptions
+import com.posedetection.engine.OneEuroFilter
+import com.posedetection.engine.parseData
+import com.posedetection.engine.parseSelection
+import com.posedetection.engine.parseTriggers
+import com.posedetection.performance.Profile
+import com.posedetection.performance.ThermalPolicy
+import com.posedetection.view.OverlayConfig
+import com.posedetection.view.PoseCameraView
+import com.posedetection.view.parseOverlay
 import expo.modules.interfaces.permissions.PermissionsResponse
 import expo.modules.interfaces.permissions.PermissionsStatus
 import expo.modules.kotlin.functions.Queues
+import expo.modules.kotlin.jni.NativeArrayBuffer
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 
@@ -21,32 +34,59 @@ class PoseDetectionModule : Module() {
         ModuleDefinition {
             Name("PoseDetection")
 
-            Function("setLogLevel") { config: Any? ->
-                when (config) {
-                    is String -> {
-                        PoseLog.setLevel(LogLevel.from(config))
-                    }
+            Function("setLogLevel") { config: Any? -> applyLogLevel(config) }
 
-                    is Map<*, *> -> {
-                        PoseLog.setLevels(
-                            config.entries
-                                .mapNotNull { (key, value) ->
-                                    val category = LogCategory.from(key as? String) ?: return@mapNotNull null
-                                    category to LogLevel.from(value as? String)
-                                }.toMap(),
-                        )
-                    }
+            // The buffer is global because the level mask is. A view runs the flush, see PoseLog.
+            Function("startLogStream") { PoseLog.startStream() }
+            Function("stopLogStream") { PoseLog.stopStream() }
 
-                    else -> {
-                        PoseLog.setLevel(LogLevel.OFF)
-                    }
+            Events("onVideoProgress")
+
+            AsyncFunction(
+                "detectOnImage",
+            ) { uri: String, options: Map<String, Any?>?, promise: expo.modules.kotlin.Promise ->
+                val context = appContext.reactContext
+                if (context == null) {
+                    promise.reject("NO_CONTEXT", "The module has no context.", null)
+                    return@AsyncFunction
                 }
+                runCatching {
+                    StaticDetection.detectImage(
+                        context = context,
+                        uri = uri,
+                        options = StaticOptions.forImage(options),
+                        angleJoints = angleJointsFrom(options),
+                        selection = selectionFrom(options),
+                    )
+                }.onSuccess { promise.resolve(NativeArrayBuffer.wrap(it)) }
+                    .onFailure { promise.reject("DETECTION_FAILED", it.message ?: "detection failed", null) }
             }
 
-            // The ring buffer and the batched flush to JavaScript arrive with the log channel.
-            // Until then entries go to Logcat, and these exist so the JS contract is satisfied.
-            Function("startLogStream") {}
-            Function("stopLogStream") {}
+            AsyncFunction(
+                "detectOnVideo",
+            ) { uri: String, options: Map<String, Any?>?, taskId: Int, promise: expo.modules.kotlin.Promise ->
+                val context = appContext.reactContext
+                if (context == null) {
+                    promise.reject("NO_CONTEXT", "The module has no context.", null)
+                    return@AsyncFunction
+                }
+                runCatching {
+                    StaticDetection.detectVideo(
+                        context = context,
+                        uri = uri,
+                        options = StaticOptions.forVideo(options),
+                        angleJoints = angleJointsFrom(options),
+                        selection = selectionFrom(options),
+                        taskId = taskId,
+                        onProgress = { progress ->
+                            sendEvent("onVideoProgress", mapOf("taskId" to taskId, "progress" to progress))
+                        },
+                    )
+                }.onSuccess { promise.resolve(NativeArrayBuffer.wrap(it)) }
+                    .onFailure { promise.reject("DETECTION_FAILED", it.message ?: "detection failed", null) }
+            }
+
+            Function("cancelDetectOnVideo") { taskId: Int -> StaticDetection.cancel(taskId) }
 
             AsyncFunction("getCameraPermission") { promise: expo.modules.kotlin.Promise ->
                 val permissions = appContext.permissions
@@ -84,7 +124,15 @@ class PoseDetectionModule : Module() {
             }
 
             View(PoseCameraView::class) {
-                Events("onReady", "onError", "onCameraChange", "onFrames", "onTrigger")
+                Events(
+                    "onReady",
+                    "onError",
+                    "onCameraChange",
+                    "onFrames",
+                    "onTrigger",
+                    "onPerformanceChange",
+                    "onLog",
+                )
 
                 Prop("facing") { view: PoseCameraView, value: String? ->
                     view.setFacing(value ?: "auto")
@@ -119,6 +167,44 @@ class PoseDetectionModule : Module() {
                 }
                 Prop("selection") { view: PoseCameraView, value: List<String>? ->
                     view.setSelection(value?.let(::parseSelection))
+                }
+                Prop("profile") { view: PoseCameraView, value: String? ->
+                    view.setProfile(Profile.from(value))
+                }
+                Prop("targetFps") { view: PoseCameraView, value: Int? ->
+                    view.setTargetFps(value)
+                }
+                Prop("thermalPolicy") { view: PoseCameraView, value: String? ->
+                    view.setThermalPolicy(ThermalPolicy.from(value))
+                }
+                Prop("smoothing") { view: PoseCameraView, value: Any? ->
+                    when (value) {
+                        // Absent is on: the documented default is true, and an unset prop is not
+                        // somebody asking for raw landmarks.
+                        null, true -> {
+                            view.setSmoothing(true, OneEuroFilter.DEFAULT_MIN_CUTOFF, OneEuroFilter.DEFAULT_BETA)
+                        }
+
+                        false -> {
+                            view.setSmoothing(false, OneEuroFilter.DEFAULT_MIN_CUTOFF, OneEuroFilter.DEFAULT_BETA)
+                        }
+
+                        is Map<*, *> -> {
+                            view.setSmoothing(
+                                true,
+                                (value["minCutoff"] as? Number)?.toFloat() ?: OneEuroFilter.DEFAULT_MIN_CUTOFF,
+                                (value["beta"] as? Number)?.toFloat() ?: OneEuroFilter.DEFAULT_BETA,
+                            )
+                        }
+
+                        else -> {
+                            view.setSmoothing(false, OneEuroFilter.DEFAULT_MIN_CUTOFF, OneEuroFilter.DEFAULT_BETA)
+                        }
+                    }
+                }
+                Prop("logLevel") { _: PoseCameraView, value: Any? ->
+                    // The level is global, and the prop is a convenience for setting it per camera.
+                    applyLogLevel(value)
                 }
                 Prop("triggers") { view: PoseCameraView, value: Any? ->
                     view.setTriggers(parseTriggers(value as? List<*>))
@@ -181,6 +267,14 @@ class PoseDetectionModule : Module() {
 
                 // Deliberately not on the main queue. These copy out of a lock the inference thread
                 // also takes, and the whole point of draining is that it does not block the UI.
+                AsyncFunction("getProfile") { view: PoseCameraView ->
+                    view.profileState()
+                }.runOnQueue(Queues.MAIN)
+
+                AsyncFunction("setProfile") { view: PoseCameraView, profile: String ->
+                    view.applyProfile(Profile.from(profile))
+                }.runOnQueue(Queues.MAIN)
+
                 AsyncFunction("drainFrames") { view: PoseCameraView -> view.drainFrames() }
                 AsyncFunction("snapshotFrame") { view: PoseCameraView -> view.snapshotFrame() }
                 AsyncFunction("takeTriggerSnapshot") { view: PoseCameraView, snapshotId: Int ->
@@ -190,248 +284,35 @@ class PoseDetectionModule : Module() {
         }
 }
 
-private const val DEFAULT_THROTTLE_MS = 100L
-private const val DEFAULT_FLUSH_MS = 500L
-
-/** `data.angles` and `data.select` are not read here: they arrive resolved, as their own props. */
-private fun parseData(raw: Map<*, *>?): DataSettings {
-    if (raw == null) {
-        return DataSettings(DataMode.OFF, DEFAULT_THROTTLE_MS, DEFAULT_FLUSH_MS, true, false)
-    }
-    return DataSettings(
-        mode = DataMode.from(raw["mode"] as? String),
-        // A zero or negative interval would emit on every frame under a name that promises not to.
-        throttleMs = (raw["throttleMs"] as? Number)?.toLong()?.coerceAtLeast(1L) ?: DEFAULT_THROTTLE_MS,
-        flushMs = (raw["flushMs"] as? Number)?.toLong()?.coerceAtLeast(1L) ?: DEFAULT_FLUSH_MS,
-        landmarks = raw["landmarks"] as? Boolean ?: true,
-        worldLandmarks = raw["worldLandmarks"] as? Boolean ?: false,
-    )
+/** Resolved by JavaScript for the live path, and passed the same way here. */
+internal fun angleJointsFrom(options: Map<String, Any?>?): Array<String> {
+    val raw = options?.get("angleJoints") as? List<*> ?: return Skeleton.ANGLE_JOINT_NAMES
+    return raw.mapNotNull { it as? String }.toTypedArray()
 }
 
-/** In the order named, which is the order `PoseFrame.selection` promises. Unknown names drop out. */
-private fun parseSelection(names: List<String>): IntArray {
-    val indices = IntArray(names.size)
-    var count = 0
-    for (name in names) {
-        val index = Skeleton.indexOf(name)
-        if (index >= 0) {
-            indices[count] = index
-            count += 1
-        } else {
-            PoseLog.warn(LogCategory.DETECTOR) { "data.select named $name, which is not a joint" }
-        }
-    }
-    return if (count == names.size) indices else indices.copyOf(count)
+internal fun selectionFrom(options: Map<String, Any?>?): IntArray? {
+    val raw = options?.get("select") as? List<*> ?: return null
+    return parseSelection(raw.mapNotNull { it as? String })
 }
 
-/**
- * JavaScript validates every trigger before native sees one, so this half is lenient by design:
- * what it cannot read becomes a condition that never matches, and says so in the log rather than
- * failing a camera over a config the validator already approved.
- */
-private fun parseTriggers(raw: List<*>?): List<TriggerSpec> {
-    if (raw.isNullOrEmpty()) return emptyList()
-
-    val specs = ArrayList<TriggerSpec>(raw.size)
-    for (entry in raw) {
-        val map = entry as? Map<*, *> ?: continue
-        val id = map["id"] as? String ?: continue
-        val enter = parseCondition(map["enter"])
-        val exit = map["exit"]?.let(::parseCondition) ?: NotCondition(enter)
-
-        specs.add(
-            TriggerSpec(
-                id = id,
-                enter = enter,
-                exit = exit,
-                emit = TriggerEmit.from(map["emit"] as? String),
-                debounceMs = duration(map["debounceMs"], 0L),
-                minDurationMs = duration(map["minDurationMs"], 0L),
-                snapshot = map["snapshot"] as? Boolean ?: false,
-                throttleMs = duration(map["throttleMs"], DEFAULT_WHILE_THROTTLE_MS),
-            ),
-        )
-    }
-    return specs
-}
-
-private fun duration(
-    value: Any?,
-    fallback: Long,
-): Long = (value as? Number)?.toLong()?.coerceAtLeast(0L) ?: fallback
-
-private fun parseCondition(raw: Any?): PoseCondition {
-    val map =
-        raw as? Map<*, *> ?: run {
-            PoseLog.warn(LogCategory.TRIGGERS) { "a condition was not an object, it will never match" }
-            return NeverCondition
+internal fun applyLogLevel(config: Any?) {
+    when (config) {
+        is String -> {
+            PoseLog.setLevel(LogLevel.from(config))
         }
 
-    (map["all"] as? List<*>)?.let { return AllCondition(parseMembers(it)) }
-    (map["any"] as? List<*>)?.let { return AnyCondition(parseMembers(it)) }
-
-    (map["angle"] as? String)?.let { joint ->
-        val triple =
-            Skeleton.angleTriple(joint) ?: run {
-                PoseLog.warn(LogCategory.TRIGGERS) { "$joint has no angle, its condition will never match" }
-                return NeverCondition
-            }
-        val between = map["between"] as? List<*>
-        return AngleCondition(
-            proximal = triple[0],
-            vertex = triple[1],
-            distal = triple[2],
-            below = bound(map["below"]),
-            above = bound(map["above"]),
-            betweenMin = bound(between?.getOrNull(0)),
-            betweenMax = bound(between?.getOrNull(1)),
-        )
-    }
-
-    (map["landmarkX"] as? String)?.let { return landmarkCondition(map, it, AXIS_X) }
-    (map["landmarkY"] as? String)?.let { return landmarkCondition(map, it, AXIS_Y) }
-    (map["velocityX"] as? String)?.let { return velocityCondition(map, it, AXIS_X) }
-    (map["velocityY"] as? String)?.let { return velocityCondition(map, it, AXIS_Y) }
-
-    (map["visibility"] as? String)?.let { joint ->
-        val index = jointIndex(joint) ?: return NeverCondition
-        return VisibilityCondition(index, bound(map["above"]))
-    }
-
-    PoseLog.warn(LogCategory.TRIGGERS) { "a condition named no measurement, it will never match" }
-    return NeverCondition
-}
-
-private fun parseMembers(raw: List<*>): Array<PoseCondition> = Array(raw.size) { index -> parseCondition(raw[index]) }
-
-private fun landmarkCondition(
-    map: Map<*, *>,
-    joint: String,
-    axis: Int,
-): PoseCondition {
-    val index = jointIndex(joint) ?: return NeverCondition
-    val below = map["below"]
-    val above = map["above"]
-
-    return LandmarkCondition(
-        axis = axis,
-        joint = index,
-        below = bound(below),
-        belowJoint = (below as? String)?.let { jointIndex(it) } ?: NO_JOINT,
-        above = bound(above),
-        aboveJoint = (above as? String)?.let { jointIndex(it) } ?: NO_JOINT,
-    )
-}
-
-private fun velocityCondition(
-    map: Map<*, *>,
-    subject: String,
-    axis: Int,
-): PoseCondition {
-    // `centerOfMass` is not a joint, and it is the only non-joint a velocity can name.
-    val index = if (subject == "centerOfMass") NO_JOINT else jointIndex(subject) ?: return NeverCondition
-    return VelocityCondition(axis, index, bound(map["below"]), bound(map["above"]))
-}
-
-private fun jointIndex(name: String): Int? {
-    val index = Skeleton.indexOf(name)
-    if (index >= 0) return index
-    PoseLog.warn(LogCategory.TRIGGERS) { "$name is not a joint, its condition will never match" }
-    return null
-}
-
-/** An absent bound and an unmeasurable value are both NaN, and both mean "does not constrain". */
-private fun bound(value: Any?): Float = (value as? Number)?.toFloat() ?: Float.NaN
-
-private const val DEFAULT_WHILE_THROTTLE_MS = 250L
-
-private fun parseOverlay(raw: Map<*, *>): OverlayConfig {
-    val config = OverlayConfig()
-
-    (raw["landmarks"] as? Boolean)?.let { config.landmarks = it }
-    (raw["connections"] as? Boolean)?.let { config.connections = it }
-    // Clamped here rather than trusted: these come from a JavaScript object that may have been
-    // built dynamically and skipped validation, and a negative stroke or radius draws nothing.
-    (raw["lineWidth"] as? Number)?.let { config.lineWidthDp = it.clamped(0f, Float.MAX_VALUE, 3f) }
-    (raw["pointRadius"] as? Number)?.let { config.pointRadiusDp = it.clamped(0f, Float.MAX_VALUE, 4f) }
-    (raw["minVisibility"] as? Number)?.let { config.minVisibility = it.clamped(0f, 1f, 0.5f) }
-    parseColor(raw["color"])?.let { config.color = it }
-
-    (raw["only"] as? List<*>)?.let { names ->
-        val mask = BooleanArray(Skeleton.LANDMARK_COUNT)
-        for (name in names) {
-            val index = Skeleton.indexOf(name as? String ?: continue)
-            if (index >= 0) mask[index] = true
-        }
-        config.only = mask
-    }
-
-    (raw["angles"] as? List<*>)?.let { specs ->
-        config.angles = specs.mapNotNull { entry -> parseAngle(entry as? Map<*, *> ?: return@mapNotNull null) }
-    }
-
-    return config
-}
-
-private fun parseAngle(raw: Map<*, *>): AngleOverlaySpec? {
-    val joint = raw["joint"] as? String ?: return null
-    // JS validation rejects a non-angle joint before it reaches here, so a miss means a config
-    // built dynamically and skipped that check. Skipping the arc beats drawing a wrong one.
-    val triple =
-        Skeleton.angleTriple(joint) ?: run {
-            PoseLog.warn(LogCategory.OVERLAY) { "$joint has no angle, skipping its arc" }
-            return null
+        is Map<*, *> -> {
+            PoseLog.setLevels(
+                config.entries
+                    .mapNotNull { (key, value) ->
+                        val category = LogCategory.from(key as? String) ?: return@mapNotNull null
+                        category to LogLevel.from(value as? String)
+                    }.toMap(),
+            )
         }
 
-    return AngleOverlaySpec(
-        joint = joint,
-        triple = triple,
-        label = raw["label"] as? Boolean ?: true,
-        radiusDp = (raw["radius"] as? Number)?.clamped(1f, Float.MAX_VALUE, 40f) ?: 40f,
-        color = parseColor(raw["color"]),
-        // Capped because the label goes into a fixed 16 char buffer: a large value would build a
-        // long string on the draw path every frame only to have it truncated on the way in.
-        decimals = ((raw["decimals"] as? Number)?.toInt() ?: 0).coerceIn(0, MAX_LABEL_DECIMALS),
-        minVisibility = (raw["minVisibility"] as? Number)?.clamped(0f, 1f, 0.5f) ?: 0.5f,
-    )
-}
-
-private const val MAX_LABEL_DECIMALS = 3
-
-/** NaN survives `coerceIn`, and a NaN `minVisibility` disables the gate instead of clamping it. */
-private fun Number.clamped(
-    min: Float,
-    max: Float,
-    fallback: Float,
-): Float {
-    val value = toFloat()
-    return if (value.isNaN()) fallback else value.coerceIn(min, max)
-}
-
-/**
- * `canAskAgain` is the field that matters. Without it an app cannot tell a refusal it may ask
- * about again from one the system will never prompt for, and it shows a button that does nothing.
- */
-private fun permissionResult(
-    status: PermissionsStatus,
-    canAskAgain: Boolean,
-): Map<String, Any?> =
-    mapOf(
-        "status" to status.status,
-        "canAskAgain" to canAskAgain,
-    )
-
-private fun toPermissionResult(result: Map<String, PermissionsResponse>): Map<String, Any?> {
-    val response = result[Manifest.permission.CAMERA] ?: return permissionResult(PermissionsStatus.UNDETERMINED, true)
-    return permissionResult(response.status, response.canAskAgain)
-}
-
-private fun parseColor(value: Any?): Int? {
-    val text = value as? String ?: return null
-    return try {
-        Color.parseColor(text)
-    } catch (error: IllegalArgumentException) {
-        PoseLog.warn(LogCategory.OVERLAY) { "could not parse the color \"$text\": ${error.message}" }
-        null
+        else -> {
+            PoseLog.setLevel(LogLevel.OFF)
+        }
     }
 }

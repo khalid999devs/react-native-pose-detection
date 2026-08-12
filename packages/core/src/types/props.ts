@@ -85,7 +85,12 @@ export type PoseCameraRef = {
 
   /** Not implemented yet. Both throw until calibration lands. */
   setProfile(profile: Profile): void;
-  getProfile(): ProfileState;
+  /**
+   * Asynchronous because it reads native state: the phase, the source and the measured p50 are not
+   * on any event, so JavaScript has nothing to mirror them from. `getState()` stays synchronous
+   * because everything in it does arrive on an event.
+   */
+  getProfile(): Promise<ProfileState>;
   /** The last known state, mirrored from the events that carry it. Never a bridge call. */
   getState(): CameraState;
 

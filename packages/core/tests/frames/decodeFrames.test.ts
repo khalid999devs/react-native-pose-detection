@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { decodeFrames } from '../src/decodeFrames';
-import { LANDMARK_COUNT } from '../src/types/joints';
-import type { AngleJointName, JointName } from '../src/types/joints';
+import { decodeFrames } from '../../src/frames/decodeFrames';
+import { LANDMARK_COUNT } from '../../src/types/joints';
+import type { AngleJointName, JointName } from '../../src/types/joints';
 import {
   FRAME_META_FLOAT64S,
   HEADER_FLOAT64S,
@@ -11,7 +11,7 @@ import {
   SCALARS_PER_FRAME,
   WIRE_FLAG_ANGLES,
   WIRE_FLAG_WORLD_LANDMARKS,
-} from '../src/wire';
+} from '../../src/frames/wire';
 
 type EncodedFrame = {
   landmarks: number[];

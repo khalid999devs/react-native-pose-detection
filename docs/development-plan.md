@@ -166,14 +166,15 @@ one, and the log channel writes to Logcat only.
 - [x] **Lazy computation**, only the angles an `angle` condition, `overlay.angles` or `data.angles`
       asks for, resolved during render and sent to native as a prop. Naming a joint in
       `data.select`, or as a comparison bound, is a position and does not turn its angle on
-- [ ] One-Euro smoothing filter
+- [x] One-Euro smoothing filter (Android), over x/y/z only. Visibility is a confidence, and
+      smoothing it would make a joint that just left frame keep reading as present
 - [x] Trigger evaluator (Android): state machine per trigger, debounce, `minDurationMs`, all four
       emit modes, and snapshot capture through a bounded ticket store. Counts carry across a props
       update by id, since a re-render is not an unmount
 - [x] Condition evaluator (Android): `angle`, `landmarkX/Y` (absolute + joint-relative),
       `velocityX`, `velocityY`, `visibility`, `all`, `any`. The whole `Condition` union, so nothing
       typed and validated on the JS side reaches an evaluator that silently ignores it
-- [ ] Emission: `off` / `throttled` / `batched` (bounded buffer, drop-oldest + count) / `live`
+- [x] Emission: `off` / `throttled` / `batched` (bounded buffer, drop-oldest + count) / `live`
   - [x] **Delivery mechanism settled**, [ADR 0008](./adr/0008-frames-are-drained-not-pushed.md).
         Events cannot carry an ArrayBuffer through Expo Modules, function returns can, so native
         signals and JavaScript drains. Self-describing buffer, zero-copy `subarray` views
@@ -186,39 +187,45 @@ one, and the log channel writes to Logcat only.
   - [x] Native side (Android): the ring buffer, `drainFrames`, `snapshotFrame`,
         `takeTriggerSnapshot`. Bounded at 64 frames, drop-oldest with a count, storage allocated
         per layout and reused, one direct buffer per drain in native byte order
-- [ ] Calibration
-  - [ ] Stage 1 static probe → tier, biased one step conservative
-  - [ ] Stage 2 measured convergence, hysteresis + 3 s cooldown
-  - [ ] Stage 3 native cache keyed by device + model + OS, invalidated on change
-- [ ] Thermal ladder, outranks calibration; `thermalPolicy` respected; always reports even when it doesn't act
-- [ ] Pre-warm: one dummy inference during camera setup
-- [ ] Idle-search: no pose ~2 s → 8 fps; recover within one frame
-- [ ] Profiles + precedence chain
-- [ ] `maxPoses` 1–5; primary-pose selection for triggers
-- [ ] `detectOnImage` / `detectOnVideo`
+- [x] Calibration (Android)
+  - [x] Stage 1 static probe → tier, biased one step conservative
+  - [x] Stage 2 measured convergence over a 60-frame p50, hysteresis + 3 s cooldown
+  - [x] Stage 3 cache keyed by device + model + OS, invalidated by the key changing rather than by
+        anything having to notice
+- [x] Thermal ladder (Android), outranks calibration; `thermalPolicy` respected; always reports
+      even when it doesn't act. Sampled once a second from the analyzer
+- [x] Pre-warm: one inference on a blank frame during camera setup
+- [x] Idle-search: no pose ~2 s → 8 fps; recover within one frame. Shares one pacing gate with
+      `targetFps`, because they are the same thing: a rate the analyzer may run at
+- [x] Profiles + precedence chain, in one resolver so it cannot be applied in three orders by
+      three callers
+- [x] `maxPoses` 1–5; primary-pose selection: largest box, ties by distance from centre
+- [x] `detectOnImage` / `detectOnVideo` (Android), through the same wire format and decoder as the
+      live path
 - [x] **Camera permission**, `useCameraPermission()` plus the imperative pair. Four states, so an
       app can tell a refusal it may ask about again from one the system will never prompt for
-- [ ] **Logging channel**, see [logging](./logging.md)
-  - [ ] Atomic level mask, 3 bits × 6 runtime categories, 18 bits; one compare per call site.
+- [x] **Logging channel** (Android), see [logging](./logging.md)
+  - [x] Atomic level mask, 3 bits × 6 runtime categories, 18 bits; one compare per call site.
         `plugin` is build-time output from Node and is not one of them
-  - [ ] Closure-based call sites (`inline` + lambda / `@autoclosure`), **no string built when disabled**
-  - [ ] Bounded ring buffer, batched flush every 250 ms, `droppedCount` reported
-  - [ ] Mirrored to `os_log` / `Logcat` so native-only debugging works with no JS listener
+  - [x] Closure-based call sites (`inline` + lambda), **no string built when disabled**
+  - [x] Bounded ring buffer, batched flush every 250 ms, drops reported as the batch's first entry
+  - [x] Mirrored to `Logcat` so native-only debugging works with no JS listener
 
 **Exit:** squat recipe counts correctly on a physical device. Calibration settles within 3 s and
 is cached across launches. Zero steady-state allocations in the frame path (profiler-verified)
 with logging both `off` and at `error`.
 
-**Status: frames flow and triggers fire on Android.**
+**Status: the engine is built on Android and nothing has run on a device.**
 `<PoseCamera>` exists and is wired to the native view, frames decode zero-copy, the angle set is
 resolved from props during render, triggers are validated before native sees them, and the
 delivery question that blocked everything is answered twice over, once for frames and once for
 trigger snapshots. `npm test` covers the wire format, the accessors under a narrowed buffer, and
 every rejection path in the validator.
 
-What remains is the One-Euro filter, calibration, the thermal ladder, static input, and the log
-channel. `onPose`, `onPoseBatch` and `onTrigger` all fire on Android; `detectOnImage` and
-`detectOnVideo` do not exist yet.
+Every item above is implemented and unit-tested on the JVM. None of it has executed on a phone,
+which matters most for calibration and the thermal ladder: both exist to measure real hardware,
+and their thresholds are reasoned rather than observed. Treat the tier boundaries, the step
+ratios and the ladder's percentages as the first candidates to be wrong.
 
 `setProfile` and `getProfile` on the ref throw until calibration lands. They are the only two
 public methods that do. Everything else that reaches native returns a promise that resolves

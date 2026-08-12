@@ -1,4 +1,6 @@
-package com.posedetection
+package com.posedetection.engine
+
+import com.posedetection.Skeleton
 
 /**
  * Everything a condition can read about one frame. Reused across frames and mutated in place: this
@@ -66,7 +68,7 @@ internal const val AXIS_Y = 1
  * the same thing here: a comparison against `NaN` is false, so a condition over a value nobody
  * could measure does not match, and a bound nobody set does not constrain.
  */
-private fun withinBounds(
+internal fun withinBounds(
     value: Float,
     below: Float,
     above: Float,

@@ -1,19 +1,19 @@
 import * as React from 'react';
 
-import { decodeFrames } from './decodeFrames';
-import type { DecodeOptions } from './decodeFrames';
+import { decodeFrames } from './frames/decodeFrames';
+import type { DecodeOptions } from './frames/decodeFrames';
 import { getNativeView } from './native';
 import type { NativePoseCameraView, NativeTriggerEvent } from './native';
 import type { AngleJointName, JointName } from './types/joints';
 import { ANGLE_JOINT_NAMES } from './types/joints';
-import type { CameraState } from './types/camera';
+import type { CameraState, ProfileState } from './types/camera';
 import type { PoseCameraProps, PoseCameraRef } from './types/props';
 import type { CameraChangeEvent, ErrorEvent, PerformanceEvent, ReadyEvent } from './types/events';
 import type { LogEntry } from './types/logging';
 import type { Condition, TriggerEvent } from './types/triggers';
 import { emitLogEntries } from './logging';
 import { assertValidTriggers } from './validation';
-import { resolveAngleJoints } from './wire';
+import { resolveAngleJoints } from './frames/wire';
 
 type NativeEvent<T> = { nativeEvent: T };
 
@@ -232,11 +232,13 @@ export const PoseCamera = React.forwardRef<PoseCameraRef, PoseCameraProps>(funct
       setOverlayEnabled: async (enabled) => {
         await nativeRef.current?.setOverlayEnabled(enabled);
       },
-      setProfile: () => {
-        throw new Error('setProfile is not implemented yet, it arrives with calibration.');
+      setProfile: (profile) => {
+        void nativeRef.current?.setProfile(profile);
       },
       getProfile: () => {
-        throw new Error('getProfile is not implemented yet, it arrives with calibration.');
+        const view = nativeRef.current;
+        if (!view) throw new Error('The camera is not mounted yet.');
+        return view.getProfile() as Promise<ProfileState>;
       },
       getState: () => state.current,
       snapshot: async () => {

@@ -86,8 +86,9 @@ ndk { abiFilters "arm64-v8a" }
 
 ## Frame rate lower than expected
 
-Calibration is not built yet, so there is nothing settling and `getProfile()` throws. What you
-can change today:
+Check `await getProfile()` first: `phase` tells you whether calibration has settled, and
+`p50InferenceMs` against `1000 / targetFps` tells you whether it has anywhere left to go. What
+else you can change:
 
 - the model variant, which is a **build-time** choice and not a prop. Set `"model": "lite"` in
   the plugin config and re-run `npx expo prebuild`, or run

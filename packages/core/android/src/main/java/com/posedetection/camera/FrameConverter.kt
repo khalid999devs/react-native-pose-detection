@@ -1,9 +1,11 @@
-package com.posedetection
+package com.posedetection.camera
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Rect
 import androidx.camera.core.ImageProxy
+import com.posedetection.LogCategory
+import com.posedetection.PoseLog
 
 /**
  * Turns an RGBA_8888 [ImageProxy] into a bitmap MediaPipe can take, reusing bitmaps for the life

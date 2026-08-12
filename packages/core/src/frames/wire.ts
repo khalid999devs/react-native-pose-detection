@@ -1,5 +1,5 @@
-import type { AngleJointName } from './types/joints';
-import { ANGLE_JOINT_NAMES } from './types/joints';
+import type { AngleJointName } from '../types/joints';
+import { ANGLE_JOINT_NAMES } from '../types/joints';
 
 /**
  * Layout of the buffer `drainFrames()` returns. See

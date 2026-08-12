@@ -1,4 +1,4 @@
-package com.posedetection
+package com.posedetection.view
 
 import android.Manifest
 import android.content.ComponentCallbacks2
@@ -20,6 +20,36 @@ import androidx.lifecycle.LifecycleOwner
 import com.google.mediapipe.framework.image.BitmapImageBuilder
 import com.google.mediapipe.tasks.core.Delegate
 import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarkerResult
+import com.posedetection.ErrorCode
+import com.posedetection.LogCategory
+import com.posedetection.PoseLog
+import com.posedetection.Skeleton
+import com.posedetection.camera.CameraSource
+import com.posedetection.camera.Facing
+import com.posedetection.camera.FrameConverter
+import com.posedetection.detector.DelegateRequest
+import com.posedetection.detector.PoseDetector
+import com.posedetection.engine.DEFAULT_FLUSH_MS
+import com.posedetection.engine.DEFAULT_THROTTLE_MS
+import com.posedetection.engine.DataMode
+import com.posedetection.engine.DataSettings
+import com.posedetection.engine.FrameContext
+import com.posedetection.engine.FrameRingBuffer
+import com.posedetection.engine.FrameShape
+import com.posedetection.engine.Geometry
+import com.posedetection.engine.OneEuroFilter
+import com.posedetection.engine.TriggerEngine
+import com.posedetection.engine.TriggerFiring
+import com.posedetection.engine.TriggerSpec
+import com.posedetection.performance.Calibrator
+import com.posedetection.performance.DeviceTier
+import com.posedetection.performance.PerformanceResolver
+import com.posedetection.performance.Profile
+import com.posedetection.performance.ResolvedPerformance
+import com.posedetection.performance.ThermalMonitor
+import com.posedetection.performance.ThermalPolicy
+import com.posedetection.performance.ThermalState
+import com.posedetection.performance.Tiers
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.jni.NativeArrayBuffer
 import expo.modules.kotlin.viewevent.EventDispatcher
@@ -27,6 +57,7 @@ import expo.modules.kotlin.views.ExpoView
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
+import kotlin.math.abs
 
 class PoseCameraView(
     context: Context,
@@ -43,6 +74,9 @@ class PoseCameraView(
 
     /** Scalars plus a claim ticket. The frame cannot ride it, see ADR 0009. */
     private val onTrigger by EventDispatcher<Map<String, Any?>>()
+
+    private val onPerformanceChange by EventDispatcher<Map<String, Any?>>()
+    private val onLog by EventDispatcher<Map<String, Any?>>()
 
     private val previewView =
         PreviewView(context).apply {
@@ -114,6 +148,41 @@ class PoseCameraView(
 
     private val frames = FrameRingBuffer()
     private val triggers = TriggerEngine()
+    private val smoothing = OneEuroFilter()
+    private val calibrator = Calibrator(context)
+    private val thermalMonitor = ThermalMonitor(context)
+
+    /** What the precedence chain last produced. Read on the analysis thread, written on main. */
+    @Volatile
+    private var resolved =
+        ResolvedPerformance(
+            targetFps = Tiers.targetFps(DeviceTier.MEDIUM),
+            preview = Tiers.preview(DeviceTier.MEDIUM),
+            analysis = Tiers.analysis(DeviceTier.MEDIUM),
+            detectionPaused = false,
+        )
+
+    @Volatile
+    private var thermalState = ThermalState.NOMINAL
+    private var lastThermalSampleMs = 0L
+
+    /** Frame pacing. Analysis thread only, unlike [lastPoseMs]. */
+    private var lastDetectMs = 0L
+
+    /**
+     * Written on the inference thread, read on the analysis thread to decide idle-search. Volatile
+     * for visibility and because a 64-bit read is not guaranteed atomic on armeabi-v7a, where a
+     * torn value pins the analyzer at the idle rate with somebody standing in front of it.
+     */
+    @Volatile
+    private var lastPoseMs = 0L
+
+    /** Measured from the analyzer, so `getState().fps` is what ran rather than what was asked for. */
+    private var framesInWindow = 0
+    private var fpsWindowStartMs = 0L
+
+    @Volatile
+    private var measuredFps = 0
 
     /** Reused across frames: this is the inference path, and a per-frame allocation here is one everywhere. */
     private val frameContext = FrameContext()
@@ -129,10 +198,6 @@ class PoseCameraView(
      */
     @Volatile
     private var frameLayout: FrameShape? = null
-
-    /** Written on the inference thread only, then copied into the ring buffer under its lock. */
-    @Volatile
-    private var frameScratch = FloatArray(0)
 
     /**
      * Velocity is a difference, so it needs the frame before this one. Written on the inference
@@ -150,6 +215,39 @@ class PoseCameraView(
 
     /** Last emission, so `throttled` and `batched` can decide whether this frame is due. */
     private val lastEmitMs = AtomicLong(0)
+
+    /**
+     * One view drains the shared buffer, whoever attached first, and hands it over as an event.
+     * The timer runs while the view is attached and costs one volatile read per tick when nothing
+     * is streaming, which is cheaper than a way for the module to reach every view.
+     */
+    private val logFlush =
+        object : Runnable {
+            override fun run() {
+                mainHandler.postDelayed(this, LOG_FLUSH_MS)
+                if (!PoseLog.isStreaming || !PoseLog.claimStream(this@PoseCameraView)) return
+
+                val entries = ArrayList<Map<String, Any?>>()
+                val dropped = PoseLog.drain(entries)
+                if (entries.isEmpty() && dropped == 0) return
+
+                // The drop count opens the batch as a warn entry rather than riding beside it, so a
+                // listener that only reads entries still sees that something was lost.
+                if (dropped > 0) {
+                    entries.add(
+                        0,
+                        mapOf(
+                            "level" to "warn",
+                            "category" to "engine",
+                            "message" to "$dropped log entries were dropped before this batch",
+                            "timestamp" to SystemClock.elapsedRealtime().toDouble(),
+                            "data" to mapOf("droppedCount" to dropped),
+                        ),
+                    )
+                }
+                onLog(mapOf("entries" to entries))
+            }
+        }
 
     /** Allocation-free because it captures nothing: the tick is per emission, not per frame. */
     private val emitFramesTick =
@@ -170,12 +268,23 @@ class PoseCameraView(
     private var overlayEnabled: Boolean = true
     private var pendingOverlayConfig: OverlayConfig = OverlayConfig()
     private var propMode: DataMode = DataMode.OFF
+
+    // Written on main, read on the inference thread, and 64-bit: same tearing exposure as above.
+    @Volatile
     private var propThrottleMs: Long = DEFAULT_THROTTLE_MS
+
+    @Volatile
     private var propFlushMs: Long = DEFAULT_FLUSH_MS
     private var propLandmarks: Boolean = true
     private var propWorldLandmarks: Boolean = false
     private var propAngleJoints: Array<String> = EMPTY_NAMES
     private var propSelection: IntArray? = null
+    private var propProfile: Profile = Profile.AUTO
+    private var propTargetFps: Int? = null
+    private var propThermalPolicy: ThermalPolicy = ThermalPolicy.ADAPTIVE
+    private var propSmoothing = false
+    private var propMinCutoff = OneEuroFilter.DEFAULT_MIN_CUTOFF
+    private var propBeta = OneEuroFilter.DEFAULT_BETA
 
     private var started = false
     private var readySent = false
@@ -262,6 +371,29 @@ class PoseCameraView(
         propSelection = indices
     }
 
+    internal fun setProfile(value: Profile) {
+        propProfile = value
+    }
+
+    /** Null is `auto`, which is the only value calibration is allowed to move. */
+    internal fun setTargetFps(value: Int?) {
+        propTargetFps = value?.coerceIn(MIN_TARGET_FPS, MAX_TARGET_FPS)
+    }
+
+    internal fun setThermalPolicy(value: ThermalPolicy) {
+        propThermalPolicy = value
+    }
+
+    internal fun setSmoothing(
+        enabled: Boolean,
+        minCutoff: Float,
+        beta: Float,
+    ) {
+        propSmoothing = enabled
+        propMinCutoff = minCutoff
+        propBeta = beta
+    }
+
     internal fun setTriggers(specs: List<TriggerSpec>) {
         // Not deferred to onPropsUpdated: the engine carries counts across by id, so applying it
         // twice would be harmless but applying it late would evaluate one frame against the old set.
@@ -274,9 +406,11 @@ class PoseCameraView(
         overlayView.visibility = if (overlayEnabled) VISIBLE else GONE
 
         applyFrameLayout()
+        smoothing.configure(propMinCutoff, propBeta)
+        applyPerformance(reason = null)
 
-        val preview = CameraSource.previewSizeFor(propPreview)
-        val analysis = CameraSource.analysisSizeFor(propAnalysis)
+        val preview = CameraSource.previewSizeFor(resolved.preview)
+        val analysis = CameraSource.analysisSizeFor(resolved.analysis)
         val geometryChanged = preview != camera.previewSize || analysis != camera.analysisSize
         camera.previewSize = preview
         camera.analysisSize = analysis
@@ -462,12 +596,90 @@ class PoseCameraView(
         detector = created
         resolvedDelegate = created.delegate.name
 
+        calibrator.start(created.modelFileName)
+        applyPerformance(reason = null)
+        preWarm(created)
+
         // The one path that actually downgrades is 'auto'. An explicit 'gpu' is pinned and never
         // falls back, so comparing the resolved delegate against the request is the whole test.
         if (request != DelegateRequest.CPU && created.delegate == Delegate.CPU) {
             emitError(ErrorCode.GPU_UNAVAILABLE, "The GPU delegate is unavailable, running on CPU.")
         }
         emitReadyOnce()
+    }
+
+    /**
+     * One inference on a blank frame, on the analysis thread, before the user's first real one.
+     * The first inference through a freshly built graph is several times slower than the rest, and
+     * without this the frame that pays for that is the one somebody is watching.
+     */
+    private fun preWarm(created: PoseDetector) {
+        onAnalysisThread {
+            var blank: android.graphics.Bitmap? = null
+            try {
+                val bitmap =
+                    android.graphics.Bitmap.createBitmap(
+                        PRE_WARM_SIZE,
+                        PRE_WARM_SIZE,
+                        android.graphics.Bitmap.Config.ARGB_8888,
+                    )
+                blank = bitmap
+                created.detect(BitmapImageBuilder(bitmap).build(), 0, 0)
+            } catch (error: Throwable) {
+                PoseLog.debug(LogCategory.DETECTOR) { "pre-warm did not run: ${error.message}" }
+            } finally {
+                // The result arrives asynchronously and MediaPipe copies the pixels in, so the
+                // bitmap is not needed past this point.
+                blank?.recycle()
+            }
+        }
+    }
+
+    /** The profile as `getProfile()` reports it. */
+    fun profileState(): Map<String, Any?> {
+        val current = resolved
+        return mapOf(
+            "profile" to propProfile.nameForJs(),
+            "phase" to
+                when (calibrator.phase) {
+                    Calibrator.Phase.CALIBRATING -> "calibrating"
+                    Calibrator.Phase.SETTLED -> "settled"
+                    Calibrator.Phase.CACHED -> "cached"
+                },
+            "source" to
+                when (calibrator.source) {
+                    Calibrator.Source.STATIC -> "static"
+                    Calibrator.Source.MEASURED -> "measured"
+                    Calibrator.Source.CACHE -> "cache"
+                },
+            "tier" to calibrator.tier.nameForJs(),
+            "resolved" to
+                mapOf(
+                    "delegate" to (resolvedDelegate ?: "CPU"),
+                    "targetFps" to current.targetFps,
+                    "preview" to current.preview,
+                    "analysis" to current.analysis,
+                ),
+            "p50InferenceMs" to calibrator.p50InferenceMs,
+        )
+    }
+
+    /** Setting one explicitly is a decision, so it takes effect now rather than at the next render. */
+    internal fun applyProfile(profile: Profile) {
+        propProfile = profile
+        if (profile != Profile.AUTO) calibrator.reset()
+        applyPerformance(reason = "calibration")
+        restartSessionIfGeometryChanged()
+    }
+
+    private fun restartSessionIfGeometryChanged() {
+        val preview = CameraSource.previewSizeFor(resolved.preview)
+        val analysis = CameraSource.analysisSizeFor(resolved.analysis)
+        if (preview == camera.previewSize && analysis == camera.analysisSize) return
+
+        camera.previewSize = preview
+        camera.analysisSize = analysis
+        if (started) restartSession()
     }
 
     private fun failDetector(
@@ -529,17 +741,68 @@ class PoseCameraView(
                 if (awaitingFirstFrame.compareAndSet(true, false)) post { completeSwitch() }
 
                 val detector = this.detector ?: return@Analyzer
+                val now = SystemClock.elapsedRealtime()
+
+                sampleThermal(now)
+                if (resolved.detectionPaused) return@Analyzer
+                if (!frameIsDue(now)) return@Analyzer
+
                 val rotation = proxy.imageInfo.rotationDegrees
                 frameRotationDegrees = rotation
                 val bitmap = converter.convert(proxy)
                 val image = BitmapImageBuilder(bitmap).build()
                 detector.detect(image, rotation, proxy.imageInfo.timestamp / 1_000_000)
+                countFrame(now)
             } catch (error: Throwable) {
                 PoseLog.warn(LogCategory.DETECTOR) { "frame dropped: ${error.message}" }
             } finally {
                 proxy.close()
             }
         }
+
+    /**
+     * The pacing gate. It serves `targetFps` and idle-search with one mechanism, because they are
+     * the same thing: a rate the analyzer is allowed to run at. CameraX keeps delivering at sensor
+     * rate either way, and a frame that is not due is closed without ever reaching the model.
+     */
+    private fun frameIsDue(nowMs: Long): Boolean {
+        val idle = lastPoseMs != 0L && nowMs - lastPoseMs > IDLE_AFTER_MS
+        val fps = if (idle) PerformanceResolver.IDLE_FPS else resolved.targetFps
+        if (fps <= 0) return false
+
+        // Slightly under the exact interval: a strict compare against a jittery sensor clock drops
+        // every other frame and halves the rate it was asked to hold.
+        val minIntervalMs = (MILLIS_PER_SECOND / fps * PACING_TOLERANCE).toLong()
+        if (nowMs - lastDetectMs < minIntervalMs) return false
+
+        lastDetectMs = nowMs
+        return true
+    }
+
+    private fun countFrame(nowMs: Long) {
+        framesInWindow += 1
+        if (fpsWindowStartMs == 0L) fpsWindowStartMs = nowMs
+        val elapsed = nowMs - fpsWindowStartMs
+        if (elapsed < FPS_WINDOW_MS) return
+
+        measuredFps = ((framesInWindow * MILLIS_PER_SECOND) / elapsed).toInt()
+        framesInWindow = 0
+        fpsWindowStartMs = nowMs
+    }
+
+    /** Sampled rather than subscribed: the listener API is 29+ and heat does not change quickly. */
+    private fun sampleThermal(nowMs: Long) {
+        if (!thermalMonitor.shouldSample(nowMs, lastThermalSampleMs)) return
+        lastThermalSampleMs = nowMs
+
+        val next = thermalMonitor.read()
+        if (next == thermalState) return
+
+        PoseLog.info(LogCategory.ENGINE) { "thermal state is now ${next.nameForJs()}" }
+        thermalState = next
+        // Reported even when the policy says not to act on it, so an app can decide for itself.
+        post { applyPerformance(reason = "thermal") }
+    }
 
     private fun onLandmarks(
         result: PoseLandmarkerResult,
@@ -558,12 +821,19 @@ class PoseCameraView(
             frames.clearLatest()
             resetVelocity()
             triggers.onPoseLost()
+            // Filtering across the gap where somebody left and came back would invent the motion
+            // between the two places they stood.
+            smoothing.reset()
             return
         }
 
-        // Phase 4 adds primary-pose selection for maxPoses > 1. Until then the first pose is used.
-        val pose = poses[0]
+        val pose = poses[primaryPose(poses)]
         if (pose.size < Skeleton.LANDMARK_COUNT) return
+
+        // Same monotonic clock the log channel stamps entries with, so a log line maps to the frame
+        // that caused it. It is when the pose became known, not when the sensor exposed it.
+        val nowMs = SystemClock.elapsedRealtime()
+        lastPoseMs = nowMs
 
         for (index in 0 until Skeleton.LANDMARK_COUNT) {
             val landmark = pose[index]
@@ -571,8 +841,20 @@ class PoseCameraView(
             landmarkBuffer[base + Skeleton.OFFSET_X] = landmark.x()
             landmarkBuffer[base + Skeleton.OFFSET_Y] = landmark.y()
             landmarkBuffer[base + Skeleton.OFFSET_Z] = landmark.z()
-            landmarkBuffer[base + Skeleton.OFFSET_VISIBILITY] = landmark.visibility().orElse(0f)
+            // Not orElse(0f): that takes an Object, so the literal is boxed once per landmark.
+            val visibility = landmark.visibility()
+            landmarkBuffer[base + Skeleton.OFFSET_VISIBILITY] = if (visibility.isPresent) visibility.get() else 0f
         }
+
+        // A gap means a switch, a pause, or a backgrounded app. The positions on either side are
+        // real, the difference between them is not a movement that happened at that speed.
+        val elapsedMs = nowMs.toDouble() - previousFrameMs
+        val comparable = previousFrameMs > 0.0 && elapsedMs > 0.0 && elapsedMs <= MAX_VELOCITY_GAP_MS
+        val elapsedSeconds = if (comparable) (elapsedMs / MILLIS_PER_SECOND).toFloat() else Float.NaN
+
+        // Before anything reads a coordinate: the overlay, the geometry, the evaluators and the
+        // wire all have to agree about where the body is.
+        if (propSmoothing) smoothing.apply(landmarkBuffer, elapsedSeconds) else smoothing.reset()
 
         // Landmarks are normalized to the rotated frame MediaPipe was asked to process, not to the
         // sensor buffer, so the overlay is handed the display-upright size. The mirror flag comes
@@ -581,10 +863,55 @@ class PoseCameraView(
         val frameWidth = if (rotation % 180 == 0) image.width else image.height
         val frameHeight = if (rotation % 180 == 0) image.height else image.width
 
-        overlayView.setSourceSize(frameWidth, frameHeight)
-        overlayView.submit(landmarkBuffer)
+        overlayView.submit(landmarkBuffer, frameWidth, frameHeight)
 
-        buildFrame(result, pose.size, frameWidth, frameHeight)
+        buildFrame(result, pose.size, frameWidth, frameHeight, nowMs, comparable, elapsedSeconds)
+    }
+
+    /**
+     * Largest bounding box, ties broken by distance from the frame centre. With one pose this is
+     * index 0 without measuring anything; MediaPipe's own order is detection order and means
+     * nothing about who the subject is.
+     */
+    private fun primaryPose(
+        poses: List<List<com.google.mediapipe.tasks.components.containers.NormalizedLandmark>>,
+    ): Int {
+        if (poses.size <= 1) return 0
+
+        var best = 0
+        var bestArea = -1f
+        var bestOffset = Float.MAX_VALUE
+
+        for (index in poses.indices) {
+            val pose = poses[index]
+            if (pose.size < Skeleton.LANDMARK_COUNT) continue
+
+            var minX = Float.MAX_VALUE
+            var maxX = -Float.MAX_VALUE
+            var minY = Float.MAX_VALUE
+            var maxY = -Float.MAX_VALUE
+
+            // Indexed, not for-in: a List iterator here is an allocation per pose per frame.
+            for (position in pose.indices) {
+                val point = pose[position]
+                if (point.x() < minX) minX = point.x()
+                if (point.x() > maxX) maxX = point.x()
+                if (point.y() < minY) minY = point.y()
+                if (point.y() > maxY) maxY = point.y()
+            }
+
+            val area = (maxX - minX) * (maxY - minY)
+            val offset = abs((minX + maxX) / 2f - 0.5f) + abs((minY + maxY) / 2f - 0.5f)
+
+            val better =
+                area > bestArea + AREA_TIE_EPSILON || (abs(area - bestArea) <= AREA_TIE_EPSILON && offset < bestOffset)
+            if (better) {
+                best = index
+                bestArea = area
+                bestOffset = offset
+            }
+        }
+        return best
     }
 
     private fun resetVelocity() {
@@ -599,15 +926,20 @@ class PoseCameraView(
      * callback thread. The latest frame is recorded whatever the mode is, because `snapshotFrame()`
      * is documented to answer at `mode: 'off'`; only buffering and the tick are the mode's business.
      */
+    @Suppress("LongParameterList")
     private fun buildFrame(
         result: PoseLandmarkerResult,
         poseSize: Int,
         frameWidth: Int,
         frameHeight: Int,
+        nowMs: Long,
+        comparable: Boolean,
+        elapsedSeconds: Float,
     ) {
+        // One volatile read: the scratch buffer belongs to the shape, so a layout change swaps
+        // both together and this can never pair an old shape with a new buffer.
         val layout = frameLayout ?: return
-        val scratch = frameScratch
-        if (scratch.size < layout.floatsPerFrame) return
+        val scratch = layout.scratch
 
         val indices = layout.jointIndices
         var cursor = 0
@@ -641,9 +973,6 @@ class PoseCameraView(
             cursor += 1
         }
 
-        // Same monotonic clock the log channel stamps entries with, so a log line maps to the frame
-        // that caused it. It is when the pose became known, not when the sensor exposed it.
-        val nowMs = SystemClock.elapsedRealtime()
         val timestampMs = nowMs.toDouble()
 
         Geometry.centerOfMass(landmarkBuffer, scratch, cursor)
@@ -651,15 +980,9 @@ class PoseCameraView(
         val comY = scratch[cursor + 1]
         cursor += 2
 
-        // A gap means a switch, a pause, or a backgrounded app. The positions on either side are
-        // real, the difference between them is not a movement that happened at that speed.
-        val elapsedMs = timestampMs - previousFrameMs
-        val elapsedSeconds = elapsedMs / MILLIS_PER_SECOND
-        val comparable = previousFrameMs > 0.0 && elapsedSeconds > 0.0 && elapsedMs <= MAX_VELOCITY_GAP_MS
-
         if (comparable) {
-            scratch[cursor] = ((comX - previousComX) / elapsedSeconds).toFloat()
-            scratch[cursor + 1] = ((comY - previousComY) / elapsedSeconds).toFloat()
+            scratch[cursor] = (comX - previousComX) / elapsedSeconds
+            scratch[cursor + 1] = (comY - previousComY) / elapsedSeconds
         } else {
             // Unknown, not zero: the first frame of a pose has nothing to differ from, and zero
             // would read as a body that was measured and found to be still.
@@ -685,10 +1008,16 @@ class PoseCameraView(
             comY = comY,
             velocityX = velocityX,
             velocityY = velocityY,
-            elapsedSeconds = if (comparable) elapsedSeconds.toFloat() else Float.NaN,
+            elapsedSeconds = elapsedSeconds,
             frameWidth = frameWidth,
             frameHeight = frameHeight,
         )
+
+        // Only `auto` is calibrated. A named profile is somebody saying they have already decided.
+        if (propProfile == Profile.AUTO && processingMs > 0.0) {
+            val moved = calibrator.record(processingMs.toFloat(), resolved.targetFps, nowMs)
+            if (moved) post { onCalibrationMoved() }
+        }
 
         System.arraycopy(landmarkBuffer, 0, previousLandmarks, 0, landmarkBuffer.size)
         hasPreviousLandmarks = true
@@ -744,7 +1073,9 @@ class PoseCameraView(
             payload["phase"] = firing.phase
             payload["count"] = firing.count
             payload["timestamp"] = firing.timestampMs
-            firing.durationMs?.let { payload["durationMs"] = it }
+            // Held as Double? and stored as-is: `?.let { payload[k] = it }` unboxes then re-boxes.
+            val durationMs: Double? = firing.durationMs
+            if (durationMs != null) payload["durationMs"] = durationMs
             // Zero means the frame could not be held, and the event says nothing rather than
             // handing over a ticket that redeems to an empty buffer.
             if (ticket != 0) payload["snapshotId"] = ticket
@@ -752,6 +1083,11 @@ class PoseCameraView(
             mainHandler.post { onTrigger(payload) }
         }
         firings.clear()
+    }
+
+    private fun onCalibrationMoved() {
+        applyPerformance(reason = "calibration")
+        modelFileName?.let(calibrator::persist)
     }
 
     /** The delivery mode decides only two things: whether this frame is kept, and whether to tick. */
@@ -803,7 +1139,8 @@ class PoseCameraView(
             worldBuffer[base + Skeleton.OFFSET_X] = landmark.x()
             worldBuffer[base + Skeleton.OFFSET_Y] = landmark.y()
             worldBuffer[base + Skeleton.OFFSET_Z] = landmark.z()
-            worldBuffer[base + Skeleton.OFFSET_VISIBILITY] = landmark.visibility().orElse(0f)
+            val visibility = landmark.visibility()
+            worldBuffer[base + Skeleton.OFFSET_VISIBILITY] = if (visibility.isPresent) visibility.get() else 0f
         }
     }
 
@@ -907,6 +1244,43 @@ class PoseCameraView(
     }
 
     /**
+     * Runs the precedence chain and adopts the result. [reason] is what `onPerformanceChange`
+     * reports; null means this is a props update rather than something the engine decided, and
+     * fires no event.
+     */
+    private fun applyPerformance(reason: String?) {
+        val next =
+            PerformanceResolver.resolve(
+                profile = propProfile,
+                tier = calibrator.tier,
+                requestedFps = propTargetFps,
+                requestedPreview = propPreview,
+                requestedAnalysis = propAnalysis,
+                thermal = thermalState,
+                policy = propThermalPolicy,
+            )
+
+        val changed = next != resolved
+        resolved = next
+        if (reason == null || !changed) return
+
+        post { emitPerformanceChange(reason) }
+    }
+
+    private fun emitPerformanceChange(reason: String) {
+        val current = resolved
+        onPerformanceChange(
+            mapOf(
+                "reason" to reason,
+                "delegate" to (resolvedDelegate ?: "CPU"),
+                "targetFps" to current.targetFps,
+                "analysisResolution" to CameraSource.analysisSizeFor(current.analysis).toMap(),
+                "actualFps" to measuredFps,
+            ),
+        )
+    }
+
+    /**
      * The layout is rebuilt on every props batch but only adopted when it differs: a re-render that
      * changes nothing about `data` would otherwise clear frames that were waiting to be flushed.
      */
@@ -923,7 +1297,6 @@ class PoseCameraView(
 
         frameLayout = next
         frames.setLayout(next)
-        if (frameScratch.size != next.floatsPerFrame) frameScratch = FloatArray(next.floatsPerFrame)
     }
 
     fun drainFrames(): NativeArrayBuffer = NativeArrayBuffer.wrap(frames.drain())
@@ -939,10 +1312,9 @@ class PoseCameraView(
             "facing" to camera.facing.nameForJs(),
             "active" to camera.isBound,
             "detecting" to (detector != null || detectorPending),
-            // Measured frame rate and the resolved tier arrive with calibration in Phase 4.
-            "fps" to 0.0,
+            "fps" to measuredFps,
             "delegate" to (resolvedDelegate ?: "CPU"),
-            "deviceTier" to "medium",
+            "deviceTier" to calibrator.tier.nameForJs(),
         )
 
     // endregion
@@ -965,8 +1337,8 @@ class PoseCameraView(
                 "model" to variant,
                 "delegate" to (resolvedDelegate ?: "CPU"),
                 "delegateRequested" to propDelegate,
-                "targetFps" to 30,
-                "deviceTier" to "medium",
+                "targetFps" to resolved.targetFps,
+                "deviceTier" to calibrator.tier.nameForJs(),
                 "resolution" to camera.previewSize.toMap(),
                 "analysisResolution" to camera.analysisSize.toMap(),
                 "facing" to camera.facing.nameForJs(),
@@ -1015,11 +1387,26 @@ class PoseCameraView(
         get() = context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
 
     override fun onDetachedFromWindow() {
-        runCatching { context.applicationContext.unregisterComponentCallbacks(memoryCallbacks) }
-        runCatching { displayManager?.unregisterDisplayListener(displayListener) }
+        unregisterEverything()
         stopObservingLifecycle()
         releaseForDetach()
         super.onDetachedFromWindow()
+    }
+
+    /**
+     * Everything [onAttachedToWindow] registered. Extracted because destroy and detach both have to
+     * undo it, and when only detach did, a view destroyed without a detach left the Application
+     * holding a memory callback, `DisplayManagerGlobal` holding a listener, a self-reposting
+     * runnable in the main queue, and `PoseLog` holding the log-stream claim. Each of those retains
+     * the view, and the view retains an Activity.
+     *
+     * Every call is idempotent, so running it twice on the normal path costs nothing.
+     */
+    private fun unregisterEverything() {
+        runCatching { context.applicationContext.unregisterComponentCallbacks(memoryCallbacks) }
+        runCatching { displayManager?.unregisterDisplayListener(displayListener) }
+        mainHandler.removeCallbacks(logFlush)
+        PoseLog.releaseStream(this)
     }
 
     /** Views do not receive `onTrimMemory`, the application does, so subscribe while attached. */
@@ -1068,6 +1455,8 @@ class PoseCameraView(
         context.applicationContext.registerComponentCallbacks(memoryCallbacks)
         observeLifecycle()
         displayManager?.registerDisplayListener(displayListener, null)
+        mainHandler.removeCallbacks(logFlush)
+        mainHandler.postDelayed(logFlush, LOG_FLUSH_MS)
         // Reattaching after a temporary detach re-establishes whatever the props already say,
         // rather than waiting for a prop to change before the camera comes back.
         onPropsUpdated()
@@ -1108,6 +1497,7 @@ class PoseCameraView(
 
     /** Called from `OnViewDestroys`, where the view really is going away. */
     fun releaseEverything() {
+        unregisterEverything()
         releaseForDetach()
         stopObservingLifecycle()
         // Shutdown, not shutdownNow: the queued close of the landmarker has to run before the
@@ -1127,6 +1517,21 @@ class PoseCameraView(
 
         /** id, phase, count, timestamp, and at most durationMs and snapshotId. */
         const val TRIGGER_PAYLOAD_SLOTS = 6
+
+        const val MIN_TARGET_FPS = 1
+        const val MAX_TARGET_FPS = 60
+
+        /** No pose for this long drops the analyzer to [PerformanceResolver.IDLE_FPS]. */
+        const val IDLE_AFTER_MS = 2_000L
+
+        const val FPS_WINDOW_MS = 1_000L
+        const val PACING_TOLERANCE = 0.9
+
+        /** Two boxes within this much area are the same size, and the centre breaks the tie. */
+        const val AREA_TIE_EPSILON = 1e-4f
+
+        const val PRE_WARM_SIZE = 256
+        const val LOG_FLUSH_MS = 250L
         val EMPTY_PAYLOAD = emptyMap<String, Any?>()
         val EMPTY_NAMES = emptyArray<String>()
         val EMPTY_INDICES = IntArray(0)

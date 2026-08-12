@@ -1,5 +1,6 @@
-package com.posedetection
+package com.posedetection.engine
 
+import com.posedetection.Skeleton
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

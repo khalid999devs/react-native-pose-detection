@@ -1,4 +1,4 @@
-package com.posedetection
+package com.posedetection.view
 
 import android.content.Context
 import android.graphics.Canvas
@@ -6,6 +6,8 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.view.View
+import com.posedetection.Skeleton
+import com.posedetection.engine.Geometry
 import java.util.Locale
 import kotlin.math.cos
 import kotlin.math.sin
@@ -183,27 +185,29 @@ internal class OverlayView(
         labelPaint.textSize = LABEL_SP * density
     }
 
-    /** Display-space frame size. The caller has already folded rotation into these numbers. */
-    fun setSourceSize(
-        rotatedWidth: Int,
-        rotatedHeight: Int,
-    ) {
-        synchronized(frameLock) {
-            incomingWidth = rotatedWidth
-            incomingHeight = rotatedHeight
-        }
-    }
-
     fun setMirrored(mirrored: Boolean) {
         synchronized(frameLock) {
             incomingMirrored = mirrored
         }
     }
 
-    /** Called from the detector's result thread; copies into the view's buffer and posts a redraw. */
-    fun submit(frame: FloatArray) {
+    /**
+     * Called from the detector's result thread; copies into the view's buffer and posts a redraw.
+     *
+     * The size travels with the landmarks rather than in a call of its own. Two critical sections
+     * let `onDraw` land between them and draw new landmarks against the previous frame size, which
+     * is exactly the interleaving the snapshot in this class exists to prevent. The caller has
+     * already folded rotation into the width and height.
+     */
+    fun submit(
+        frame: FloatArray,
+        rotatedWidth: Int,
+        rotatedHeight: Int,
+    ) {
         synchronized(frameLock) {
             System.arraycopy(frame, 0, incoming, 0, incoming.size)
+            incomingWidth = rotatedWidth
+            incomingHeight = rotatedHeight
             incomingHasPose = true
         }
         postInvalidateOnAnimation()
@@ -394,8 +398,10 @@ internal class OverlayView(
             return digits + 1
         }
 
-        // Locale.US because a de-DE device would otherwise render "90,5" for the same build.
-        val text = String.format(Locale.US, "%.${decimals}f$DEGREE_SIGN", degrees)
+        // Locale.US because a de-DE device would otherwise render "90,5" for the same build. The
+        // pattern is looked up rather than built: `"%.${decimals}f°"` rebuilt the same handful of
+        // strings on the draw path, once per labelled angle per frame.
+        val text = String.format(Locale.US, DECIMAL_PATTERNS[decimals], degrees)
         val length = minOf(text.length, labelChars.size)
         text.toCharArray(labelChars, 0, 0, length)
         return length
@@ -441,5 +447,9 @@ internal class OverlayView(
         const val LABEL_GAP_DP = 18f
         const val LABEL_PADDING_DP = 5f
         const val DEGREE_SIGN = '°'
+
+        /** Indexed by `decimals`, which OverlayParsing caps at 3. */
+        private val DECIMAL_PATTERNS =
+            arrayOf("%.0f$DEGREE_SIGN", "%.1f$DEGREE_SIGN", "%.2f$DEGREE_SIGN", "%.3f$DEGREE_SIGN")
     }
 }

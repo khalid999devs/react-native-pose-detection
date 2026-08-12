@@ -31,18 +31,54 @@ is gitignored in both, so a fresh clone fetches it.
 src/
 ├── index.ts               single export point: nothing else is public
 ├── PoseCamera.tsx         the view component
-├── types/                 PoseFrame, Trigger, events, JointName constants
-├── validation/            trigger config validation, runs before native sees it
-├── wire.ts                the buffer header layout, shared with both native encoders
-├── decodeFrames.ts        one drained buffer into frames, as views rather than copies
-├── accessors.ts           zero-copy Float32Array readers
+├── staticInput.ts         detectOnImage, detectOnVideo
 ├── errors.ts              PoseConfigError, ValidationIssue
 ├── logging.ts             setLogLevel, addLogListener
+├── frames/                the wire format and everything that reads it
+│   ├── wire.ts            the buffer header layout, shared with both native encoders
+│   ├── decodeFrames.ts    one drained buffer into frames, as views rather than copies
+│   └── accessors.ts       zero-copy Float32Array readers
+├── permissions/           the camera permission, imperative and as a hook
+├── types/                 PoseFrame, Trigger, events, JointName constants
+├── validation/            trigger config validation, runs before native sees it
 └── native/                Expo module bindings, and the contract they must satisfy
 ```
 
-Tests live in `packages/core/tests/`, mirroring the layout of `src/`. One tree keeps them out of
-the tarball without an exclusion rule. See [testing](./testing.md).
+## Grouping convention
+
+A directory earns its existence by holding **more than one file that changes together**. A single
+file that is its own concern stays at the top level rather than becoming a folder of one:
+`errors.ts` and `logging.ts` are not `errors/errors.ts`.
+
+Tests mirror the source tree exactly, so `src/frames/wire.ts` is tested by
+`tests/frames/wire.test.ts` and Kotlin's `engine/Triggers.kt` by `engine/TriggerRuntimeTest.kt`.
+One tree keeps tests out of the tarball without an exclusion rule. See [testing](./testing.md).
+
+## `packages/core/android`
+
+```text
+java/com/posedetection/
+├── PoseDetectionModule.kt   the Expo module definition: props, events, functions
+├── Skeleton.kt              the landmark, connection and angle tables everything reads
+├── PoseLog.kt               the level mask, the ring buffer, the Logcat mirror
+├── ErrorCode.kt
+├── Permissions.kt
+├── view/                    PoseCameraView, OverlayView, and the overlay's prop parsing
+├── camera/                  CameraSource, FrameConverter: the capture pipeline
+├── detector/                PoseDetector, StaticDetection: what runs the model
+├── engine/                  landmarks in, something emitted out
+│   ├── Geometry.kt          angles, centre of mass, body span
+│   ├── OneEuroFilter.kt     smoothing
+│   ├── Conditions.kt        the Condition union, evaluated
+│   ├── Triggers.kt          the state machine per trigger
+│   ├── FrameWire.kt         the wire layout, the ring buffer, snapshot tickets
+│   └── *Parsing.kt          building the above from what JavaScript sent
+└── performance/             Calibrator, the thermal monitor, the precedence chain
+```
+
+The four packages match the vocabulary in [architecture](./architecture.md): capture, detect,
+engine, present. Parsing lives beside what it builds rather than in the module file, so a new
+condition is one file rather than two.
 
 ## `packages/core/plugin`
 

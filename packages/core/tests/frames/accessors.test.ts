@@ -9,12 +9,12 @@ import {
   landmarkInto,
   visibilityOf,
   worldLandmark,
-} from '../src/accessors';
-import { PoseConfigError } from '../src/errors';
-import type { PoseFrame } from '../src/types/frame';
-import { LANDMARK_STRIDE } from '../src/types/frame';
-import type { JointName } from '../src/types/joints';
-import { JOINT_INDEX, LANDMARK_COUNT } from '../src/types/joints';
+} from '../../src/frames/accessors';
+import { PoseConfigError } from '../../src/errors';
+import type { PoseFrame } from '../../src/types/frame';
+import { LANDMARK_STRIDE } from '../../src/types/frame';
+import type { JointName } from '../../src/types/joints';
+import { JOINT_INDEX, LANDMARK_COUNT } from '../../src/types/joints';
 
 // Float32 representable, so a round trip through the buffer is exact and a failure means the
 // indexing is wrong rather than that the assertion was.

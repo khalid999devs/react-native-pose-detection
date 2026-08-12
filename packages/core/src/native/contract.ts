@@ -11,6 +11,15 @@ export type NativeCameraPermission = {
 export type NativePoseModule = {
   setLogLevel(config: LogLevelConfig): void;
   getCameraPermission(): Promise<NativeCameraPermission>;
+  detectOnImage(uri: string, options: Record<string, unknown>): Promise<ArrayBuffer>;
+  detectOnVideo(
+    uri: string,
+    options: Record<string, unknown>,
+    taskId: number,
+  ): Promise<ArrayBuffer>;
+  cancelDetectOnVideo(taskId: number): void;
+  /** Expo's module event subscription, used for video progress. */
+  addListener(event: string, listener: (payload: never) => void): { remove(): void };
   /** Prompts when the system still will, and resolves with the outcome either way. */
   requestCameraPermission(): Promise<NativeCameraPermission>;
   /** Called when the first JS listener attaches, so the native ring buffer stays idle until then. */
@@ -43,6 +52,8 @@ export type NativePoseCameraView = {
   stopDetection(): Promise<void>;
   setOverlayEnabled(enabled: boolean): Promise<void>;
   getState(): Promise<Record<string, unknown>>;
+  getProfile(): Promise<Record<string, unknown>>;
+  setProfile(profile: string): Promise<void>;
   /** Everything buffered since the last call, in one self-describing ArrayBuffer. */
   drainFrames(): Promise<ArrayBuffer>;
   /** The current frame on demand, regardless of `data.mode`. Empty when no pose is present. */

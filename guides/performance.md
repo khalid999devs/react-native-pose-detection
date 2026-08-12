@@ -1,10 +1,8 @@
 # Performance
 
-*Mostly not built yet. What runs today is the delegate choice, GPU with a verified first
-inference and a CPU fallback, and the preview and analysis resolutions. Profiles, calibration,
-the thermal ladder, idle-search, pre-warm and smoothing are designed and typed but have no
-Kotlin behind them, so this page is the contract they are being built to. `getProfile()` throws
-until calibration lands.*
+*Android runs all of this. iOS has no module yet. Every number below is a target the
+implementation aims at rather than one measured on hardware, because nothing here has run on a
+physical device: see [the development plan](../docs/development-plan.md).*
 
 ## Profiles
 
@@ -50,10 +48,11 @@ Invalidated on OS upgrade or model change.
 
 ### Inspecting it
 
-`getProfile()` throws today. It returns this once calibration exists:
+`getProfile()` reads native state, so it is asynchronous. `getState()` is not, because
+everything in it arrives on an event JavaScript can mirror.
 
 ```ts
-cam.current.getProfile();
+await cam.current.getProfile();
 // { profile: 'auto', phase: 'settled', source: 'measured', tier: 'medium',
 //   resolved: { delegate: 'GPU', targetFps: 24, preview: '720p', analysis: '480p' },
 //   p50InferenceMs: 21.4 }
@@ -119,9 +118,20 @@ filed against.
 | Camera on, detection off | < 40 MB |
 | `lite` @ 480p analysis | < 120 MB |
 | `full` @ 720p analysis | < 180 MB |
-| Steady-state allocations per frame | **0** |
+| Steady-state allocations per frame | **0**, except the MPImage floor below |
 | Return to idle after `stopDetection()` | < 1 s |
 | 10-minute sustained run | thermal ≤ fair on mid-tier |
+
+**The zero-allocation claim has one floor, and it is honest to name it.** Handing a frame to
+MediaPipe requires an `MPImage`, and building one allocates about seven objects: the builder, the
+container, the image, its properties, and a small map inside the image. There is no API that takes
+a reusable one. Everything this package controls, the landmark buffers, the geometry, the filter,
+the evaluators, the ring buffer, and the overlay's draw path, allocates nothing per frame at the
+default configuration.
+
+Two configurations do allocate beyond that floor, both by choice: `data.mode: 'live'` allocates one
+direct buffer per drain, which is what carrying frames to JavaScript costs, and an angle overlay
+with `decimals` above zero formats a string per label per draw.
 
 ## App size
 

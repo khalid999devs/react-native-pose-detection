@@ -1,7 +1,7 @@
-import type { AngleJointName, JointName } from './types/joints';
-import { LANDMARK_STRIDE } from './types/frame';
-import { LANDMARK_COUNT } from './types/joints';
-import type { PoseFrame } from './types/frame';
+import type { AngleJointName, JointName } from '../types/joints';
+import { LANDMARK_STRIDE } from '../types/frame';
+import { LANDMARK_COUNT } from '../types/joints';
+import type { PoseFrame } from '../types/frame';
 import {
   FRAME_META_FLOAT64S,
   HEADER_FLOAT64S,

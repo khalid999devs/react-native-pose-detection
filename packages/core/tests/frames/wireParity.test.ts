@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { test } from 'node:test';
 
@@ -10,32 +10,40 @@ import {
   SCALARS_PER_FRAME,
   WIRE_FLAG_ANGLES,
   WIRE_FLAG_WORLD_LANDMARKS,
-} from '../src/wire';
-import { ANGLE_JOINTS, ANGLE_JOINT_NAMES, LANDMARK_COUNT } from '../src/types/joints';
-import { LANDMARK_STRIDE } from '../src/types/frame';
+} from '../../src/frames/wire';
+import { ANGLE_JOINTS, ANGLE_JOINT_NAMES, LANDMARK_COUNT } from '../../src/types/joints';
+import { LANDMARK_STRIDE } from '../../src/types/frame';
 
 /**
  * The wire format is written twice, in TypeScript and in Kotlin, and nothing at runtime compares
  * them: a buffer encoded against a stale constant decodes into plausible wrong numbers rather than
  * failing. These read the Kotlin and assert it still agrees.
  *
- * Compiled to `.test-build/tests/`, so two levels up is the repository root.
+ * Compiled under `.test-build/`, and the Kotlin is found by name rather than by path: this guard
+ * should survive the sources being reorganized and fail only when they stop agreeing.
  */
-const ANDROID = resolve(
-  __dirname,
-  '../..',
-  'packages/core/android/src/main/java/com/posedetection',
-);
+const ANDROID = resolve(__dirname, '../../..', 'packages/core/android/src/main/java');
+
+function find(fileName: string, from: string = ANDROID): string | null {
+  for (const entry of readdirSync(from, { withFileTypes: true })) {
+    const path = resolve(from, entry.name);
+    if (entry.isDirectory()) {
+      const found = find(fileName, path);
+      if (found) return found;
+    } else if (entry.name === fileName) {
+      return path;
+    }
+  }
+  return null;
+}
 
 function read(fileName: string): string {
-  const path = resolve(ANDROID, fileName);
-  try {
-    return readFileSync(path, 'utf8');
-  } catch {
-    assert.fail(
-      `could not read ${path}. If the Kotlin moved, update this test rather than delete it.`,
-    );
-  }
+  const path = find(fileName);
+  assert.ok(
+    path !== null,
+    `${fileName} is not under ${ANDROID}. If it was renamed, update this test.`,
+  );
+  return readFileSync(path, 'utf8');
 }
 
 function constant(source: string, name: string): number {

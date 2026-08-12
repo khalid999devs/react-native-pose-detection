@@ -1,4 +1,4 @@
-package com.posedetection
+package com.posedetection.engine
 
 internal enum class TriggerEmit {
     ENTER,
@@ -161,6 +161,11 @@ internal class TriggerRuntime(
  * id: a re-render is not an unmount, and `count` is documented to survive everything but one.
  */
 internal class TriggerEngine {
+    /**
+     * Volatile because an array reference gets no final-field freeze: without it the inference
+     * thread can see a published array whose elements have not landed yet, and evaluate a null.
+     */
+    @Volatile
     private var runtimes: Array<TriggerRuntime> = emptyArray()
 
     val isEmpty: Boolean

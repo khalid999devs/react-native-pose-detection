@@ -327,7 +327,7 @@ cost real crashes and real scope creep in the past.
 Include:
 
 - Device model and OS version
-- `cam.current.getProfile()` output, once calibration lands. It throws today, so send the
+- `await cam.current.getProfile()` output. Failing that, send the
   `onReady` and `onPerformanceChange` payloads instead
 - `data.mode`, `maxPoses`, model variant
 - Expo or bare, old or new architecture

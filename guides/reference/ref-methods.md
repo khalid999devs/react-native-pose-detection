@@ -52,9 +52,6 @@ success.
 | `setOverlayEnabled(b)` | Drawing only. Inference continues: use when you draw your own UI. |
 | `snapshot()` | Current `PoseFrame` on demand, regardless of `data.mode`. Resolves to `null` if no pose is present. **Async**: the landmark buffer comes back over the function-return path, the only one that carries an ArrayBuffer, see [ADR 0008](../../docs/adr/0008-frames-are-drained-not-pushed.md). |
 
-`snapshot()` is **not built yet** on either platform. The JavaScript half decodes the buffer, and
-the native side that would produce one does not exist, so the call rejects.
-
 ## Introspection
 
 ```ts
@@ -63,19 +60,17 @@ cam.current?.getState();
 //   delegate: 'GPU', deviceTier: 'medium' }
 ```
 
-`fps` stays 0 and `deviceTier` stays `'medium'` until calibration lands, because both are
-mirrored from events that nothing emits yet.
+`fps` is measured from the analyzer, so it is what ran rather than what was asked for.
 
-### `setProfile` and `getProfile` throw
-
-Both are **not built yet** and throw unconditionally. They are the only two methods on the ref
-that do. They arrive with calibration, which is what gives a profile anything to report.
+### `getProfile` is async, `getState` is not
 
 ```ts
-cam.current?.getProfile();
-// Error: getProfile is not implemented yet, it arrives with calibration.
+await cam.current?.getProfile();
 ```
 
-Do not put either on a diagnostic path. Once calibration lands, `getProfile()` returns a
-`ProfileState` and its output belongs in any performance bug report; until then there is nothing
-to include.
+`getProfile()` reads native state. The phase, the source and the measured p50 are on no event, so
+JavaScript has nothing to mirror them from, and a synchronous version would have to invent them.
+`getState()` stays synchronous because everything in it does arrive on an event.
+
+`getProfile()`'s output belongs in any performance bug report: it says what tier was chosen, how
+it was chosen, and what the inference actually cost.
