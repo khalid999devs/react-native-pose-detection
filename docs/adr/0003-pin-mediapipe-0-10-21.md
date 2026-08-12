@@ -1,4 +1,4 @@
-# 0003 — Pin MediaPipe to 0.10.21
+# 0003: Pin MediaPipe to 0.10.21
 
 **Status:** accepted
 **Date:** 2026-08-12
@@ -20,7 +20,7 @@ Pin `0.10.21` exactly, on both platforms. Document it in troubleshooting so user
 
 ## Consequences
 
-- Universal APKs are larger — all three ABIs, 40.3 MB of native libraries. Mitigated by
+- Universal APKs are larger, all three ABIs, 40.3 MB of native libraries. Mitigated by
   documenting AAB and `abiFilters`.
 - 32-bit Android devices and x86 emulators keep working.
 - iOS builds link reliably.

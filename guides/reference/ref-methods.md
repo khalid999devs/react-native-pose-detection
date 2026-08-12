@@ -27,17 +27,17 @@ type PoseCameraRef = {
 ## Camera
 
 | Method | Notes |
-|---|---|
-| `switchCamera()` | Toggles front/back. **Resolves only when the session is stable again** — await it rather than guessing. Detection state, calibration, and trigger counters are preserved. |
+| --- | --- |
+| `switchCamera()` | Toggles front/back. **Resolves only when the session is stable again**: await it rather than guessing. Detection state, calibration, and trigger counters are preserved. |
 | `setFacing(f)` | Same guarantees, explicit target. No-op if already there. |
 | `pause()` / `resume()` | Stops the capture session entirely. Lowest power state short of unmounting. |
 
 ## Detection
 
 | Method | Notes |
-|---|---|
+| --- | --- |
 | `startDetection()` / `stopDetection()` | Preview keeps running. `stopDetection()` **releases GPU resources**, not just a flag. |
-| `setOverlayEnabled(b)` | Drawing only. Inference continues — use when you draw your own UI. |
+| `setOverlayEnabled(b)` | Drawing only. Inference continues: use when you draw your own UI. |
 | `snapshot()` | Current `PoseFrame` on demand, regardless of `data.mode`. Returns `null` if no pose is present. |
 
 ## Introspection

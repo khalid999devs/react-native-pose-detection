@@ -2,6 +2,8 @@
 
 ## Setup
 
+Node **22.22.1 or newer** (`.nvmrc` pins 24). The lint and spell tooling requires it.
+
 ```bash
 git clone <repo> && cd react-native-pose-detection
 npm install
@@ -17,16 +19,16 @@ behaves differently there.
 
 ```text
 packages/core/
-  src/          TypeScript — API, types, validation
-  ios/          Swift — CameraSource, PoseDetector, OverlayRenderer
-  android/      Kotlin — same three, CameraX-based
+  src/          TypeScript: API, types, validation
+  ios/          Swift: CameraSource, PoseDetector, OverlayRenderer
+  android/      Kotlin: same three, CameraX-based
   plugin/       Expo config plugin
   cli/          fetch-model
 example/        one app exercising everything
 docs/           this directory
 ```
 
-`PoseEngine` must never import camera code. The frame source is an input — that's what keeps
+`PoseEngine` must never import camera code. The frame source is an input, that's what keeps
 alternative frame sources (VisionCamera, static images) cheap to add.
 
 ## Code style
@@ -67,17 +69,17 @@ Each of these exists because its absence caused a production crash.
 ## Adding a trigger condition
 
 New conditions must describe **a body**, not an activity. `angle`, `visibility`, `velocityY`
-pass. `isSquatting` does not — that's a recipe.
+pass. `isSquatting` does not, that's a recipe.
 
 1. Extend `Condition` in `src/types.ts`
-2. Implement in both evaluators (Swift + Kotlin) — they must agree exactly
+2. Implement in both evaluators (Swift + Kotlin), they must agree exactly
 3. Unit test both
 4. Document in `guides/triggers.md`
 
 ## Workflow
 
 ```text
-main  (protected — no direct pushes)
+main  (protected: no direct pushes)
   │
   └─ branch    feat/triggers-velocity-condition
        │
@@ -108,11 +110,11 @@ type and scope.** If you know the commit type, you know the branch name.
 
 Rules:
 
-- **Types and scopes are the same lists as [commits](#commits)** — nothing extra to memorize
+- **Types and scopes are the same lists as [commits](#commits)**: nothing extra to memorize
 - Lowercase, hyphen-separated, exactly one `/`
 - Short: three or four words after the scope, not a sentence
 - Branch from an up-to-date `main`
-- Rebase on `main` rather than merging it in — keeps history linear for the changelog
+- Rebase on `main` rather than merging it in, keeps history linear for the changelog
 - Delete the branch after merge
 
 ```bash
@@ -142,7 +144,7 @@ perf(engine): compute only angles referenced by triggers
 docs(guides): add plank hold recipe
 ```
 
-It isn't ceremony — the type drives the release. `feat` produces a minor bump, `fix` a patch,
+It isn't ceremony. The type drives the release. `feat` produces a minor bump, `fix` a patch,
 and a `BREAKING CHANGE:` footer a major, which is how the CHANGELOG and version numbers are
 generated.
 
@@ -209,7 +211,7 @@ CI, and it breaks changelog generation for the release it lands in.
 
 ### Title
 
-PR titles follow the same Conventional Commits format as commit messages — they become the
+PR titles follow the same Conventional Commits format as commit messages, they become the
 squash-merge commit, so they land in the CHANGELOG.
 
 ### What CI checks
@@ -227,7 +229,7 @@ Full list and rationale: [quality gates](./quality-gates.md).
 ### Review
 
 Expect questions about the [eight rules](./README.md#the-eight-rules) and about whether a change
-belongs in the library at all — see the litmus test in
+belongs in the library at all, see the litmus test in
 [project structure](./project-structure.md#where-to-add-things). Neither is personal; both have
 cost real crashes and real scope creep in the past.
 

@@ -1,4 +1,4 @@
-# 0001 — Own camera, not VisionCamera
+# 0001: Own camera, not VisionCamera
 
 **Status:** accepted
 **Date:** 2026-08-12
@@ -19,11 +19,11 @@ Ship our own camera as the primary entry point. Add a VisionCamera frame-process
 
 ## Consequences
 
-- **Zero peer dependencies** — `npm i` and a plugin line is the whole setup. The leading
+- **Zero peer dependencies**: `npm i` and a plugin line is the whole setup. The leading
   competitor requires installing and configuring VisionCamera *and* supplying a model file.
 - We own CameraX. Frame orientation across device rotation and camera switching is the largest
   source of Android bugs in this package.
-- Apps that already use VisionCamera cannot adopt us until 0.2.0 — two capture sessions on one
+- Apps that already use VisionCamera cannot adopt us until 0.2.0, two capture sessions on one
   device is not viable.
 - Worklets are deferred to 0.2.0, since the mechanism for invoking JS on a frame thread comes
   with the VisionCamera adapter.

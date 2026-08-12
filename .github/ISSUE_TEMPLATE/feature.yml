@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         This library ships **primitives, not policy**. If your idea needs to know what activity
-        the user is doing — rep counting, form scoring, sport-specific detection — it belongs in
+        the user is doing: rep counting, form scoring, sport-specific detection: it belongs in
         `guides/recipes/` as a trigger config, not in the library. Recipe contributions are very
         welcome.
 

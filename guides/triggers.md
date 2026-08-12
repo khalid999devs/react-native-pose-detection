@@ -11,13 +11,13 @@ A squat counter evaluates a knee angle 30×/sec but only needs to tell JS someth
 Triggers split that in two:
 
 | Half | Example | Runs | Rate |
-|---|---|---|---|
-| Detection — *did it happen?* | knee < 90° then > 160° | native | 30/sec, free |
-| Reaction — *what do I do?* | increment, save, buzz | your JS in `onTrigger` | 1/rep |
+| --- | --- | --- | --- |
+| Detection: *did it happen?* | knee < 90° then > 160° | native | 30/sec, free |
+| Reaction: *what do I do?* | increment, save, buzz | your JS in `onTrigger` | 1/rep |
 
 You declare the detection half as data. You write the reaction half as ordinary React.
 
-## Example — squat counter
+## Example: squat counter
 
 ```tsx
 function SquatCounter() {
@@ -49,7 +49,7 @@ function SquatCounter() {
 
 Thirty reps means **thirty bridge crossings**, not nine hundred.
 
-`snapshot: true` delivers the full landmark set from the moment the trigger fired — the bottom
+`snapshot: true` delivers the full landmark set from the moment the trigger fired, the bottom
 of the squat. Usually the only frame you cared about, and you got it without streaming any others.
 
 ## Schema
@@ -68,7 +68,7 @@ type Trigger = {
 ```
 
 | `emit` | Fires |
-|---|---|
+| --- | --- |
 | `enter` | when `enter` becomes true |
 | `exit` | when `exit` becomes true |
 | `cycle` | once per full `enter` → `exit`, with `durationMs` |
@@ -92,7 +92,7 @@ type Trigger = {
 { any: [ {...}, {...} ] }    // OR
 ```
 
-Conditions describe **a body**, never an activity — that's what keeps them reusable.
+Conditions describe **a body**, never an activity, that's what keeps them reusable.
 
 ## Notes
 
@@ -113,12 +113,12 @@ subject moves toward or away from the camera; ratios against `bodySpan` don't.
 
 **`count` resets on unmount**, not on camera switch. Switching cameras preserves trigger state.
 
-**Multi-person:** with `maxPoses > 1`, triggers evaluate against the primary pose — largest
+**Multi-person:** with `maxPoses > 1`, triggers evaluate against the primary pose, largest
 bounding box, ties broken by distance from frame center.
 
 ## When triggers aren't enough
 
-Triggers express threshold state machines. They can't express arbitrary math — pose similarity
+Triggers express threshold state machines. They can't express arbitrary math, pose similarity
 scoring, DTW, custom filters.
 
 For that, `data.mode: 'batched'` gives you every frame at 2 crossings/sec today, and worklets

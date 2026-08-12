@@ -14,7 +14,7 @@ const poses = await detectOnImage(uri, { maxPoses: 1 });
 ```
 
 | Option | Default | Notes |
-|---|---|---|
+| --- | --- | --- |
 | `maxPoses` | `1` | 1–5 |
 | `angles` | `true` | |
 | `worldLandmarks` | `false` | |
@@ -32,19 +32,19 @@ const frames = await detectOnVideo(uri, {
 ```
 
 | Option | Default | Notes |
-|---|---|---|
+| --- | --- | --- |
 | `fps` | `10` | sampling rate, not the video's own frame rate |
 | `maxPoses` | `1` | |
 | `startMs` / `endMs` | full clip | trim a range |
 | `smoothing` | `true` | temporal, so it applies here |
-| `onProgress` | — | called on the JS thread, throttled |
+| `onProgress` | n/a | called on the JS thread, throttled |
 
 Runs `VIDEO` mode with monotonic timestamps, so temporal tracking and smoothing behave the
 same as they do live.
 
 ## Notes
 
-**Memory.** A long clip at high `fps` produces a lot of frames — 10 minutes at 30 fps is 18,000
+**Memory.** A long clip at high `fps` produces a lot of frames, 10 minutes at 30 fps is 18,000
 `PoseFrame`s. Prefer a low `fps` and trim with `startMs`/`endMs`. Frames are yielded
 incrementally to `onProgress` consumers rather than all retained, but the returned array holds
 everything.
@@ -56,6 +56,6 @@ const task = detectOnVideo(uri, { fps: 10 });
 task.cancel();
 ```
 
-**No calibration.** Static input runs at full quality — there's no live frame budget to hit,
+**No calibration.** Static input runs at full quality. There is no live frame budget to hit,
 so the profile and thermal systems don't apply. Long video jobs still respect the thermal
 ladder's `critical` state.

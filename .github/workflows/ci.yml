@@ -11,7 +11,7 @@ concurrency:
 
 jobs:
   code:
-    name: Code — lint, format, types, dead code
+    name: 'Code: lint, format, types, dead code'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,7 +26,7 @@ jobs:
       - run: npm run deadcode
 
   docs:
-    name: Docs — markdown, spelling, links
+    name: 'Docs: markdown, spelling, links'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -42,7 +42,7 @@ jobs:
           args: '--config lychee.toml --no-progress "**/*.md"'
 
   native:
-    name: Native — Swift & Kotlin lint
+    name: 'Native: Swift and Kotlin lint'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -53,7 +53,7 @@ jobs:
         continue-on-error: true # no Kotlin sources until Phase 3
 
   package:
-    name: Package — exports, types, tarball
+    name: 'Package: exports, types, tarball'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -76,12 +76,12 @@ jobs:
           SIZE=$(node -p "JSON.parse(require('fs').readFileSync('/tmp/pack.json'))[0].unpackedSize")
           echo "unpacked: $SIZE bytes"
           if [ "$SIZE" -gt 2000000 ]; then
-            echo "::error::Tarball exceeds 2 MB — something leaked into files[]."
+            echo "::error::Tarball exceeds 2 MB: something leaked into files[]."
             exit 1
           fi
 
   security:
-    name: Security — audit & licenses
+    name: 'Security: audit and licenses'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -95,7 +95,7 @@ jobs:
       - run: npm run audit:dev
 
   commits:
-    name: Commits — conventional format
+    name: 'Commits: conventional format'
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:

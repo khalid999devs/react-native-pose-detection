@@ -28,12 +28,12 @@ Or scoped to one camera:
 ## Levels
 
 | Level | Shows |
-|---|---|
+| --- | --- |
 | `off` *(default)* | nothing |
 | `error` | failures |
-| `warn` | degraded but running — GPU fallback, dropped frames |
-| `info` | lifecycle — camera opened, model loaded, calibration settled |
-| `debug` | state transitions — camera switch phases, trigger phases, thermal steps |
+| `warn` | degraded but running: GPU fallback, dropped frames |
+| `info` | lifecycle: camera opened, model loaded, calibration settled |
+| `debug` | state transitions: camera switch phases, trigger phases, thermal steps |
 | `trace` | per-frame timings. Very noisy. |
 
 ## Per-category levels
@@ -58,14 +58,14 @@ type LogEntry = {
 };
 ```
 
-Entries arrive **batched** — an array every ~250 ms, not one call per line. If your listener
+Entries arrive **batched**. An array every ~250 ms, not one call per line. If your listener
 can't keep up, the oldest entries are dropped and reported as `droppedCount` rather than
 growing memory.
 
 ## What to look at
 
 | Problem | Category | Level |
-|---|---|---|
+| --- | --- | --- |
 | Trigger fires twice, or never | `triggers` | `trace` |
 | Frame rate lower than expected | `calibration` | `debug` |
 | Crash or freeze on camera switch | `camera` | `debug` |
@@ -91,4 +91,4 @@ OS version. Performance reports without `getProfile()` can't be acted on.
 ## Production
 
 Leave it `off`. It is off unless you call `setLogLevel` or pass `logLevel`, and while off the
-cost is a single integer comparison — no strings are built and nothing crosses to JavaScript.
+cost is a single integer comparison, no strings are built and nothing crosses to JavaScript.

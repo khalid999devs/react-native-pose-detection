@@ -29,22 +29,22 @@
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",
-    "@commitlint/cli": "^19.5.0",
-    "@commitlint/config-conventional": "^19.5.0",
-    "@types/react": "~19.0.0",
-    "cspell": "^8.15.0",
-    "eslint": "^9.14.0",
-    "husky": "^9.1.6",
-    "knip": "^5.36.0",
-    "license-checker-rseidelsohn": "^4.4.2",
-    "lint-staged": "^15.2.10",
-    "markdownlint-cli2": "^0.14.0",
-    "prettier": "^3.3.3",
-    "publint": "^0.2.12",
-    "typescript": "^5.6.3",
-    "typescript-eslint": "^8.13.0"
+    "@commitlint/cli": "^21.2.1",
+    "@commitlint/config-conventional": "^21.2.0",
+    "@types/react": "^19.2.18",
+    "cspell": "^10.0.1",
+    "eslint": "^10.8.1",
+    "husky": "^9.1.7",
+    "knip": "^6.32.2",
+    "license-checker-rseidelsohn": "^5.0.1",
+    "lint-staged": "^17.3.0",
+    "markdownlint-cli2": "^0.23.2",
+    "prettier": "^3.6.2",
+    "publint": "^0.3.23",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.67.0"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.22.1"
   }
 }

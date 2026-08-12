@@ -1,4 +1,4 @@
-<!-- Title must follow Conventional Commits — it becomes the merge commit.
+<!-- Title must follow Conventional Commits. It becomes the merge commit.
      e.g. feat(triggers): add velocityY condition -->
 
 ## What & why
@@ -10,7 +10,7 @@ Closes #
 ## How it was tested
 
 <!-- Physical device required for anything touching the camera.
-     If you could only test one platform, say so — that's fine. -->
+     If you could only test one platform, say so, that's fine. -->
 
 | Device | OS | Result |
 | ------ | -- | ------ |

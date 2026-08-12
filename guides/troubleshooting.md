@@ -42,7 +42,7 @@ Check `onReady`'s `delegate` field to confirm which one is running.
 ## Crash or freeze on x86 emulator
 
 MediaPipe `0.10.26+` ships **arm64-v8a only**. This package pins `0.10.21`, which includes
-x86 — if you've overridden the version, that's why. Use an arm64 emulator image on Apple Silicon.
+x86. If you've overridden the version, that's why. Use an arm64 emulator image on Apple Silicon.
 
 ## iOS build fails linking MediaPipe
 
@@ -65,7 +65,7 @@ minSdkVersion = 24
 
 ## App size much larger than documented
 
-You're shipping a universal APK. It bundles all three ABIs — 40.3 MB of native libraries
+You're shipping a universal APK. It bundles all three ABIs, 40.3 MB of native libraries
 instead of 12.4 MB. Ship an AAB, or set:
 
 ```groovy
@@ -88,7 +88,7 @@ cam.current.getProfile();
 ```
 
 If `tier` is `low` or the thermal state is elevated, that's the ladder working. Try
-`model: 'lite'`, or pin `profile="quality"` to override — subject to the thermal ladder.
+`model: 'lite'`, or pin `profile="quality"` to override, subject to the thermal ladder.
 
 ## Triggers fire twice / not at all
 
@@ -96,5 +96,5 @@ See the tuning table in [recipes.md](./recipes/README.md).
 
 ## Memory grows over time
 
-Should not happen — report it. Include `getProfile()` output, `data.mode`, `maxPoses`,
+Should not happen, report it. Include `getProfile()` output, `data.mode`, `maxPoses`,
 and whether `onPoseBatch` consumers might be retaining frames.

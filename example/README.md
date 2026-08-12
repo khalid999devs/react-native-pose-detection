@@ -1,7 +1,7 @@
 # Example app
 
 A real application, not a smoke test. It is the **reference implementation**, the manual QA
-harness, and the demo — and it is never published to npm.
+harness, and the demo. And it is never published to npm.
 
 Excluded from the tarball via `files` in `packages/core/package.json`, so it can be as large
 and as well built as it needs to be.
@@ -10,13 +10,13 @@ and as well built as it needs to be.
 
 1. **Show every capability** with real UI, not a wall of debug text
 2. **Exercise every prop** so regressions surface manually before CI catches them
-3. **Reproduce hard scenarios on demand** — camera switching, thermal, memory, remount
-4. **Be worth screenshotting** — this is what people see before they install
+3. **Reproduce hard scenarios on demand**, camera switching, thermal, memory, remount
+4. **Be worth screenshotting**. This is what people see before they install
 
 ## Screens
 
 | Screen | Purpose |
-|---|---|
+| --- | --- |
 | **Home** | Navigation, device summary, resolved profile at a glance |
 | **Basic** | The 5-line example from the README, nothing else. Proves the happy path. |
 | **Playground** | Every prop with a live control. Change anything without a rebuild. |
@@ -24,18 +24,18 @@ and as well built as it needs to be.
 | **Data modes** | Switch `off`/`throttled`/`batched`/`live`; shows measured crossings/sec |
 | **Performance** | Live FPS, p50 inference, delegate, tier, thermal state, calibration phase, memory |
 | **Recipes** | Squat, push-up, jump, plank running for real with rep counts |
-| **Angles** | Angle overlay demo — pick joints, see arcs and degree labels |
+| **Angles** | Angle overlay demo: pick joints, see arcs and degree labels |
 | **Static input** | Pick an image or video from the library and run detection on it |
 | **Console** | Live log stream with level and category filters |
-| **Scenarios** | The stress and reset panel — see below |
+| **Scenarios** | The stress and reset panel: see below |
 
 ## Playground controls
 
 Every prop, live, with the resolved value shown next to the requested one:
 
 | Group | Controls |
-|---|---|
-| Model | variant (read-only — build time), `maxPoses` |
+| --- | --- |
+| Model | variant (read-only: build time), `maxPoses` |
 | Performance | `profile`, `delegate`, `targetFps`, `resolution`, `analysisResolution`, `thermalPolicy` |
 | Camera | `facing`, `active`, switch button |
 | Detection | `detection`, `smoothing` (+ `minCutoff`/`beta` sliders) |
@@ -43,7 +43,7 @@ Every prop, live, with the resolved value shown next to the requested one:
 | Data | `mode`, `throttleMs`, `flushMs`, `landmarks`, `worldLandmarks`, `angles`, `select[]` |
 | Logging | level per category |
 
-Showing **requested vs resolved** side by side is the point — it makes auto-calibration and
+Showing **requested vs resolved** side by side is the point. It makes auto-calibration and
 the thermal ladder visible instead of mysterious.
 
 ## Scenarios panel
@@ -51,7 +51,7 @@ the thermal ladder visible instead of mysterious.
 The reset and stress toggles. Each one reproduces a failure mode that has actually happened.
 
 | Action | Verifies |
-|---|---|
+| --- | --- |
 | Switch camera ×100 rapidly | No crash, no leak, trigger counters preserved |
 | Remount component ×50 | Memory returns to baseline |
 | Stop / start detection ×20 | GPU resources released and reacquired |
@@ -74,13 +74,13 @@ example/
 ├── app.json                  plugin configured with model: "full"
 ├── src/
 │   ├── screens/              one file per screen above
-│   ├── components/           controls — sliders, toggles, pickers, stat tiles
+│   ├── components/           controls: sliders, toggles, pickers, stat tiles
 │   ├── scenarios/            stress runners, each returning a pass/fail report
 │   └── theme/                shared UI so screens stay short
 └── README.md
 ```
 
-Keep the pose-related code in each screen short and obvious — someone reading `Basic.tsx`
+Keep the pose-related code in each screen short and obvious, someone reading `Basic.tsx`
 should see the library's API, not the app's UI framework.
 
 ## Running

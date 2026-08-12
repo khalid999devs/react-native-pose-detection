@@ -24,7 +24,7 @@ updates:
           - 'publint'
           - '@arethetypeswrong/*'
     ignore:
-      # Pinned deliberately — see docs/adr/0003-pin-mediapipe-0-10-21.md
+      # Pinned deliberately: see docs/adr/0003-pin-mediapipe-0-10-21.md
       - dependency-name: 'com.google.mediapipe:tasks-vision'
       - dependency-name: 'MediaPipeTasksVision'
       # Peer-satisfying devDependencies. These must match a combination we have

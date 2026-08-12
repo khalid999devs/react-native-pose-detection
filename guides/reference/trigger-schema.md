@@ -18,7 +18,7 @@ type Trigger = {
 ```
 
 | `emit` | Fires |
-|---|---|
+| --- | --- |
 | `enter` | when `enter` becomes true |
 | `exit` | when `exit` becomes true |
 | `cycle` | once per full `enter` → `exit`, with `durationMs` |
@@ -39,13 +39,13 @@ type Condition =
 ```
 
 | Field | Unit |
-|---|---|
+| --- | --- |
 | `angle` | degrees, 0–180 |
 | `landmarkX` / `landmarkY` | normalized 0–1, origin top-left. A `JointName` compares against that joint |
 | `velocityX` / `velocityY` | normalized units per second |
 | `visibility` | 0–1 |
 
-Conditions describe **a body**, never an activity — that's what keeps them reusable.
+Conditions describe **a body**, never an activity, that's what keeps them reusable.
 
 ## Evaluation
 
@@ -59,7 +59,7 @@ ACTIVE + still matches → emit if 'while' (throttled)
 
 - `debounceMs` suppresses re-entry after a fire
 - `minDurationMs` requires the condition to hold before the state change counts
-- With `maxPoses > 1`, evaluation runs against the primary pose — largest bounding box, ties
+- With `maxPoses > 1`, evaluation runs against the primary pose, largest bounding box, ties
   broken by distance from frame center
 - `count` resets on unmount, **not** on camera switch
 

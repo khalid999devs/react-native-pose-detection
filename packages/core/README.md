@@ -3,7 +3,7 @@
 Real-time pose detection for React Native and Expo. 33 body landmarks, iOS and Android,
 powered by MediaPipe.
 
-> **Pre-release — not yet published.**
+> **Pre-release, not yet published.**
 
 ## Install
 
@@ -34,17 +34,17 @@ to JavaScript.
 
 ## Why
 
-- **No model files to hunt down** — the config plugin fetches, verifies, and installs one
-- **Zero peer dependencies** — no VisionCamera, no Reanimated; old and new architecture
-- **Zero bridge cost by default** — data crossing to JS is opt-in
-- **Logic runs natively** — declare thresholds, get called once per event
-- **Tunes itself** — measures the device, settles on the fastest sustainable config, remembers it
+- **No model files to hunt down**: the config plugin fetches, verifies, and installs one
+- **Zero peer dependencies**: no VisionCamera, no Reanimated; old and new architecture
+- **Zero bridge cost by default**: data crossing to JS is opt-in
+- **Logic runs natively**: declare thresholds, get called once per event
+- **Tunes itself**: measures the device, settles on the fastest sustainable config, remembers it
 
 ## Requirements
 
 React Native 0.74+ · Expo SDK 51+ · iOS 15.1+ · Android API 24+
 
-**Expo Go is not supported** — this package contains native code.
+**Expo Go is not supported**. This package contains native code.
 
 ## Documentation
 

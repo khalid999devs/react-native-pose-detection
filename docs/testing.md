@@ -6,13 +6,13 @@ MediaPipe's GPU delegate behaves differently on them.
 ## Layers
 
 | Layer | Runs where | Covers |
-|---|---|---|
+| --- | --- | --- |
 | Unit (JS) | node | trigger validation, wire-format accessors, type guards |
 | Unit (native) | XCTest / JUnit | condition evaluator, geometry, calibration state machine |
 | Integration | device | camera lifecycle, switching, model loading |
 | Regression | device, CI | memory, leaks, thermal, calibration convergence |
 
-The condition evaluator is implemented twice — Swift and Kotlin. **Both implementations must
+The condition evaluator is implemented twice, Swift and Kotlin. **Both implementations must
 produce identical output for identical input.** Shared fixture files drive both test suites;
 a divergence is a bug even if each side looks correct on its own.
 
@@ -35,7 +35,7 @@ detection state preserved.
 
 ### Calibration convergence
 
-Settles within 3 s on low, mid, and high tier devices. Cache is honored on relaunch — second
+Settles within 3 s on low, mid, and high tier devices. Cache is honored on relaunch, second
 launch reports `source: 'cache'`.
 
 ### Thermal ladder
@@ -49,7 +49,7 @@ Profiler-verified: no allocations in steady state with `data.mode: 'off'`.
 ## CI matrix
 
 | Axis | Values |
-|---|---|
+| --- | --- |
 | Platform | iOS, Android |
 | Install | Expo prebuild, bare |
 | Architecture | old, new |
@@ -70,7 +70,7 @@ __fixtures__/
   jump-flight.json   both ankles off ground
 ```
 
-Add a fixture rather than hand-building landmark arrays in a test — fixtures are shared across
+Add a fixture rather than hand-building landmark arrays in a test, fixtures are shared across
 both platforms and keep the two evaluators honest.
 
 ## Reporting a failure

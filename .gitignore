@@ -1,5 +1,5 @@
 # ══════════════════════════════════════════════════════════════════
-#  Private — never published, never committed
+#  Private: never published, never committed
 # ══════════════════════════════════════════════════════════════════
 ideation/
 
@@ -35,7 +35,7 @@ out/
 
 
 # ══════════════════════════════════════════════════════════════════
-#  Models — fetched at prebuild, never committed (ADR 0002)
+#  Models: fetched at prebuild, never committed (ADR 0002)
 # ══════════════════════════════════════════════════════════════════
 *.task
 *.tflite

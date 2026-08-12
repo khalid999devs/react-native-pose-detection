@@ -12,11 +12,11 @@ npx react-native-pose-detection <command>
 npx react-native-pose-detection fetch-model full
 ```
 
-Downloads, verifies, and installs into both native projects. Same steps as the config plugin —
+Downloads, verifies, and installs into both native projects. Same steps as the config plugin,
 including removing any previously installed model.
 
 | Flag | Notes |
-|---|---|
+| --- | --- |
 | `--force` | re-download even on a cache hit |
 | `--cache-dir <path>` | override the cache location |
 | `--ios-only` / `--android-only` | install into one platform |

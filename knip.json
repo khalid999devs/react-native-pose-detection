@@ -6,5 +6,6 @@
     "packages/core": {
       "entry": ["src/index.ts"]
     }
-  }
+  },
+  "ignore": ["**/.eslintrc.js"]
 }

@@ -3,7 +3,7 @@
 Real-time pose detection for React Native and Expo. 33 body landmarks, iOS and Android,
 powered by MediaPipe.
 
-> **Pre-release — not yet published.** Follow along in the [development plan](./docs/development-plan.md).
+> **Pre-release, not yet published.** Follow along in the [development plan](./docs/development-plan.md).
 
 ```bash
 npm i react-native-pose-detection
@@ -29,7 +29,7 @@ with **zero data crossing to JavaScript**.
 ## Why this one
 
 | | |
-|---|---|
+| --- | --- |
 | **No model files to hunt down** | The config plugin fetches, verifies, and installs the model. Other libraries make you download a `.task` by hand and place it in two native folders. |
 | **Zero peer dependencies** | No VisionCamera, no Reanimated. Works on both old and new architecture. |
 | **Zero bridge cost by default** | Landmarks stay native. Data crossing to JS is something you opt into. |
@@ -40,13 +40,13 @@ with **zero data crossing to JavaScript**.
 ## Requirements
 
 | | |
-|---|---|
+| --- | --- |
 | React Native | 0.74+ |
 | Expo SDK | 51+ (development build or EAS) |
 | iOS | 15.1+ |
 | Android | API 24+ |
 
-**Expo Go is not supported** — this package contains native code. Use a
+**Expo Go is not supported**. This package contains native code. Use a
 [development build](https://docs.expo.dev/develop/development-builds/introduction/).
 
 Full setup, including bare React Native: [installation guide](./guides/installation.md).
@@ -83,8 +83,8 @@ Nothing crosses until you ask. Pick the cheapest mode that does the job:
 ```
 
 | Mode | Crossings/sec | Data loss |
-|---|---|---|
-| `off` *(default)* | 0 | — |
+| --- | --- | --- |
+| `off` *(default)* | 0 | n/a |
 | `batched` | 2 | none |
 | `throttled` | 10 | intermediate frames |
 | `live` | 30 | none |
@@ -93,10 +93,10 @@ Nothing crosses until you ask. Pick the cheapest mode that does the job:
 
 ## Choosing a model
 
-One model ships — whichever you select.
+One model ships, whichever you select.
 
 | Model | Android installed | Best for |
-|---|---|---|
+| --- | --- | --- |
 | `lite` | ~19.7 MB | budget Android, high frame rates |
 | `full` *(default)* | ~23.2 MB | most apps |
 | `heavy` | ~43.4 MB | accuracy-critical, flagships |
@@ -106,10 +106,10 @@ Changing it is one word in `app.json` plus `npx expo prebuild`.
 
 ## Documentation
 
-**[📘 Guides →](./guides/README.md)** — everything for using the library
+**[📘 Guides →](./guides/README.md)**, everything for using the library
 
 | | |
-|---|---|
+| --- | --- |
 | [Getting started](./guides/getting-started.md) | Install → live skeleton |
 | [Installation](./guides/installation.md) | Expo, bare RN, EAS, release builds |
 | [Camera control](./guides/camera-control.md) | Switching, pausing, the three toggles |
@@ -126,8 +126,8 @@ Changing it is one word in `app.json` plus `npx expo prebuild`.
 
 Four decisions are yours; the rest is automatic.
 
-1. **Keep `data.mode: 'off'` and use triggers** — the single biggest lever
-2. **Pick `lite` if you target budget Android** — 5.5 MB and noticeably faster
+1. **Keep `data.mode: 'off'` and use triggers**, the single biggest lever
+2. **Pick `lite` if you target budget Android**, 5.5 MB and noticeably faster
 3. **Use `select`** to compute only the joints you need
 4. **Set `active={isFocused}`** so the camera stops when the screen isn't visible
 
@@ -135,7 +135,7 @@ Details in the [performance guide](./guides/performance.md).
 
 ## Contributing
 
-Contributions are welcome — especially device testing on hardware we don't have.
+Contributions are welcome, especially device testing on hardware we don't have.
 
 **[🛠 Developer documentation →](./docs/README.md)**
 
@@ -147,17 +147,17 @@ commit      feat(triggers): add velocityY condition
 PR title    feat(triggers): add velocityY condition
 ```
 
-Same type, same scope, everywhere — enforced by commitlint and CI.
+Same type, same scope, everywhere, enforced by commitlint and CI.
 
 | | |
-|---|---|
+| --- | --- |
 | [Branches & workflow](./docs/contributing.md#workflow) | naming, rebasing, protected `main` |
 | [Commit rules](./docs/contributing.md#commits) | types, scopes, breaking changes |
 | [Pull requests](./docs/contributing.md#pull-requests) | title format, checklists, what CI runs |
 | [Quality gates](./docs/quality-gates.md) | `npm run check` before you push |
 | [Project structure](./docs/project-structure.md) | where things go |
 | [Architecture](./docs/architecture.md) | the native pipeline |
-| [ADRs](./docs/adr/README.md) | why decisions were made — read before proposing a reversal |
+| [ADRs](./docs/adr/README.md) | why decisions were made: read before proposing a reversal |
 
 ## License
 

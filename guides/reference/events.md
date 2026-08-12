@@ -1,7 +1,7 @@
 # Events
 
 | Callback | Fires | Rate |
-|---|---|---|
+| --- | --- | --- |
 | `onReady` | camera + detector up | once |
 | `onError` | a failure occurred | rare |
 | `onCameraChange` | switch complete and stable | per switch |
@@ -38,13 +38,13 @@ type ErrorEvent = {
 ```
 
 | Code | Fatal | Meaning |
-|---|---|---|
+| --- | --- | --- |
 | `PERMISSION_DENIED` | ✅ | Camera permission refused |
 | `MODEL_NOT_FOUND` | ✅ | Plugin didn't run, or prebuild was skipped |
 | `CAMERA_UNAVAILABLE` | ✅ | No camera for the requested facing |
 | `DETECTOR_INIT_FAILED` | ✅ | Landmarker could not be created on either delegate |
 | `CAMERA_SWITCH_FAILED` | ❌ | Rolled back to the previous camera |
-| `GPU_UNAVAILABLE` | ❌ | Fell back to CPU — expect lower frame rates |
+| `GPU_UNAVAILABLE` | ❌ | Fell back to CPU: expect lower frame rates |
 | `DETECTION_FAILED` | ❌ | A single frame failed; the pipeline continues |
 
 `fatal: false` is normal operation, not a bug. Only `fatal: true` means the camera stopped.
@@ -69,7 +69,7 @@ type PerformanceEvent = {
 };
 ```
 
-Fires on every automatic adjustment. Still fires under `thermalPolicy="off"` — the library
+Fires on every automatic adjustment. Still fires under `thermalPolicy="off"`, the library
 stops acting, never stops reporting.
 
 ## `onTrigger`
@@ -92,5 +92,5 @@ onPose?: (frame: PoseFrame) => void;
 onPoseBatch?: (frames: PoseFrame[]) => void;
 ```
 
-Mutually exclusive — `data.mode` decides which fires. Passing the wrong one is a no-op and
+Mutually exclusive, `data.mode` decides which fires. Passing the wrong one is a no-op and
 warns in development.

@@ -6,9 +6,9 @@ biggest performance decision you'll make.
 ## Modes
 
 | Mode | Crossings/sec | Data loss | Fires |
-|---|---|---|---|
-| `off` *(default)* | **0** | — | nothing |
-| `triggers` | ~1 per event | — | `onTrigger` |
+| --- | --- | --- | --- |
+| `off` *(default)* | **0** | n/a | nothing |
+| `triggers` | ~1 per event | n/a | `onTrigger` |
 | `batched` | **2** | none | `onPoseBatch` |
 | `throttled` | 10 | intermediate frames dropped | `onPose` |
 | `live` | 30 | none | `onPose` |
@@ -43,7 +43,7 @@ data={{
 }}
 ```
 
-A full frame is 33 landmarks × 4 floats = 528 bytes. Most rep counters need three joints —
+A full frame is 33 landmarks × 4 floats = 528 bytes. Most rep counters need three joints,
 about 36 bytes. `select` also drives **lazy angle computation**: only the joints you name are
 computed natively, so trimming the payload also reduces per-frame CPU.
 
@@ -58,7 +58,7 @@ function handle(frame: PoseFrame) {
 }
 ```
 
-`frame.landmarks` is a `Float32Array`, not an array of objects — see
+`frame.landmarks` is a `Float32Array`, not an array of objects, see
 [types](./reference/types.md#wire-format).
 
 ## Batch consumers
@@ -73,4 +73,4 @@ onPoseBatch={(frames) => {
 ```
 
 The native buffer is bounded. If a consumer stalls, the oldest frames are dropped and counted
-rather than allowed to grow — memory is never traded for throughput.
+rather than allowed to grow, memory is never traded for throughput.

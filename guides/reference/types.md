@@ -15,7 +15,7 @@ type PoseFrame = {
 };
 ```
 
-Only fields enabled in `data` are populated. Angles are computed lazily — if your triggers
+Only fields enabled in `data` are populated. Angles are computed lazily, if your triggers
 and `select` reference two joints, two angles are computed, not ten.
 
 ### Wire format
@@ -23,7 +23,7 @@ and `select` reference two joints, two angles are computed, not ten.
 Landmarks cross as a `Float32Array` over an ArrayBuffer, not JSON.
 
 | Encoding | Bytes/frame | Parse cost |
-|---|---|---|
+| --- | --- | --- |
 | JSON objects × 33 | ~3,000 | high |
 | `Float32Array` | **528** | ~zero |
 
@@ -33,7 +33,7 @@ by hand:
 ```ts
 import { landmark } from 'react-native-pose-detection';
 
-const knee = landmark(frame, 'leftKnee');   // { x, y, z, visibility } — no copy
+const knee = landmark(frame, 'leftKnee');   // { x, y, z, visibility }: no copy
 ```
 
 Coordinates are normalized `0…1` relative to the **analysis frame**, origin top-left.

@@ -16,7 +16,7 @@
 ## Options
 
 | Option | Type | Default | Notes |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `model` | `'lite' \| 'full' \| 'heavy'` | `'full'` | exactly one is installed |
 | `cameraPermissionText` | `string` | generic | `NSCameraUsageDescription` |
 | `cacheDir` | `string` | `~/.cache/react-native-pose-detection` | |
@@ -39,7 +39,7 @@ Step 4 is why switching variants never leaves two models in the build.
 ## Model sizes
 
 | Model | Adds to app | Best for |
-|---|---|---|
+| --- | --- | --- |
 | `lite` | ~5.5 MB | budget Android, high frame rates |
 | `full` | ~9.0 MB | most apps |
 | `heavy` | ~29.2 MB | accuracy-critical, flagships |
@@ -52,5 +52,5 @@ so you can place the file manually.
 ## CI
 
 Cache `~/.cache/react-native-pose-detection` between runs to skip the download. On EAS,
-prebuild runs inside the build container — the download happens there, once per build unless
+prebuild runs inside the build container. The download happens there, once per build unless
 you cache it.

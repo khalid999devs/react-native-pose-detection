@@ -3,14 +3,14 @@
 ## Requirements
 
 | | |
-|---|---|
+| --- | --- |
 | React Native | 0.74+ |
 | Expo SDK | 51+ (dev client or EAS Build) |
 | iOS | 15.1+ |
 | Android | API 24+ |
 | Architecture | old and new both supported |
 
-**Expo Go is not supported** and never will be — this package contains native code.
+**Expo Go is not supported** and never will be. This package contains native code.
 
 ## Expo
 
@@ -55,7 +55,7 @@ cd ios && pod install
 <string>We use the camera to analyse your movement.</string>
 ```
 
-`ios/Podfile` — deployment target 15.1 or higher:
+`ios/Podfile`, deployment target 15.1 or higher:
 
 ```ruby
 platform :ios, '15.1'
@@ -83,12 +83,12 @@ npx react-native-pose-detection doctor
 
 ## EAS Build
 
-Works with no extra configuration — prebuild runs in the build container and the plugin fetches
+Works with no extra configuration, prebuild runs in the build container and the plugin fetches
 the model there. Cache `~/.cache/react-native-pose-detection` to skip the download between builds.
 
 ## Android release builds
 
-**Ship an AAB.** A universal APK bundles arm64 + armeabi-v7a + x86 — 40.3 MB of native
+**Ship an AAB.** A universal APK bundles arm64 + armeabi-v7a + x86, 40.3 MB of native
 libraries instead of 12.4 MB. If you must ship an APK:
 
 ```groovy

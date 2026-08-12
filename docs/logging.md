@@ -11,18 +11,18 @@ crosses to JavaScript.
 That constraint drives the whole design: **log calls take a closure, never a built string.**
 
 ```kotlin
-// Kotlin — inline + lambda: when disabled the lambda is never invoked and
+// Kotlin: inline + lambda: when disabled the lambda is never invoked and
 // inlining erases the allocation entirely
 log(DEBUG, CAMERA) { "switch complete in ${elapsed}ms, gen=$generation" }
 ```
 
 ```swift
-// Swift — @autoclosure defers evaluation to the same effect
+// Swift: @autoclosure defers evaluation to the same effect
 log(.debug, .camera, "switch complete in \(elapsed)ms, gen=\(generation)")
 ```
 
 ```kotlin
-// WRONG — builds the string whether or not logging is on
+// WRONG: builds the string whether or not logging is on
 log(DEBUG, CAMERA, "switch complete in ${elapsed}ms")
 ```
 
@@ -32,16 +32,16 @@ silently turns a free feature into a per-frame cost.
 ## Levels and categories
 
 | Level | Use for |
-|---|---|
+| --- | --- |
 | `off` *(default)* | production |
 | `error` | something failed and the user should know |
-| `warn` | degraded but running — GPU fallback, dropped frames |
-| `info` | lifecycle — camera opened, model loaded, calibration settled |
-| `debug` | state transitions — switch phases, trigger phases, thermal steps |
-| `trace` | per-frame — timings, landmark counts. **Expect volume.** |
+| `warn` | degraded but running: GPU fallback, dropped frames |
+| `info` | lifecycle: camera opened, model loaded, calibration settled |
+| `debug` | state transitions: switch phases, trigger phases, thermal steps |
+| `trace` | per-frame: timings, landmark counts. **Expect volume.** |
 
 | Category | Emitted by |
-|---|---|
+| --- | --- |
 | `camera` | capture, lifecycle, switching |
 | `detector` | landmarker init, delegate selection, inference errors |
 | `engine` | geometry, smoothing, emission decisions |
@@ -72,16 +72,16 @@ enabled, so native-only debugging works without a JS listener attached.
 ## Implementation notes
 
 - The level mask is a single atomic int: 3 bits of level × 7 categories. One compare per call site.
-- Changing the level is a write to that int — no re-initialization, safe at any time.
+- Changing the level is a write to that int, no re-initialization, safe at any time.
 - Timestamps come from the same monotonic clock as `PoseFrame.timestamp`, so logs and frames
   can be correlated.
 - `plugin` logs come from Node at build time and never reach the runtime channel.
 - Logging must never change behavior. If a bug disappears at `trace`, the log calls are doing
-  work — that's the bug.
+  work, that's the bug.
 
 ## Testing
 
-- Assert zero allocations in the frame path with logging `off` **and** at `error` — level checks
+- Assert zero allocations in the frame path with logging `off` **and** at `error`, level checks
   must not allocate at any disabled level
 - Assert bounded memory under sustained `trace` with no listener attached
 - Assert `droppedCount` is reported rather than the buffer growing
