@@ -69,7 +69,9 @@ they're listed separately because their exit criteria are independent.
 
 **Goal:** `npx expo prebuild` puts the right model in both native projects. No manual steps.
 
-- [ ] Model manifest: URL + SHA-256 + byte size for lite / full / heavy
+- [ ] Model manifest: URL + SHA-256 + byte size for lite / full / heavy. Values are already
+      verified and recorded in [ADR 0004](./adr/0004-pin-model-revision-not-latest.md),
+      pin `/float16/1/`, never `latest`
 - [ ] Downloader: cache at `~/.cache/react-native-pose-detection/`, verify, resume, clear progress output
 - [ ] Config plugin
   - [ ] `withDangerousMod` copy into `android/app/src/main/assets/`
