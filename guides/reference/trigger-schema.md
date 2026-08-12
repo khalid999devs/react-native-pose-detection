@@ -2,9 +2,7 @@
 
 Conceptual guide: [guides/triggers.md](../triggers.md).
 
-The schema and its validator are done. The native evaluator is **not built yet** on either
-platform, so a trigger you pass today is type-checked, validated and handed to the view, and it
-never fires. Everything on this page describes the contract both halves are written against.
+**Android runs these.** iOS has no module yet.
 
 ## `Trigger`
 
@@ -57,6 +55,9 @@ is a validation error rather than one of them being silently ignored.
 | `velocityX` / `velocityY` | normalized units per second |
 | `visibility` | 0 to 1 |
 
+`below` and `above` are **strict**: `below: 90` means `< 90`. `between` is **inclusive** at both
+ends, because it names the range you want to be inside rather than a boundary you want to be past.
+
 `between` is angle-only. On a landmark or velocity condition it is rejected rather than ignored,
 because those are unbounded scales where a range is better written as `below` plus `above` and a
 silently dropped key is worse than a message.
@@ -77,8 +78,17 @@ ACTIVE + exit  matches → IDLE    ; count++ ; emit if 'cycle' or 'exit'
 ACTIVE + still matches → emit if 'while' (throttled)
 ```
 
-- `debounceMs` suppresses re-entry after a fire
-- `minDurationMs` requires the condition to hold before the state change counts
+- `debounceMs` suppresses re-entry after a fire. It does not suspend measurement: the condition
+  keeps being evaluated, it just cannot fire again until the window passes
+- `minDurationMs` requires the condition to hold before the state change counts, on **both**
+  transitions. The hold has to be continuous, so a frame where it stops matching restarts the clock
+- **With no `exit`, leaving `enter` is what returns the trigger to idle.** Otherwise a trigger with
+  only an `enter` would go active once and have nothing that could ever fire it again
+- A frame with no pose in it breaks a hold without ending an active trigger. Somebody who steps out
+  of shot mid-rep has not finished the rep, and has not abandoned it either
+- A value nobody could measure never matches. A collinear angle, a velocity with no previous frame:
+  those are `NaN`, and every comparison against `NaN` is false. See
+  [types](./types.md#poseframe)
 - With `maxPoses > 1`, evaluation runs against the primary pose, largest bounding box, ties
   broken by distance from frame center
 - `count` resets on unmount, **not** on camera switch

@@ -167,10 +167,12 @@ one, and the log channel writes to Logcat only.
       asks for, resolved during render and sent to native as a prop. Naming a joint in
       `data.select`, or as a comparison bound, is a position and does not turn its angle on
 - [ ] One-Euro smoothing filter
-- [ ] Trigger evaluator: state machine per trigger, debounce, `minDurationMs`, snapshot capture
-- [ ] Condition evaluator: `angle`, `landmarkX/Y` (absolute + joint-relative), `velocityX`,
-      `velocityY`, `visibility`, `all`, `any`. The whole `Condition` union, so nothing typed and
-      validated on the JS side reaches an evaluator that silently ignores it
+- [x] Trigger evaluator (Android): state machine per trigger, debounce, `minDurationMs`, all four
+      emit modes, and snapshot capture through a bounded ticket store. Counts carry across a props
+      update by id, since a re-render is not an unmount
+- [x] Condition evaluator (Android): `angle`, `landmarkX/Y` (absolute + joint-relative),
+      `velocityX`, `velocityY`, `visibility`, `all`, `any`. The whole `Condition` union, so nothing
+      typed and validated on the JS side reaches an evaluator that silently ignores it
 - [ ] Emission: `off` / `throttled` / `batched` (bounded buffer, drop-oldest + count) / `live`
   - [x] **Delivery mechanism settled**, [ADR 0008](./adr/0008-frames-are-drained-not-pushed.md).
         Events cannot carry an ArrayBuffer through Expo Modules, function returns can, so native
@@ -181,10 +183,9 @@ one, and the log channel writes to Logcat only.
   - [x] **Trigger snapshots claimed, not carried**,
         [ADR 0009](./adr/0009-trigger-snapshots-are-claimed.md). A frame cannot ride an event
         either, so native sends a ticket and `<PoseCamera>` redeems it before calling `onTrigger`
-  - [x] Native side (Android): the ring buffer, `drainFrames`, `snapshotFrame`. Bounded at 64
-        frames, drop-oldest with a count, storage allocated per layout and reused, one direct
-        buffer per drain in native byte order. `takeTriggerSnapshot` returns empty until there is
-        an evaluator to mint a ticket, which is the contract's unknown-ticket case
+  - [x] Native side (Android): the ring buffer, `drainFrames`, `snapshotFrame`,
+        `takeTriggerSnapshot`. Bounded at 64 frames, drop-oldest with a count, storage allocated
+        per layout and reused, one direct buffer per drain in native byte order
 - [ ] Calibration
   - [ ] Stage 1 static probe → tier, biased one step conservative
   - [ ] Stage 2 measured convergence, hysteresis + 3 s cooldown
@@ -208,16 +209,16 @@ one, and the log channel writes to Logcat only.
 is cached across launches. Zero steady-state allocations in the frame path (profiler-verified)
 with logging both `off` and at `error`.
 
-**Status: frames flow on Android.**
+**Status: frames flow and triggers fire on Android.**
 `<PoseCamera>` exists and is wired to the native view, frames decode zero-copy, the angle set is
 resolved from props during render, triggers are validated before native sees them, and the
 delivery question that blocked everything is answered twice over, once for frames and once for
 trigger snapshots. `npm test` covers the wire format, the accessors under a narrowed buffer, and
 every rejection path in the validator.
 
-What remains is the One-Euro filter, both evaluators, calibration, the thermal ladder, static
-input, and the log channel. Until those land no trigger fires and `detectOnImage` /
-`detectOnVideo` do not exist. `onPose` and `onPoseBatch` do fire, on Android.
+What remains is the One-Euro filter, calibration, the thermal ladder, static input, and the log
+channel. `onPose`, `onPoseBatch` and `onTrigger` all fire on Android; `detectOnImage` and
+`detectOnVideo` do not exist yet.
 
 `setProfile` and `getProfile` on the ref throw until calibration lands. They are the only two
 public methods that do. Everything else that reaches native returns a promise that resolves

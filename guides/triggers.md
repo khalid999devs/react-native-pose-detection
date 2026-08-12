@@ -1,8 +1,6 @@
 # Triggers
 
-*Not built yet: the schema, the validator and the event plumbing are done, the native
-evaluator that runs the state machine is not. Configs you write today are checked but never
-fire.*
+*Android runs these. iOS has no module yet, so nothing here fires on iOS.*
 
 Business logic that runs natively, at frame rate, and crosses the bridge only when something
 actually happens.

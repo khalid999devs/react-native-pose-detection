@@ -125,6 +125,17 @@ internal class FrameRingBuffer {
     private var latestProcessingMs = 0.0
     private var hasLatest = false
 
+    /**
+     * Frames held for a trigger to claim, see ADR 0009. Bounded and overwritten oldest-first: a
+     * JavaScript side that stops redeeming must cost a fixed amount of memory, not a growing one.
+     */
+    private val ticketIds = IntArray(TICKETS)
+    private var ticketFrames = Array(TICKETS) { FloatArray(0) }
+    private val ticketTimestamps = DoubleArray(TICKETS)
+    private val ticketProcessing = DoubleArray(TICKETS)
+    private var ticketCursor = 0
+    private var nextTicket = 1
+
     /** Frames already buffered cannot be re-encoded under a new stride, so a change clears them. */
     fun setLayout(next: FrameShape) {
         synchronized(lock) {
@@ -138,6 +149,7 @@ internal class FrameRingBuffer {
                 meta = DoubleArray(CAPACITY * Wire.FRAME_META_FLOAT64S)
             }
             if (latest.size != stride) latest = FloatArray(stride)
+            if (ticketFrames[0].size != stride) ticketFrames = Array(TICKETS) { FloatArray(stride) }
             reset()
         }
     }
@@ -159,6 +171,45 @@ internal class FrameRingBuffer {
         count = 0
         dropped = 0
         hasLatest = false
+        // A ticket minted under the old stride cannot be encoded under the new one.
+        ticketIds.fill(0)
+    }
+
+    /**
+     * Holds [frame] and returns the ticket that claims it. Zero means the layout is not ready, and
+     * the caller sends no `snapshotId` rather than one that redeems to nothing.
+     */
+    fun mintSnapshot(
+        frame: FloatArray,
+        timestampMs: Double,
+        processingMs: Double,
+    ): Int {
+        synchronized(lock) {
+            if (stride == 0 || frame.size < stride) return 0
+
+            val ticket = nextTicket
+            nextTicket += 1
+
+            ticketIds[ticketCursor] = ticket
+            System.arraycopy(frame, 0, ticketFrames[ticketCursor], 0, stride)
+            ticketTimestamps[ticketCursor] = timestampMs
+            ticketProcessing[ticketCursor] = processingMs
+            ticketCursor = (ticketCursor + 1) % TICKETS
+
+            return ticket
+        }
+    }
+
+    /** Claims a ticket, once. An unknown or spent one is an empty buffer, never an error. */
+    fun takeSnapshot(ticket: Int): ByteBuffer {
+        synchronized(lock) {
+            val layout = this.layout ?: return emptyBuffer()
+            val slot = ticketIds.indexOf(ticket)
+            if (ticket == 0 || slot < 0) return emptyBuffer()
+
+            ticketIds[slot] = 0
+            return encodeOne(layout, ticketFrames[slot], ticketTimestamps[slot], ticketProcessing[slot])
+        }
     }
 
     /**
@@ -233,16 +284,25 @@ internal class FrameRingBuffer {
             val layout = this.layout ?: return emptyBuffer()
             if (!hasLatest) return emptyBuffer()
 
-            val buffer = allocate(layout, 1, 0)
-            val doubles = buffer.asDoubleBuffer()
-            doubles.position(Wire.HEADER_FLOAT64S)
-            doubles.put(latestTimestamp)
-            doubles.put(latestProcessingMs)
-
-            bodyView(buffer, 1).put(latest, 0, stride)
-            buffer.rewind()
-            return buffer
+            return encodeOne(layout, latest, latestTimestamp, latestProcessingMs)
         }
+    }
+
+    private fun encodeOne(
+        layout: FrameShape,
+        frame: FloatArray,
+        timestampMs: Double,
+        processingMs: Double,
+    ): ByteBuffer {
+        val buffer = allocate(layout, 1, 0)
+        val doubles = buffer.asDoubleBuffer()
+        doubles.position(Wire.HEADER_FLOAT64S)
+        doubles.put(timestampMs)
+        doubles.put(processingMs)
+
+        bodyView(buffer, 1).put(frame, 0, stride)
+        buffer.rewind()
+        return buffer
     }
 
     private fun allocate(
@@ -287,5 +347,8 @@ internal class FrameRingBuffer {
     companion object {
         /** Two seconds at 30 fps, which is longer than any stall a drain recovers from. */
         private const val CAPACITY = 64
+
+        /** Unredeemed tickets past this many are overwritten. Redemption is one microtask away. */
+        private const val TICKETS = 8
     }
 }

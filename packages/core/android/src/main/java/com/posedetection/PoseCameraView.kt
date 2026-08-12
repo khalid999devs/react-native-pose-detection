@@ -41,6 +41,9 @@ class PoseCameraView(
     /** Carries nothing. JavaScript answers it with `drainFrames()`, see ADR 0008. */
     private val onFrames by EventDispatcher<Map<String, Any?>>()
 
+    /** Scalars plus a claim ticket. The frame cannot ride it, see ADR 0009. */
+    private val onTrigger by EventDispatcher<Map<String, Any?>>()
+
     private val previewView =
         PreviewView(context).apply {
             implementationMode = PreviewView.ImplementationMode.PERFORMANCE
@@ -110,6 +113,15 @@ class PoseCameraView(
     private val worldBuffer = FloatArray(Skeleton.LANDMARK_COUNT * Skeleton.LANDMARK_STRIDE)
 
     private val frames = FrameRingBuffer()
+    private val triggers = TriggerEngine()
+
+    /** Reused across frames: this is the inference path, and a per-frame allocation here is one everywhere. */
+    private val frameContext = FrameContext()
+    private val firings = ArrayList<TriggerFiring>(4)
+
+    /** Velocity conditions read a joint's own movement, which needs the frame before this one. */
+    private val previousLandmarks = FloatArray(Skeleton.LANDMARK_COUNT * Skeleton.LANDMARK_STRIDE)
+    private var hasPreviousLandmarks = false
 
     /**
      * Reassigned on the main thread when the layout changes, read on the inference thread. Volatile
@@ -248,6 +260,12 @@ class PoseCameraView(
 
     internal fun setSelection(indices: IntArray?) {
         propSelection = indices
+    }
+
+    internal fun setTriggers(specs: List<TriggerSpec>) {
+        // Not deferred to onPropsUpdated: the engine carries counts across by id, so applying it
+        // twice would be harmless but applying it late would evaluate one frame against the old set.
+        triggers.setTriggers(specs)
     }
 
     /** Runs once per prop batch. Only a resolution change takes the rebind path. */
@@ -539,6 +557,7 @@ class PoseCameraView(
             // someone left and came back is not a speed anybody moved at.
             frames.clearLatest()
             resetVelocity()
+            triggers.onPoseLost()
             return
         }
 
@@ -572,6 +591,7 @@ class PoseCameraView(
         previousComX = Float.NaN
         previousComY = Float.NaN
         previousFrameMs = 0.0
+        hasPreviousLandmarks = false
     }
 
     /**
@@ -623,7 +643,8 @@ class PoseCameraView(
 
         // Same monotonic clock the log channel stamps entries with, so a log line maps to the frame
         // that caused it. It is when the pose became known, not when the sensor exposed it.
-        val timestampMs = SystemClock.elapsedRealtime().toDouble()
+        val nowMs = SystemClock.elapsedRealtime()
+        val timestampMs = nowMs.toDouble()
 
         Geometry.centerOfMass(landmarkBuffer, scratch, cursor)
         val comX = scratch[cursor]
@@ -634,7 +655,9 @@ class PoseCameraView(
         // real, the difference between them is not a movement that happened at that speed.
         val elapsedMs = timestampMs - previousFrameMs
         val elapsedSeconds = elapsedMs / MILLIS_PER_SECOND
-        if (previousFrameMs > 0.0 && elapsedSeconds > 0.0 && elapsedMs <= MAX_VELOCITY_GAP_MS) {
+        val comparable = previousFrameMs > 0.0 && elapsedSeconds > 0.0 && elapsedMs <= MAX_VELOCITY_GAP_MS
+
+        if (comparable) {
             scratch[cursor] = ((comX - previousComX) / elapsedSeconds).toFloat()
             scratch[cursor + 1] = ((comY - previousComY) / elapsedSeconds).toFloat()
         } else {
@@ -645,17 +668,90 @@ class PoseCameraView(
         }
         cursor += 2
 
+        val velocityX = scratch[cursor - 2]
+        val velocityY = scratch[cursor - 1]
         scratch[cursor] = Geometry.bodySpan(landmarkBuffer)
-
-        previousComX = comX
-        previousComY = comY
-        previousFrameMs = timestampMs
 
         val dispatchNanos = detector?.dispatchNanosFor(result.timestampMs()) ?: 0L
         val processingMs =
             if (dispatchNanos == 0L) 0.0 else (System.nanoTime() - dispatchNanos) / NANOS_PER_MILLI
 
+        evaluateTriggers(
+            nowMs = nowMs,
+            timestampMs = timestampMs,
+            processingMs = processingMs,
+            scratch = scratch,
+            comX = comX,
+            comY = comY,
+            velocityX = velocityX,
+            velocityY = velocityY,
+            elapsedSeconds = if (comparable) elapsedSeconds.toFloat() else Float.NaN,
+            frameWidth = frameWidth,
+            frameHeight = frameHeight,
+        )
+
+        System.arraycopy(landmarkBuffer, 0, previousLandmarks, 0, landmarkBuffer.size)
+        hasPreviousLandmarks = true
+
+        previousComX = comX
+        previousComY = comY
+        previousFrameMs = timestampMs
+
         deliver(scratch, timestampMs, processingMs)
+    }
+
+    /**
+     * Runs before the frame is delivered, because a `snapshot: true` trigger claims the frame it
+     * fired on and that has to be this one rather than whatever is current when JavaScript asks.
+     */
+    @Suppress("LongParameterList")
+    private fun evaluateTriggers(
+        nowMs: Long,
+        timestampMs: Double,
+        processingMs: Double,
+        scratch: FloatArray,
+        comX: Float,
+        comY: Float,
+        velocityX: Float,
+        velocityY: Float,
+        elapsedSeconds: Float,
+        frameWidth: Int,
+        frameHeight: Int,
+    ) {
+        if (triggers.isEmpty) return
+
+        frameContext.landmarks = landmarkBuffer
+        frameContext.previousLandmarks = if (hasPreviousLandmarks) previousLandmarks else null
+        frameContext.elapsedSeconds = elapsedSeconds
+        frameContext.comX = comX
+        frameContext.comY = comY
+        frameContext.comVelocityX = velocityX
+        frameContext.comVelocityY = velocityY
+        frameContext.frameWidth = frameWidth
+        frameContext.frameHeight = frameHeight
+
+        firings.clear()
+        triggers.evaluate(frameContext, nowMs, firings)
+        if (firings.isEmpty()) return
+
+        for (index in firings.indices) {
+            val firing = firings[index]
+            val ticket =
+                if (firing.wantsSnapshot) frames.mintSnapshot(scratch, timestampMs, processingMs) else 0
+
+            val payload = HashMap<String, Any?>(TRIGGER_PAYLOAD_SLOTS)
+            payload["id"] = firing.id
+            payload["phase"] = firing.phase
+            payload["count"] = firing.count
+            payload["timestamp"] = firing.timestampMs
+            firing.durationMs?.let { payload["durationMs"] = it }
+            // Zero means the frame could not be held, and the event says nothing rather than
+            // handing over a ticket that redeems to an empty buffer.
+            if (ticket != 0) payload["snapshotId"] = ticket
+
+            mainHandler.post { onTrigger(payload) }
+        }
+        firings.clear()
     }
 
     /** The delivery mode decides only two things: whether this frame is kept, and whether to tick. */
@@ -834,12 +930,9 @@ class PoseCameraView(
 
     fun snapshotFrame(): NativeArrayBuffer = NativeArrayBuffer.wrap(frames.snapshot())
 
-    /**
-     * Always empty until the trigger evaluator exists to mint a ticket. The contract already says
-     * an unknown or spent one returns an empty buffer, so this is that case and not a stub.
-     */
-    @Suppress("UNUSED_PARAMETER")
-    fun takeTriggerSnapshot(snapshotId: Int): NativeArrayBuffer = NativeArrayBuffer.wrap(frames.empty())
+    /** An unknown or spent ticket is an empty buffer, which is the documented contract. */
+    fun takeTriggerSnapshot(snapshotId: Int): NativeArrayBuffer =
+        NativeArrayBuffer.wrap(frames.takeSnapshot(snapshotId))
 
     fun currentState(): Map<String, Any?> =
         mapOf(
@@ -1031,6 +1124,9 @@ class PoseCameraView(
 
         /** Six frames at 30 fps. Longer than a stutter, shorter than anything worth measuring across. */
         const val MAX_VELOCITY_GAP_MS = 200.0
+
+        /** id, phase, count, timestamp, and at most durationMs and snapshotId. */
+        const val TRIGGER_PAYLOAD_SLOTS = 6
         val EMPTY_PAYLOAD = emptyMap<String, Any?>()
         val EMPTY_NAMES = emptyArray<String>()
         val EMPTY_INDICES = IntArray(0)
