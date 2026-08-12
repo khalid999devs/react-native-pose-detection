@@ -39,21 +39,26 @@ Bare: add `NSCameraUsageDescription` (iOS) and `android.permission.CAMERA` (Andr
 Not a bug. The device's GPU delegate failed and it fell back to CPU. Expect lower frame rates.
 Check `onReady`'s `delegate` field to confirm which one is running.
 
-## Crash or freeze on x86 emulator
+## `UnsatisfiedLinkError` on an emulator
 
-MediaPipe `0.10.26+` ships **arm64-v8a only**. This package pins `0.10.21`, which includes
-x86. If you've overridden the version, that's why. Use an arm64 emulator image on Apple Silicon.
+This package pins MediaPipe **0.10.35**, which ships all four ABIs including `x86_64`. If you
+have overridden the version down to `0.10.21`, that is the cause: 0.10.21 ships `arm64-v8a`,
+`armeabi-v7a` and 32-bit `x86` and **no `x86_64`**, so on an Intel host the package manager picks
+`x86_64` as the primary ABI and never extracts MediaPipe's library at all. It fails when the
+landmarker is constructed. Undo the override, see
+[ADR 0007](../docs/adr/0007-pin-mediapipe-0-10-35.md).
 
-## iOS build fails linking MediaPipe
+The other way to cause it is `abiFilters` on a debug build. Filter release builds only.
 
-MediaPipe `0.10.33+` has [XCFramework/CocoaPods linking issues](https://github.com/google-ai-edge/mediapipe/issues/6258).
-This package pins `0.10.21`. Don't override it.
+On Apple Silicon, use an arm64 emulator image, which is what Android Studio gives you by default.
 
-If you use `use_frameworks!`, add:
+## iOS build fails
 
-```ruby
-pod 'ReactNativePoseDetection', :modular_headers => true
-```
+There is no iOS module yet: the package ships no `ios/` sources and no podspec, so nothing of
+this library links on iOS today. The MediaPipe version iOS will use is not settled either;
+0.10.35 is published to CocoaPods but has not been built against, and
+[an open question about XCFramework linking](https://github.com/google-ai-edge/mediapipe/issues/6258)
+is why. See [ADR 0007](../docs/adr/0007-pin-mediapipe-0-10-35.md).
 
 ## `minSdkVersion` error on Android
 
@@ -65,8 +70,8 @@ minSdkVersion = 24
 
 ## App size much larger than documented
 
-You're shipping a universal APK. It bundles all three ABIs, 40.3 MB of native libraries
-instead of 12.4 MB. Ship an AAB, or set:
+You're shipping a universal APK. It carries all four MediaPipe ABI slices, 45.9 MB of native
+library where a phone loads 10.5 MB of it. Ship an AAB, or set this on the release build only:
 
 ```groovy
 ndk { abiFilters "arm64-v8a" }
@@ -81,20 +86,28 @@ ndk { abiFilters "arm64-v8a" }
 
 ## Frame rate lower than expected
 
-Check what calibration actually settled on:
+Calibration is not built yet, so there is nothing settling and `getProfile()` throws. What you
+can change today:
 
-```ts
-cam.current.getProfile();
-```
-
-If `tier` is `low` or the thermal state is elevated, that's the ladder working. Try
-`model: 'lite'`, or pin `profile="quality"` to override, subject to the thermal ladder.
+- the model variant, which is a **build-time** choice and not a prop. Set `"model": "lite"` in
+  the plugin config and re-run `npx expo prebuild`, or run
+  `npx react-native-pose-detection fetch-model lite` on bare RN. See the
+  [config plugin reference](./reference/config-plugin.md)
+- `analysisResolution`, which is what the model actually sees
+- check `onReady`'s `delegate`: on CPU, a lower frame rate is expected
 
 ## Triggers fire twice / not at all
 
-See the tuning table in [recipes.md](./recipes/README.md).
+Not at all is expected right now: the native trigger evaluator is not built, so no trigger fires
+on any device. Configs are still validated, and a bad one throws with the path to the problem.
+
+Once it lands, see the tuning table in [recipes.md](./recipes/README.md).
 
 ## Memory grows over time
 
-Should not happen, report it. Include `getProfile()` output, `data.mode`, `maxPoses`,
-and whether `onPoseBatch` consumers might be retaining frames.
+The usual cause is retained frames. `frame.landmarks` is a view into the buffer a drain
+returned, so keeping one frame keeps the whole batch alive. Copy with `.slice()` if you retain,
+see [data delivery](./data-delivery.md#retaining-frames).
+
+Otherwise report it. Include `getState()` output, `data.mode`, `maxPoses`, and what your
+`onPose` or `onPoseBatch` handler keeps.

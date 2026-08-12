@@ -12,8 +12,10 @@
 }
 ```
 
-```ts
+```tsx
 onTrigger={(e) => {
+  // durationMs is only present on a 'cycle' phase, so it is optional on the event.
+  if (e.durationMs === undefined) return;
   const flightTime = e.durationMs / 1000;
   const heightMeters = (9.81 * (flightTime / 2) ** 2) / 2;
 }}

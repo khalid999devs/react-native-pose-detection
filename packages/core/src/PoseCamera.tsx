@@ -1,60 +1,52 @@
 import * as React from 'react';
 
 import { decodeFrames } from './decodeFrames';
+import type { DecodeOptions } from './decodeFrames';
 import { getNativeView } from './native';
-import type { NativePoseCameraView } from './native';
+import type { NativePoseCameraView, NativeTriggerEvent } from './native';
 import type { AngleJointName, JointName } from './types/joints';
+import { ANGLE_JOINT_NAMES } from './types/joints';
 import type { CameraState } from './types/camera';
 import type { PoseCameraProps, PoseCameraRef } from './types/props';
 import type { CameraChangeEvent, ErrorEvent, PerformanceEvent, ReadyEvent } from './types/events';
 import type { LogEntry } from './types/logging';
-import type { TriggerEvent } from './types/triggers';
+import type { Condition, TriggerEvent } from './types/triggers';
+import { emitLogEntries } from './logging';
 import { assertValidTriggers } from './validation';
-import { collectReferencedJoints, jointsRequiredForAngles, resolveAngleJoints } from './wire';
+import { resolveAngleJoints } from './wire';
 
 type NativeEvent<T> = { nativeEvent: T };
 
-/**
- * Every joint the configuration mentions, from any of the three places that can mention one.
- * This drives both the lazy angle pass and what the landmark buffer carries.
- */
-function referencedJoints(props: PoseCameraProps): Set<string> {
-  const fromTriggers: string[] = [];
-  for (const trigger of props.triggers ?? []) {
-    collectFromCondition(trigger.enter, fromTriggers);
-    if (trigger.exit) collectFromCondition(trigger.exit, fromTriggers);
-  }
+const NO_ANGLES: readonly AngleJointName[] = Object.freeze([]);
 
-  const fromOverlay =
-    typeof props.overlay === 'object' && props.overlay?.angles
-      ? props.overlay.angles.map((angle) => angle.joint)
-      : [];
-
-  return collectReferencedJoints([fromTriggers, fromOverlay, props.data?.select]);
-}
-
-function collectFromCondition(condition: object, into: string[]): void {
+/** Only an `angle` condition needs an angle. A joint used as a bound is a position. */
+function collectAngleJoints(condition: Condition, into: Set<string>): void {
   const record = condition as Record<string, unknown>;
 
-  for (const key of ['angle', 'landmarkX', 'landmarkY', 'visibility'] as const) {
-    const value = record[key];
-    if (typeof value === 'string') into.push(value);
-  }
-  for (const key of ['velocityX', 'velocityY'] as const) {
-    const value = record[key];
-    if (typeof value === 'string' && value !== 'centerOfMass') into.push(value);
-  }
-  // A joint-relative bound names a second joint, and it has to be in the buffer too.
-  for (const key of ['below', 'above'] as const) {
-    const value = record[key];
-    if (typeof value === 'string') into.push(value);
-  }
+  const angle = record['angle'];
+  if (typeof angle === 'string') into.add(angle);
+
   for (const key of ['all', 'any'] as const) {
-    const value = record[key];
-    if (Array.isArray(value)) {
-      for (const member of value) collectFromCondition(member as object, into);
+    const members = record[key];
+    if (Array.isArray(members)) {
+      for (const member of members) collectAngleJoints(member as Condition, into);
     }
   }
+}
+
+/**
+ * Holds one array instance while its contents are unchanged. These props are usually inline
+ * literals, and memoizing on identity would reshape the wire format every render and break the
+ * `WeakMap` accessor cache that keys on `PoseFrame.selection`.
+ */
+function useStableList<T extends string>(value: readonly T[] | undefined): readonly T[] {
+  const key = value === undefined ? '' : value.join(' ');
+  const held = React.useRef<{ key: string; list: readonly T[] } | null>(null);
+
+  if (held.current === null || held.current.key !== key) {
+    held.current = { key, list: Object.freeze(value === undefined ? [] : [...value]) };
+  }
+  return held.current.list;
 }
 
 export const PoseCamera = React.forwardRef<PoseCameraRef, PoseCameraProps>(function PoseCamera(
@@ -64,72 +56,153 @@ export const PoseCamera = React.forwardRef<PoseCameraRef, PoseCameraProps>(funct
   const NativeView = getNativeView();
   const nativeRef = React.useRef<NativePoseCameraView | null>(null);
 
-  const { triggers, data, onPose, onPoseBatch, onTrigger } = props;
+  const { triggers, data, overlay, active, detection } = props;
 
-  // Bad configs fail here with a path, rather than becoming a trigger that never fires.
-  React.useEffect(() => {
-    if (triggers && triggers.length > 0) assertValidTriggers(triggers);
-  }, [triggers]);
+  // During render, before anything walks the conditions: a bad config fails at the call site
+  // with a path. The validator's depth limit makes the walk below safe on a cyclic config.
+  if (triggers && triggers.length > 0) assertValidTriggers(triggers);
 
-  if (__DEV__ && data?.mode === 'batched' && onPose && !onPoseBatch) {
-    console.warn(
-      "react-native-pose-detection: data.mode is 'batched', which delivers onPoseBatch. " +
-        'onPose will not fire.',
-    );
-  }
-  if (__DEV__ && data && data.mode !== 'batched' && data.mode !== 'off' && onPoseBatch) {
-    console.warn(
-      `react-native-pose-detection: data.mode is '${data.mode}', which delivers onPose. ` +
-        'onPoseBatch will not fire.',
-    );
-  }
+  const requestedAngles = data?.angles;
+  const angleJoints = useStableList<AngleJointName>(
+    React.useMemo(() => {
+      if (requestedAngles === true) return ANGLE_JOINT_NAMES;
 
-  // Derived from the props on both sides of the bridge by the same rule, so neither has to
-  // tell the other what the layout is.
-  const angleJoints: readonly AngleJointName[] = React.useMemo(
-    () => resolveAngleJoints(referencedJoints(props)),
-    [props.triggers, props.data?.select, props.overlay],
+      const referenced = new Set<string>(Array.isArray(requestedAngles) ? requestedAngles : []);
+      for (const trigger of triggers ?? []) {
+        collectAngleJoints(trigger.enter, referenced);
+        if (trigger.exit) collectAngleJoints(trigger.exit, referenced);
+      }
+      if (typeof overlay === 'object' && overlay?.angles) {
+        for (const arc of overlay.angles) referenced.add(arc.joint);
+      }
+      return referenced.size === 0 ? NO_ANGLES : resolveAngleJoints(referenced);
+    }, [requestedAngles, triggers, overlay]),
   );
 
-  const selection: readonly JointName[] | undefined = React.useMemo(() => {
-    const select = props.data?.select;
-    if (!select || select.length === 0) return undefined;
-    const required = new Set<JointName>(select);
-    for (const joint of jointsRequiredForAngles(angleJoints)) required.add(joint);
-    return Object.freeze([...required]);
-  }, [props.data?.select, angleJoints]);
+  // Exactly what `data.select` named. Angles are computed from the full landmark set before the
+  // buffer is narrowed, so wanting one never widens the payload. See ADR 0005.
+  const selected = useStableList<JointName>(data?.select);
+  const selection = selected.length > 0 ? selected : undefined;
 
-  const handleFrames = React.useCallback(async () => {
-    const view = nativeRef.current;
-    if (!view) return;
-    if (!onPose && !onPoseBatch) return;
-
-    const buffer = await view.drainFrames();
-    const { frames } = decodeFrames(buffer, {
-      ...(selection ? { selection } : {}),
-      angleJoints,
-    });
-    if (frames.length === 0) return;
-
-    if (onPoseBatch) {
-      onPoseBatch(frames);
-      return;
-    }
-    // Throttled and live deliver one at a time; a drain can still carry more than one if the
-    // JS thread was busy, and dropping the older ones would be a silent lie.
-    for (const frame of frames) onPose?.(frame);
-  }, [onPose, onPoseBatch, selection, angleJoints]);
-
-  // `getState()` and `getProfile()` are synchronous in the public contract, so the last known
-  // values are mirrored here from the events that carry them rather than fetched on call.
+  const decodeOptions = React.useRef<DecodeOptions>({ angleJoints });
+  const callbacks = React.useRef(props);
   const state = React.useRef<CameraState>({
     facing: 'front',
-    active: false,
-    detecting: false,
+    active: active !== false,
+    detecting: detection !== false,
     fps: 0,
     delegate: 'CPU',
     deviceTier: 'medium',
   });
+
+  React.useEffect(() => {
+    decodeOptions.current = { angleJoints, ...(selection ? { selection } : {}) };
+    callbacks.current = props;
+  });
+
+  React.useEffect(() => {
+    state.current = { ...state.current, active: active !== false, detecting: detection !== false };
+  }, [active, detection]);
+
+  React.useEffect(() => {
+    if (!__DEV__) return;
+    const { onPose, onPoseBatch } = callbacks.current;
+    const mode = data?.mode ?? 'off';
+    if (mode === 'batched' && onPose && !onPoseBatch) {
+      console.warn(
+        "react-native-pose-detection: data.mode is 'batched', which delivers onPoseBatch. " +
+          'onPose will not fire.',
+      );
+    }
+    if (mode !== 'batched' && mode !== 'off' && onPoseBatch && !onPose) {
+      console.warn(
+        `react-native-pose-detection: data.mode is '${mode}', which delivers onPose. ` +
+          'onPoseBatch will not fire.',
+      );
+    }
+  }, [data]);
+
+  const reportDecodeError = React.useCallback((message: string) => {
+    callbacks.current.onError?.({ code: 'DETECTION_FAILED', message, fatal: false });
+  }, []);
+
+  const draining = React.useRef(false);
+  const drainAgain = React.useRef(false);
+  const mounted = React.useRef(true);
+
+  React.useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  // One drain at a time: overlapping drains resolve in bridge order and deliver older frames
+  // after newer ones. A tick arriving mid-drain sets the flag instead of starting a second.
+  const drain = React.useCallback(async (): Promise<void> => {
+    if (draining.current) {
+      drainAgain.current = true;
+      return;
+    }
+    draining.current = true;
+    try {
+      do {
+        drainAgain.current = false;
+        const view = nativeRef.current;
+        if (!view || !mounted.current) return;
+
+        const buffer = await view.drainFrames();
+        if (!mounted.current) return;
+
+        const { frames, droppedCount, error } = decodeFrames(buffer, decodeOptions.current);
+        if (error) {
+          reportDecodeError(error);
+          continue;
+        }
+        if (droppedCount > 0) callbacks.current.onFramesDropped?.(droppedCount);
+        if (frames.length === 0) continue;
+
+        const { onPose, onPoseBatch } = callbacks.current;
+        if (onPoseBatch) {
+          onPoseBatch(frames);
+        } else if (onPose) {
+          // A drain can carry more than one when the JavaScript thread was busy.
+          for (const frame of frames) onPose(frame);
+        }
+      } while (drainAgain.current && mounted.current);
+    } catch (cause) {
+      reportDecodeError(cause instanceof Error ? cause.message : 'draining frames failed');
+    } finally {
+      draining.current = false;
+    }
+  }, [reportDecodeError]);
+
+  const handleFrames = React.useCallback(() => {
+    void drain();
+  }, [drain]);
+
+  const handleTrigger = React.useCallback((event: NativeEvent<NativeTriggerEvent>) => {
+    const { snapshotId, ...rest } = event.nativeEvent;
+    const deliver = (trigger: TriggerEvent): void => callbacks.current.onTrigger?.(trigger);
+
+    const view = nativeRef.current;
+    if (snapshotId === undefined || !view) {
+      deliver(rest);
+      return;
+    }
+    // The frame cannot ride the event. See ADR 0009.
+    view
+      .takeTriggerSnapshot(snapshotId)
+      .then((buffer) => {
+        if (!mounted.current) return;
+        const { frames } = decodeFrames(buffer, decodeOptions.current);
+        const frame = frames[0];
+        deliver(frame ? { ...rest, snapshot: frame } : rest);
+      })
+      .catch(() => {
+        if (mounted.current) deliver(rest);
+      });
+  }, []);
 
   React.useImperativeHandle(
     ref,
@@ -140,69 +213,113 @@ export const PoseCamera = React.forwardRef<PoseCameraRef, PoseCameraProps>(funct
       setFacing: async (facing) => {
         await nativeRef.current?.setFacing(facing);
       },
-      pause: () => void nativeRef.current?.pause(),
-      resume: () => void nativeRef.current?.resume(),
-      startDetection: () => void nativeRef.current?.startDetection(),
-      stopDetection: () => void nativeRef.current?.stopDetection(),
-      setOverlayEnabled: (enabled) => void nativeRef.current?.setOverlayEnabled(enabled),
+      pause: async () => {
+        await nativeRef.current?.pause();
+        state.current = { ...state.current, active: false };
+      },
+      resume: async () => {
+        await nativeRef.current?.resume();
+        state.current = { ...state.current, active: true };
+      },
+      startDetection: async () => {
+        await nativeRef.current?.startDetection();
+        state.current = { ...state.current, detecting: true };
+      },
+      stopDetection: async () => {
+        await nativeRef.current?.stopDetection();
+        state.current = { ...state.current, detecting: false };
+      },
+      setOverlayEnabled: async (enabled) => {
+        await nativeRef.current?.setOverlayEnabled(enabled);
+      },
       setProfile: () => {
-        throw new Error('setProfile arrives with calibration, in the same phase as profiles.');
+        throw new Error('setProfile is not implemented yet, it arrives with calibration.');
       },
       getProfile: () => {
-        throw new Error('getProfile arrives with calibration, in the same phase as profiles.');
+        throw new Error('getProfile is not implemented yet, it arrives with calibration.');
       },
       getState: () => state.current,
       snapshot: async () => {
         const view = nativeRef.current;
         if (!view) return null;
         const buffer = await view.snapshotFrame();
-        const { frames } = decodeFrames(buffer, {
-          ...(selection ? { selection } : {}),
-          angleJoints,
-        });
+        const { frames, error } = decodeFrames(buffer, decodeOptions.current);
+        if (error) throw new Error(error);
         return frames[0] ?? null;
       },
     }),
-    [selection, angleJoints],
+    [],
   );
 
+  const handleReady = React.useCallback((event: NativeEvent<ReadyEvent>) => {
+    const ready = event.nativeEvent;
+    state.current = {
+      ...state.current,
+      facing: ready.facing,
+      active: true,
+      delegate: ready.delegate,
+      deviceTier: ready.deviceTier,
+    };
+    callbacks.current.onReady?.(ready);
+  }, []);
+
+  const handleError = React.useCallback((event: NativeEvent<ErrorEvent>) => {
+    if (event.nativeEvent.fatal) state.current = { ...state.current, active: false };
+    callbacks.current.onError?.(event.nativeEvent);
+  }, []);
+
+  const handleCameraChange = React.useCallback((event: NativeEvent<CameraChangeEvent>) => {
+    state.current = { ...state.current, facing: event.nativeEvent.facing };
+    callbacks.current.onCameraChange?.(event.nativeEvent);
+  }, []);
+
+  const handlePerformanceChange = React.useCallback((event: NativeEvent<PerformanceEvent>) => {
+    const performance = event.nativeEvent;
+    state.current = {
+      ...state.current,
+      fps: performance.actualFps,
+      delegate: performance.delegate,
+    };
+    callbacks.current.onPerformanceChange?.(performance);
+  }, []);
+
+  // One native stream feeds both the prop and the global `addLogListener()` registry.
+  const handleLog = React.useCallback((event: NativeEvent<{ entries: LogEntry[] }>) => {
+    const { entries } = event.nativeEvent;
+    callbacks.current.onLog?.(entries);
+    emitLogEntries(entries);
+  }, []);
+
+  // Listed rather than spread: `onPose`, `onPoseBatch` and `onFramesDropped` are JavaScript-only
+  // and have no native counterpart.
   return (
     <NativeView
-      {...(props as unknown as Record<string, unknown>)}
-      ref={nativeRef as unknown as React.Ref<unknown>}
+      style={props.style}
+      profile={props.profile}
+      facing={props.facing}
+      delegate={props.delegate}
+      targetFps={props.targetFps}
+      resolution={props.resolution}
+      analysisResolution={props.analysisResolution}
+      thermalPolicy={props.thermalPolicy}
+      maxPoses={props.maxPoses}
+      smoothing={props.smoothing}
+      active={active}
+      detection={detection}
+      overlay={overlay}
+      data={data}
+      triggers={triggers}
+      logLevel={props.logLevel}
       angleJoints={angleJoints}
       selection={selection}
+      ref={nativeRef as unknown as React.Ref<unknown>}
       onFrames={handleFrames}
-      onReady={(event: NativeEvent<ReadyEvent>) => {
-        const ready = event.nativeEvent;
-        state.current = {
-          ...state.current,
-          facing: ready.facing,
-          active: true,
-          detecting: props.detection !== false,
-          delegate: ready.delegate,
-          deviceTier: ready.deviceTier,
-        };
-        props.onReady?.(ready);
-      }}
-      onError={(event: NativeEvent<ErrorEvent>) => props.onError?.(event.nativeEvent)}
-      onCameraChange={(event: NativeEvent<CameraChangeEvent>) => {
-        state.current = { ...state.current, facing: event.nativeEvent.facing };
-        props.onCameraChange?.(event.nativeEvent);
-      }}
-      onPerformanceChange={(event: NativeEvent<PerformanceEvent>) => {
-        const performance = event.nativeEvent;
-        state.current = {
-          ...state.current,
-          fps: performance.actualFps,
-          delegate: performance.delegate,
-        };
-        props.onPerformanceChange?.(performance);
-      }}
-      onTrigger={(event: NativeEvent<TriggerEvent>) => onTrigger?.(event.nativeEvent)}
-      onLog={(event: NativeEvent<{ entries: LogEntry[] }>) =>
-        props.onLog?.(event.nativeEvent.entries)
-      }
+      onReady={handleReady}
+      onError={handleError}
+      onCameraChange={handleCameraChange}
+      onPerformanceChange={handlePerformanceChange}
+      onTrigger={handleTrigger}
+      onLog={handleLog}
     />
   );
 });

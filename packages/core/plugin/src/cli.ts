@@ -4,8 +4,10 @@ import { join, relative } from 'node:path';
 import { DEFAULT_CACHE_DIR, clearCache, ensureModel, sha256OfFile } from './download';
 import {
   androidAssetsDir,
+  directoryExists,
   findInstalledModels,
   findIosProjectName,
+  findXcodeProjectPath,
   installModelFile,
   iosResourcesDir,
   removeInstalledModels,
@@ -13,7 +15,7 @@ import {
 import * as log from './log';
 import type { ModelEntry } from './manifest';
 import type * as Pbxproj from './pbxproj';
-import { MODEL_VARIANTS, resolveModel } from './manifest';
+import { KNOWN_MODEL_FILE_PATTERN, MODEL_VARIANTS, resolveModel } from './manifest';
 
 const USAGE = `
 react-native-pose-detection <command>
@@ -26,6 +28,9 @@ Flags for fetch-model:
   --force                         re-download even on a cache hit
   --cache-dir <path>              override the cache location
   --ios-only, --android-only      install into one platform
+
+Flags for clear-cache:
+  --cache-dir <path>              override the cache location
 `.trim();
 
 type Flags = {
@@ -36,7 +41,8 @@ type Flags = {
   positionals: string[];
 };
 
-function parseFlags(argv: readonly string[]): Flags {
+/** An inapplicable flag is an error: `doctor --cache-dir` reads as a request that is ignored. */
+function parseFlags(command: string, argv: readonly string[], allowed: readonly string[]): Flags {
   const flags: Flags = {
     force: false,
     cacheDir: DEFAULT_CACHE_DIR,
@@ -45,21 +51,31 @@ function parseFlags(argv: readonly string[]): Flags {
     positionals: [],
   };
 
+  const accept = (flag: string): void => {
+    if (!allowed.includes(flag)) {
+      throw new Error(`${command} does not take ${flag}.\n\n${USAGE}`);
+    }
+  };
+
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === undefined) continue;
 
     switch (arg) {
       case '--force':
+        accept(arg);
         flags.force = true;
         break;
       case '--ios-only':
+        accept(arg);
         flags.android = false;
         break;
       case '--android-only':
+        accept(arg);
         flags.ios = false;
         break;
       case '--cache-dir': {
+        accept(arg);
         const value = argv[index + 1];
         if (value === undefined || value.startsWith('--')) {
           throw new Error('--cache-dir needs a path.');
@@ -80,10 +96,7 @@ function parseFlags(argv: readonly string[]): Flags {
   return flags;
 }
 
-/**
- * Loaded on demand rather than imported at the top, so `--android-only` and `doctor` still work
- * in a project where the iOS side was never set up or `expo` cannot be resolved.
- */
+/** On demand, so `--android-only` and `doctor` work where `expo` cannot be resolved. */
 async function loadXcodeSupport(): Promise<typeof Pbxproj | null> {
   try {
     return await import('./pbxproj.js');
@@ -92,20 +105,25 @@ async function loadXcodeSupport(): Promise<typeof Pbxproj | null> {
   }
 }
 
+/** Returns whether anything was installed, which is what decides the exit code. */
 async function installIos(
   projectRoot: string,
   cachePath: string,
   model: ModelEntry,
-): Promise<void> {
+): Promise<boolean> {
   const projectName = await findIosProjectName(projectRoot);
   if (!projectName) {
     log.warn('no ios/*.xcodeproj found, skipping the iOS install.');
-    return;
+    return false;
   }
 
   // A hand-copied file next to the sources ends up in the bundle too, so clear that first.
   await removeInstalledModels(join(projectRoot, 'ios', projectName));
-  const installed = await installModelFile(cachePath, iosResourcesDir(projectRoot, projectName));
+  const installed = await installModelFile(
+    cachePath,
+    iosResourcesDir(projectRoot, projectName),
+    model,
+  );
   log.line(`copied → ${relative(projectRoot, installed)}`);
 
   const xcode = await loadXcodeSupport();
@@ -114,7 +132,7 @@ async function installIos(
       'could not load expo/config-plugins, so the Xcode project was not updated. Add ' +
         `${relative(projectRoot, installed)} to your app target in Xcode once.`,
     );
-    return;
+    return true;
   }
 
   const project = xcode.loadProject(projectRoot);
@@ -123,6 +141,7 @@ async function installIos(
 
   for (const stale of removed) log.line(`unregistered ${stale}`);
   log.line(`registered → ${relative(projectRoot, filepath)}`);
+  return true;
 }
 
 async function fetchModelCommand(flags: Flags): Promise<number> {
@@ -140,21 +159,34 @@ async function fetchModelCommand(flags: Flags): Promise<number> {
   });
   if (cachePath === null) throw new Error(`${model.fileName} could not be resolved.`);
 
+  let installed = 0;
+
   if (flags.android) {
-    const installed = await installModelFile(cachePath, androidAssetsDir(projectRoot));
-    log.line(`copied → ${relative(projectRoot, installed)}`);
+    // The guard belongs here rather than in installModelFile: the config plugin installs during
+    // prebuild, where android/ legitimately does not exist yet and mkdir -p is the right thing.
+    // Run from anywhere else, that same mkdir fabricates a four-level tree nobody asked for.
+    if (await directoryExists(join(projectRoot, 'android'))) {
+      const target = await installModelFile(cachePath, androidAssetsDir(projectRoot), model);
+      log.line(`copied → ${relative(projectRoot, target)}`);
+      installed += 1;
+    } else {
+      log.warn('no android/ directory here, skipping the Android install.');
+    }
   }
-  if (flags.ios) {
-    await installIos(projectRoot, cachePath, model);
+
+  if (flags.ios && (await installIos(projectRoot, cachePath, model))) installed += 1;
+
+  if (installed === 0) {
+    log.warn(
+      `the model is in the cache, but ${projectRoot} holds no native project to install it ` +
+        `into. Run this from the app root, after prebuild.`,
+    );
+    return 1;
   }
   return 0;
 }
 
-/**
- * `skip` matters as much as the other two. Expo resolves `minSdkVersion` inside a Gradle plugin,
- * so no file in the project holds the number. Reporting that as a failure trains people to
- * ignore doctor output, which is worse than not checking it.
- */
+/** `skip` matters: reporting an unknowable value as a failure trains people to ignore doctor. */
 type Check = { status: 'pass' | 'fail' | 'skip'; label: string; detail: string };
 
 const pass = (label: string, detail: string): Check => ({ status: 'pass', label, detail });
@@ -181,6 +213,17 @@ async function checkInstalledModel(dir: string, shortDir: string): Promise<Check
   }
 
   const fileName = present[0] as string;
+  if (!KNOWN_MODEL_FILE_PATTERN.test(fileName)) {
+    // The native side loads any pose_landmarker_*.task, so a hand-placed one is the model that
+    // runs, and nothing here can say what it should hash to.
+    return [
+      fail(
+        'model installed',
+        `${shortDir}/${fileName} is not a model this package installs, and the runtime loads it`,
+      ),
+    ];
+  }
+
   const variant = fileName.replace(/^pose_landmarker_/, '').replace(/\.task$/, '');
   const actual = await sha256OfFile(join(dir, fileName));
   const expected = resolveModel(variant).sha256;
@@ -194,9 +237,8 @@ async function checkInstalledModel(dir: string, shortDir: string): Promise<Check
 }
 
 /**
- * Bare React Native writes the number into `android/build.gradle`, and `expo-build-properties`
- * writes it into `gradle.properties`. A plain Expo prebuild does neither: it resolves through
- * the `expo-root-project` Gradle plugin, and nothing on disk holds the value.
+ * Bare RN writes it to `android/build.gradle` and `expo-build-properties` to
+ * `gradle.properties`. A plain prebuild writes neither, so the value is unknowable here.
  */
 async function checkMinSdk(projectRoot: string): Promise<Check> {
   const label = 'minSdkVersion 24';
@@ -220,30 +262,145 @@ async function checkMinSdk(projectRoot: string): Promise<Check> {
     : fail(label, `found ${found}, this package needs 24`);
 }
 
-/** The pbxproj holds the value Xcode actually builds against, whatever the Podfile computes. */
-async function checkDeploymentTarget(projectRoot: string, projectName: string): Promise<Check> {
-  const label = 'iOS deployment target 15.1';
-  const pbxproj = await readIfPresent(
-    join(projectRoot, 'ios', `${projectName}.xcodeproj`, 'project.pbxproj'),
+const PBX_UUID = '[0-9A-Fa-f]{12,32}';
+
+/** Everything between the `Begin`/`End` comments the pbxproj writers emit around each section. */
+function pbxSection(pbxproj: string, name: string): string {
+  const start = pbxproj.indexOf(`/* Begin ${name} section */`);
+  const end = pbxproj.indexOf(`/* End ${name} section */`);
+  return start === -1 || end === -1 || end < start ? '' : pbxproj.slice(start, end);
+}
+
+/** Text read, not a parser, so `doctor` survives the misconfigured projects it exists for. */
+function pbxObject(section: string, uuid: string): string | null {
+  const definition = new RegExp(`\\b${uuid}\\b\\s*(?:/\\*[^*]*\\*/\\s*)?=\\s*\\{`).exec(section);
+  if (!definition) return null;
+
+  const open = definition.index + definition[0].length - 1;
+  let depth = 0;
+
+  for (let index = open; index < section.length; index += 1) {
+    const char = section[index];
+    if (char === '{') depth += 1;
+    else if (char === '}') {
+      depth -= 1;
+      if (depth === 0) return section.slice(open + 1, index);
+    }
+  }
+  return null;
+}
+
+/** Every uuid referenced from an object body, in order. */
+function pbxReferences(body: string): string[] {
+  return [...body.matchAll(new RegExp(`(${PBX_UUID}) /\\*`, 'g'))].map(
+    (match) => match[1] as string,
   );
+}
+
+/** The app target, which is not always the first one: a widget or a test target can precede it. */
+function applicationTarget(pbxproj: string): string | null {
+  const targets = pbxSection(pbxproj, 'PBXNativeTarget');
+
+  for (const uuid of pbxReferences(targets)) {
+    const body = pbxObject(targets, uuid);
+    if (body === null || !body.includes('isa = PBXNativeTarget')) continue;
+    if (/productType = "?com\.apple\.product-type\.application"?/.test(body)) return uuid;
+  }
+  return null;
+}
+
+/** The XCConfigurationList a target or the project itself points at. */
+function buildConfigurationList(body: string | null): string | undefined {
+  return new RegExp(`buildConfigurationList = (${PBX_UUID})`).exec(body ?? '')?.[1];
+}
+
+function deploymentTargetsOf(pbxproj: string, listUuid: string | undefined): number[] {
+  if (listUuid === undefined) return [];
+
+  const listBody = pbxObject(pbxSection(pbxproj, 'XCConfigurationList'), listUuid);
+  if (listBody === null) return [];
+
+  const configurations = pbxSection(pbxproj, 'XCBuildConfiguration');
+  const values: number[] = [];
+
+  for (const uuid of pbxReferences(listBody)) {
+    const body = pbxObject(configurations, uuid);
+    const found = /IPHONEOS_DEPLOYMENT_TARGET = "?([\d.]+)"?/.exec(body ?? '')?.[1];
+    if (found !== undefined) values.push(parseFloat(found));
+  }
+  return values;
+}
+
+/**
+ * The pbxproj holds what Xcode actually builds against. Only the app target counts: an extension
+ * pinned lower is no reason to fail a correct app.
+ */
+function checkDeploymentTarget(pbxproj: string | null): Check {
+  const label = 'iOS deployment target 15.1';
   if (pbxproj === null) return skip(label, 'no Xcode project, run prebuild first');
 
-  const targets = [...pbxproj.matchAll(/IPHONEOS_DEPLOYMENT_TARGET = ([\d.]+)/g)].map((match) =>
-    parseFloat(match[1] as string),
-  );
-  if (targets.length === 0) return skip(label, 'no IPHONEOS_DEPLOYMENT_TARGET in the project');
+  const appUuid = applicationTarget(pbxproj);
+  const targetBody =
+    appUuid === null ? null : pbxObject(pbxSection(pbxproj, 'PBXNativeTarget'), appUuid);
+  const values = deploymentTargetsOf(pbxproj, buildConfigurationList(targetBody));
 
-  const lowest = Math.min(...targets);
+  // A target that sets nothing inherits the project-level value.
+  const found =
+    values.length > 0
+      ? values
+      : deploymentTargetsOf(pbxproj, buildConfigurationList(pbxSection(pbxproj, 'PBXProject')));
+
+  if (found.length === 0) {
+    return skip(label, 'no IPHONEOS_DEPLOYMENT_TARGET on the app target');
+  }
+
+  const lowest = Math.min(...found);
   return lowest >= 15.1
     ? pass(label, `found ${lowest}`)
     : fail(label, `found ${lowest}, this package needs 15.1`);
 }
 
 /**
- * Regex reads rather than parsers. `doctor` runs against a project this package did not create,
- * where Gradle files are templated and Podfiles are hand-edited, so a best-effort read that can
- * say "could not determine" beats a parser that throws on the first unusual project.
+ * A .task no target builds is never bundled and fails at runtime with MODEL_NOT_FOUND. The CLI
+ * produces exactly that state when `expo/config-plugins` cannot be resolved.
  */
+async function checkXcodeRegistration(
+  pbxproj: string | null,
+  resourcesDir: string,
+): Promise<Check> {
+  const label = 'model in the app target';
+  if (pbxproj === null) return skip(label, 'no Xcode project, run prebuild first');
+
+  const fileName = (await findInstalledModels(resourcesDir))[0];
+  if (fileName === undefined) return skip(label, 'no model installed to look for');
+
+  const appUuid = applicationTarget(pbxproj);
+  const body = appUuid === null ? null : pbxObject(pbxSection(pbxproj, 'PBXNativeTarget'), appUuid);
+  if (body === null) return skip(label, 'no application target in the Xcode project');
+
+  const phases = pbxSection(pbxproj, 'PBXResourcesBuildPhase');
+  for (const uuid of pbxReferences(body)) {
+    const phase = pbxObject(phases, uuid);
+    if (phase === null) continue;
+
+    if (phase.includes(fileName)) return pass(label, `${fileName} is a build resource`);
+
+    // An empty phase is an answer. A phase with entries but no comments is not: some writers
+    // strip them, and guessing from uuids alone would produce a failure nobody can act on.
+    const entries = phase.match(new RegExp(PBX_UUID, 'g')) ?? [];
+    if (entries.length > 0 && !phase.includes('/*')) {
+      return skip(label, 'the build phase lists no file names to read');
+    }
+
+    return fail(
+      label,
+      `${fileName} is on disk but not built into the app target, so it will not be in the bundle`,
+    );
+  }
+  return skip(label, 'the application target has no Resources build phase');
+}
+
+/** Best-effort reads that can say "could not determine" beat a parser that throws. */
 async function doctorCommand(): Promise<number> {
   const projectRoot = process.cwd();
   const checks: Check[] = [];
@@ -253,15 +410,17 @@ async function doctorCommand(): Promise<number> {
   );
 
   const projectName = await findIosProjectName(projectRoot);
+  let pbxproj: string | null = null;
+
   if (projectName === null) {
     checks.push(fail('ios project', 'no ios/*.xcodeproj found'));
   } else {
-    checks.push(
-      ...(await checkInstalledModel(
-        iosResourcesDir(projectRoot, projectName),
-        `ios/${projectName}/Resources`,
-      )),
-    );
+    const xcodeproj = await findXcodeProjectPath(projectRoot);
+    pbxproj = xcodeproj === null ? null : await readIfPresent(join(xcodeproj, 'project.pbxproj'));
+
+    const resourcesDir = iosResourcesDir(projectRoot, projectName);
+    checks.push(...(await checkInstalledModel(resourcesDir, `ios/${projectName}/Resources`)));
+    checks.push(await checkXcodeRegistration(pbxproj, resourcesDir));
 
     const stray = await findInstalledModels(join(projectRoot, 'ios', projectName));
     if (stray.length > 0) {
@@ -272,7 +431,7 @@ async function doctorCommand(): Promise<number> {
   checks.push(await checkMinSdk(projectRoot));
 
   if (projectName !== null) {
-    checks.push(await checkDeploymentTarget(projectRoot, projectName));
+    checks.push(checkDeploymentTarget(pbxproj));
   }
 
   const manifest = await readIfPresent(
@@ -310,26 +469,59 @@ async function doctorCommand(): Promise<number> {
 export async function run(argv: readonly string[]): Promise<number> {
   const [command, ...rest] = argv;
 
+  // Checked before the dispatch, because `<command> --help` is what people type.
+  if (
+    command === undefined ||
+    command === 'help' ||
+    argv.includes('--help') ||
+    argv.includes('-h')
+  ) {
+    log.line(USAGE);
+    return 0;
+  }
+
   switch (command) {
-    case 'fetch-model':
-      return fetchModelCommand(parseFlags(rest));
-
-    case 'doctor':
-      return doctorCommand();
-
-    case 'clear-cache': {
-      const flags = parseFlags(rest);
-      await clearCache(flags.cacheDir);
-      log.line(`cleared ${flags.cacheDir}`);
-      return 0;
+    case 'fetch-model': {
+      const flags = parseFlags(command, rest, [
+        '--force',
+        '--cache-dir',
+        '--ios-only',
+        '--android-only',
+      ]);
+      if (flags.positionals.length > 1) {
+        throw new Error(
+          `fetch-model takes one variant, got: ${flags.positionals.join(' ')}.\n\n${USAGE}`,
+        );
+      }
+      return fetchModelCommand(flags);
     }
 
-    case undefined:
-    case 'help':
-    case '--help':
-    case '-h':
-      log.line(USAGE);
+    case 'doctor': {
+      const flags = parseFlags(command, rest, []);
+      if (flags.positionals.length > 0) {
+        throw new Error(`doctor takes no arguments, got: ${flags.positionals.join(' ')}.`);
+      }
+      return doctorCommand();
+    }
+
+    case 'clear-cache': {
+      const flags = parseFlags(command, rest, ['--cache-dir']);
+      if (flags.positionals.length > 0) {
+        // `clear-cache full` reads as clearing one variant, and it never did that.
+        throw new Error(
+          `clear-cache takes no arguments, got: ${flags.positionals.join(' ')}. It clears the ` +
+            `whole cache.`,
+        );
+      }
+
+      const removed = await clearCache(flags.cacheDir);
+      log.line(
+        removed.length === 0
+          ? `nothing to clear in ${flags.cacheDir}`
+          : `cleared ${removed.join(', ')} from ${flags.cacheDir}`,
+      );
       return 0;
+    }
 
     default:
       throw new Error(`Unknown command "${command}".\n\n${USAGE}`);

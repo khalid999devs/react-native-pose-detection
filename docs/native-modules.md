@@ -3,6 +3,11 @@
 Both platforms are Expo Modules, which gives old- and new-architecture support without a
 per-architecture code path.
 
+**Only Android exists.** `packages/core/android` has the camera, the detector and the overlay.
+There is no `packages/core/ios` yet, which is why the macOS lint job in CI is gated behind a
+step that looks for Swift sources. Read the rules below as what both platforms must satisfy, and
+the Android file as the only implementation of them so far.
+
 ## Module definition
 
 The JS-facing surface is declared once per platform and must stay in lockstep with
@@ -12,13 +17,37 @@ TypeScript is lying.
 ```text
 Name("PoseDetection")
 
+Function("setLogLevel") · Function("startLogStream") · Function("stopLogStream")
+
 View(PoseCameraView) {
   Prop("profile") · Prop("facing") · Prop("delegate") · …
+  Prop("angleJoints") · Prop("selection")
   Events("onReady", "onError", "onCameraChange", "onPerformanceChange",
-         "onTrigger", "onPose", "onPoseBatch")
-  AsyncFunction("switchCamera") · Function("snapshot") · …
+         "onTrigger", "onFrames", "onLog")
+  AsyncFunction("switchCamera") · AsyncFunction("drainFrames")
+  AsyncFunction("snapshotFrame") · AsyncFunction("takeTriggerSnapshot") · …
 }
 ```
+
+`src/native/contract.ts` is the authoritative list; that sketch is a shape, not a copy of it.
+
+Three things in it are easy to get wrong:
+
+- **`onPose`, `onPoseBatch` and `onFramesDropped` are not native events.** They are JavaScript
+  callbacks that `<PoseCamera>` invokes after a drain. Native emits `onFrames`, which carries no
+  payload at all, and JavaScript answers it by calling `drainFrames()`. An event cannot carry an
+  ArrayBuffer, a function return can. See
+  [ADR 0008](./adr/0008-frames-are-drained-not-pushed.md).
+- **`onTrigger` carries a `snapshotId`, not a snapshot.** A `PoseFrame` is the same ArrayBuffer
+  problem, so native holds the captured frame and puts a claim ticket on the event.
+  `<PoseCamera>` redeems it with `takeTriggerSnapshot(id)` and only then calls the user's
+  `onTrigger`, which makes a snapshot trigger arrive one microtask later than a plain one.
+  Redeeming an unknown or already-redeemed ticket must return an empty buffer rather than
+  failing, and native must bound how many unclaimed frames it holds. See
+  [ADR 0009](./adr/0009-trigger-snapshots-are-claimed.md).
+- **`angleJoints` and `selection` are props, not something native derives.** JavaScript resolves
+  which angles to compute and which joints the buffer holds, and passes both down, so the two
+  sides cannot disagree about the shape of a frame.
 
 Ref methods are view functions, not module functions taking a view tag. The legacy package
 used `switchCamera(viewTag)`; that pattern is not used here.
@@ -35,8 +64,21 @@ capture callback (camera/inference queue)
       ├→ smoothing
       ├→ triggers
       ├→ OverlayRenderer.draw()      main/UI thread
-      └→ emit if warranted           JS thread
+      └→ ring buffer + onFrames tick JS thread, only when an emission is due
+          ↓ JavaScript answers with drainFrames()
+      → one self-describing ArrayBuffer, decoded as subarray views
 ```
+
+The buffer's header carries the frame count, the dropped count, the floats per frame, the joint
+count, the **angle count**, and a flag word. Every variable-length block's length is derivable
+from that header alone. The angle count is there because taking the angle block's length from the
+current props meant a prop change while frames sat in the ring buffer shifted `centerOfMass`,
+`velocity` and `bodySpan` into the angle floats. Both sides encode angles in `ANGLE_JOINT_NAMES`
+order, never in mention order.
+
+A batch whose joint count or angle count disagrees with what JavaScript currently expects is
+**dropped**, not relabelled. Attaching the wrong joint names to a buffer silently returns another
+joint's numbers, and dropping one drain is self-healing.
 
 The capture delegate is registered **on the inference queue**, so buffers never hop threads.
 This is rule 1 and it is not negotiable, see [architecture](./architecture.md#camera-switching).
@@ -47,7 +89,7 @@ This is rule 1 and it is not negotiable, see [architecture](./architecture.md#ca
 2. Declare `Prop(...)` in **both** module definitions
 3. Implement in both native views
 4. Document in [`guides/reference/pose-camera.md`](../guides/reference/pose-camera.md)
-5. Exercise it in `example/`
+5. Exercise it in the example app, once Phase 6 builds one
 
 A prop implemented on one platform only must be documented as such, or not merged.
 
@@ -73,9 +115,24 @@ All session state mutates on `sessionQueue`. Reading it from another thread requ
 immutable snapshot captured at frame time, never a shared mutable flag. Unsynchronized
 booleans across queues were the root cause of the legacy package's camera-switch crashes.
 
+## Android notes
+
+- **Coordinates are anisotropic.** Landmarks are normalized by dividing x by width and y by
+  height, so one unit of x is not one unit of y on any non-square frame. Angles are computed with
+  an aspect correction that puts both axes back in a common unit; without it every angle on a
+  standard 4:3 or 16:9 frame is wrong. The overlay arcs need the same correction, or the arc sits
+  outside the joint it belongs to.
+- **The overlay is projected from rotated buffer dimensions**, not from the sensor's. Using the
+  raw sensor dimensions lines the skeleton up in portrait and skews it everywhere else.
+- **ProGuard rules ship with the library**, through `consumerProguardFiles`. MediaPipe reaches its
+  own classes from JNI and neither AAR carries keep rules, so R8 in a consumer's release build is
+  free to strip or rename them. That failure only appears in a release build, which is after the
+  developer has shipped.
+
 ## MediaPipe notes
 
-- **Pinned to `0.10.21`**: [ADR 0003](./adr/0003-pin-mediapipe-0-10-21.md). Do not bump casually.
+- **Pinned to `0.10.35`**: [ADR 0007](./adr/0007-pin-mediapipe-0-10-35.md), which supersedes ADR
+  0003 and its 0.10.21 pin. Do not bump casually, and do not "restore" the older pin.
 
 ### ABI coverage by version
 

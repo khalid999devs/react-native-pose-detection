@@ -33,10 +33,14 @@ they're listed separately because their exit criteria are independent.
 - [x] TypeScript strict (`noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`), ESLint, Prettier, `.editorconfig`
 - [x] `expo-module.config.json`, **apple + android only**, no `web`
 - [x] `files` in `packages/core/package.json` excludes `example/`, `guides/`, `docs/`
-- [x] CI: six jobs, code, docs, native, package, security, commits
-- [x] Quality gates: ESLint · Prettier · tsc · knip · markdownlint · cspell · lychee ·
-      SwiftLint · ktlint · publint · attw · npm audit · license allowlist · commitlint · CodeQL
-- [x] Tarball guard, CI fails if a model file leaks or the package exceeds 2 MB
+- [x] CI: code (on the `engines` floor and on 24), docs, Kotlin lint, Swift lint behind a cheap
+      source-detection job, package, security, commits, plus CodeQL in its own workflow. Every
+      action pinned to a commit SHA, not a tag its owner can move
+- [x] Quality gates: ESLint · Prettier · tsc · `node --test` · knip · markdownlint · cspell ·
+      lychee · SwiftLint · ktlint · publint · attw · npm audit · license allowlist · commitlint ·
+      CodeQL
+- [x] Tarball guard, CI fails if a model file leaks, if a build artifact is missing, or if the
+      package exceeds 2 MB. `exports` closes deep imports, `prepack` builds before packing
 - [x] husky + lint-staged pre-commit, conventional commits
 - [x] Issue and PR templates, CODEOWNERS, Dependabot, LICENSE, CHANGELOG, SECURITY, CODE_OF_CONDUCT
 
@@ -122,7 +126,15 @@ file and one Xcode reference, and a cache hit makes zero network calls.
       rollback on failure
 - [x] `OverlayRenderer`, Canvas, no per-frame allocation. `drawLines` and `drawPoints` over
       preallocated float arrays, rather than a `Path` rebuilt once a frame
-  - [x] **Angle arcs + degree labels**, arc between the two limb segments meeting at the joint
+  - [x] **Angle arcs + degree labels**, arc between the two limb segments meeting at the joint,
+        `decimals` capped at 3
+  - [x] Projected from **rotated** buffer dimensions, so the overlay lines up in every orientation
+- [x] `facing: 'auto'` falls back to the other lens on the first bind. An explicit
+      `switchCamera()` to a lens the device lacks fails with `CAMERA_SWITCH_FAILED` instead of
+      quietly staying put
+- [x] Consumer ProGuard rules shipped through `consumerProguardFiles`. MediaPipe reaches its own
+      classes from JNI and neither AAR carries keep rules, so R8 in a consumer's release build
+      would strip them
 - [x] Lifecycle: background → full stop; foreground → resume
 - [x] `onTrimMemory` handling
 - [x] Expo module: props, ref methods, `onReady` / `onError` / `onCameraChange` wired to the
@@ -147,16 +159,27 @@ one, and the log channel writes to Logcat only.
 **Goal:** everything between "landmarks arrived" and "something was emitted". Platform-shared logic.
 
 - [ ] Geometry: joint angles, center of mass (hip 0.5 / ankle 0.3 / knee 0.2×vis), velocity, body span
-- [ ] **Lazy computation**, only angles referenced by `triggers`, `data.select`, **and `overlay.angles`**, resolved at mount
+  - [ ] Angles corrected for the frame's aspect ratio. Normalizing x by width and y by height
+        makes the space anisotropic, so an uncorrected angle is wrong on every non-square frame
+- [x] **Lazy computation**, only the angles an `angle` condition, `overlay.angles` or `data.angles`
+      asks for, resolved during render and sent to native as a prop. Naming a joint in
+      `data.select`, or as a comparison bound, is a position and does not turn its angle on
 - [ ] One-Euro smoothing filter
 - [ ] Trigger evaluator: state machine per trigger, debounce, `minDurationMs`, snapshot capture
-- [ ] Condition evaluator: `angle`, `landmarkX/Y` (absolute + joint-relative), `velocityY`, `visibility`, `all`, `any`
+- [ ] Condition evaluator: `angle`, `landmarkX/Y` (absolute + joint-relative), `velocityX`,
+      `velocityY`, `visibility`, `all`, `any`. The whole `Condition` union, so nothing typed and
+      validated on the JS side reaches an evaluator that silently ignores it
 - [ ] Emission: `off` / `throttled` / `batched` (bounded buffer, drop-oldest + count) / `live`
   - [x] **Delivery mechanism settled**, [ADR 0008](./adr/0008-frames-are-drained-not-pushed.md).
         Events cannot carry an ArrayBuffer through Expo Modules, function returns can, so native
         signals and JavaScript drains. Self-describing buffer, zero-copy `subarray` views
-  - [x] JS side: `<PoseCamera>`, the native binding, `decodeFrames`, the shared angle resolution
-  - [ ] Native side: the ring buffer, `drainFrames`, `snapshotFrame`
+  - [x] JS side: `<PoseCamera>`, the native binding, `decodeFrames`, the shared angle resolution,
+        `onFramesDropped` for the ring buffer's drop count, and a malformed buffer reported as a
+        non-fatal `DETECTION_FAILED` rather than thrown
+  - [x] **Trigger snapshots claimed, not carried**,
+        [ADR 0009](./adr/0009-trigger-snapshots-are-claimed.md). A frame cannot ride an event
+        either, so native sends a ticket and `<PoseCamera>` redeems it before calling `onTrigger`
+  - [ ] Native side: the ring buffer, `drainFrames`, `snapshotFrame`, `takeTriggerSnapshot`
 - [ ] Calibration
   - [ ] Stage 1 static probe → tier, biased one step conservative
   - [ ] Stage 2 measured convergence, hysteresis + 3 s cooldown
@@ -168,7 +191,8 @@ one, and the log channel writes to Logcat only.
 - [ ] `maxPoses` 1–5; primary-pose selection for triggers
 - [ ] `detectOnImage` / `detectOnVideo`
 - [ ] **Logging channel**, see [logging](./logging.md)
-  - [ ] Atomic level mask, 3 bits × 7 categories; one compare per call site
+  - [ ] Atomic level mask, 3 bits × 6 runtime categories, 18 bits; one compare per call site.
+        `plugin` is build-time output from Node and is not one of them
   - [ ] Closure-based call sites (`inline` + lambda / `@autoclosure`), **no string built when disabled**
   - [ ] Bounded ring buffer, batched flush every 250 ms, `droppedCount` reported
   - [ ] Mirrored to `os_log` / `Logcat` so native-only debugging works with no JS listener
@@ -177,13 +201,21 @@ one, and the log channel writes to Logcat only.
 is cached across launches. Zero steady-state allocations in the frame path (profiler-verified)
 with logging both `off` and at `error`.
 
-**Status: the JavaScript half is done, the Kotlin engine is not started.** `<PoseCamera>` exists
-and is wired to the native view, frames decode zero-copy, and the delivery question that blocked
-everything is answered. What remains is the engine itself: geometry beyond angles, the One-Euro
-filter, both evaluators, the ring buffer, calibration, the thermal ladder, and static input.
+**Status: the JavaScript half is done and tested, the Kotlin engine is not started.**
+`<PoseCamera>` exists and is wired to the native view, frames decode zero-copy, the angle set is
+resolved from props during render, triggers are validated before native sees them, and the
+delivery question that blocked everything is answered twice over, once for frames and once for
+trigger snapshots. `npm test` covers the wire format, the accessors under a narrowed buffer, and
+every rejection path in the validator.
+
+What remains is the engine itself: geometry, the One-Euro filter, both evaluators, the ring
+buffer and the three functions that drain it, calibration, the thermal ladder, and static input.
+Until then nothing calls back: no trigger fires, `data.mode` delivers nothing, and
+`detectOnImage` / `detectOnVideo` do not exist.
 
 `setProfile` and `getProfile` on the ref throw until calibration lands. They are the only two
-public methods that do.
+public methods that do. Everything else that reaches native returns a promise that resolves
+against a view which is not doing the work yet.
 
 ---
 
@@ -191,7 +223,12 @@ public methods that do.
 
 **Goal:** parity. Port from the legacy package, applying every fix.
 
-- [ ] Podspec, `MediaPipeTasksVision 0.10.21`, **single** resource declaration, scoped `source_files`
+- [ ] Podspec, `MediaPipeTasksVision 0.10.35` to match Android,
+      [ADR 0007](./adr/0007-pin-mediapipe-0-10-35.md). If it fails to link, the fallback is
+      0.10.33, never 0.10.21: two evaluators required to agree cannot start from different
+      MediaPipe versions
+- [ ] Consumer ProGuard rules have no iOS counterpart, but the Swift equivalent is
+      `-ObjC`-safe symbol handling; check the archive, not the debug build
 - [ ] `CameraSource`, AVFoundation
   - [ ] Capture delegate queue **is** the inference queue, buffers never escape the callback
   - [ ] `alwaysDiscardsLateVideoFrames = true`
@@ -220,7 +257,9 @@ Zero jump-detection code present.
 - [ ] Memory budget test, 10 min against the table in `guides/performance.md`, all profiles
 - [ ] Calibration test, settles < 3 s on low/mid/high devices; cache honored on relaunch
 - [ ] Thermal simulation, every ladder step fires and recovers
-- [ ] Unit tests: trigger evaluator, condition evaluator, geometry, wire encoding
+- [ ] Unit tests on both native sides: trigger evaluator, condition evaluator, geometry, wire
+      encoding, driven by shared fixtures. The JavaScript half of this is already done, see
+      [testing](./testing.md); what is missing is a JUnit and an XCTest suite
 - [ ] **Measure real app size**, release archive with and without the plugin, per model, per
       platform. Replace the iOS estimates in `guides/performance.md` with actual numbers.
 - [ ] **Measure FPS** on 3–4 real devices spanning low/mid/high

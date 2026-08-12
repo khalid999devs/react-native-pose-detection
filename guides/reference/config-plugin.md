@@ -41,6 +41,16 @@ file gets cleaned up too. On iOS that includes unregistering the old file from t
 The Android and iOS passes run in the same process and share one download, so a cold cache
 fetches the file once, not twice.
 
+The copy is verified again after it lands in the native project, not only in the cache. That is
+the step that puts bytes into your build, and the cache file it reads from is shared with every
+other process on the machine. A copy that does not match is deleted and the prebuild fails.
+
+### Camera permission text
+
+`cameraPermissionText` wins over everything. With it unset, a `NSCameraUsageDescription` already
+in your app config wins over the plugin's generic fallback, because that is you being specific and
+the fallback is not. The fallback is only written when nothing else said anything.
+
 ### Downloading
 
 Downloads land in a `.part` file next to the target and are only renamed into place after the

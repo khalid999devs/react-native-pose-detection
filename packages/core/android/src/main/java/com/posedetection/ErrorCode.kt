@@ -1,10 +1,6 @@
 package com.posedetection
 
-/**
- * The closed set from `src/types/events.ts`. Native emits nothing outside it, which is what lets
- * a consumer switch on `code` exhaustively. A new failure mode is an addition in both places, not
- * a new string in a catch block.
- */
+/** The closed set from `src/types/events.ts`. A new code is an addition in both places. */
 internal enum class ErrorCode(
     val fatal: Boolean,
 ) {

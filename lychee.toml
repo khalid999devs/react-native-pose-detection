@@ -1,5 +1,5 @@
 # Markdown link checking
-exclude_path = ["node_modules", "ideation", "build"]
+exclude_path = ["node_modules", "ideation", "build", ".test-build"]
 exclude = [
   # repository is new; some links point at pages that do not exist yet
   "^https://github\\.com/khalid999devs/react-native-pose-detection",

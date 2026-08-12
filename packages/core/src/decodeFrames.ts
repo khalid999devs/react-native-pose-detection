@@ -1,5 +1,6 @@
 import type { AngleJointName, JointName } from './types/joints';
 import { LANDMARK_STRIDE } from './types/frame';
+import { LANDMARK_COUNT } from './types/joints';
 import type { PoseFrame } from './types/frame';
 import {
   FRAME_META_FLOAT64S,
@@ -8,6 +9,7 @@ import {
   SCALARS_PER_FRAME,
   WIRE_FLAG_ANGLES,
   WIRE_FLAG_WORLD_LANDMARKS,
+  expectedByteLength,
 } from './wire';
 
 export type DecodeOptions = {
@@ -21,18 +23,28 @@ export type DecodedBatch = {
   frames: PoseFrame[];
   /** Frames the native ring buffer dropped because this consumer could not keep up. */
   droppedCount: number;
+  /** Set when the buffer could not be trusted. No frames are returned. */
+  error?: string;
 };
 
+const EMPTY: DecodedBatch = { frames: [], droppedCount: 0 };
+
+function isCount(value: number): boolean {
+  return Number.isInteger(value) && value >= 0;
+}
+
 /**
- * Turns one drained buffer into frames.
+ * Turns one drained buffer into frames. Landmarks are `subarray` views, so nothing is copied or
+ * parsed.
  *
- * `subarray` is a view, not a copy, so a frame's landmarks point straight into the buffer native
- * filled. Nothing is parsed. The only allocation per frame is the small wrapper objects, and the
- * accessors exist so a hot consumer can avoid even those.
+ * A malformed buffer returns an `error` rather than throwing: this runs inside the tick handler,
+ * where a throw would stall the drain loop permanently.
  */
 export function decodeFrames(buffer: ArrayBuffer, options: DecodeOptions): DecodedBatch {
   if (buffer.byteLength < HEADER_FLOAT64S * Float64Array.BYTES_PER_ELEMENT) {
-    return { frames: [], droppedCount: 0 };
+    // The empty drain is the common case, not an error: native returns a bare header when the
+    // ring buffer had nothing in it.
+    return EMPTY;
   }
 
   const header = new Float64Array(buffer, 0, HEADER_FLOAT64S);
@@ -40,24 +52,70 @@ export function decodeFrames(buffer: ArrayBuffer, options: DecodeOptions): Decod
   const droppedCount = header[HEADER_INDEX.droppedCount] ?? 0;
   const floatsPerFrame = header[HEADER_INDEX.floatsPerFrame] ?? 0;
   const jointCount = header[HEADER_INDEX.jointCount] ?? 0;
+  const angleCount = header[HEADER_INDEX.angleCount] ?? 0;
   const flags = header[HEADER_INDEX.flags] ?? 0;
 
-  if (frameCount <= 0 || floatsPerFrame <= 0) return { frames: [], droppedCount };
+  if (!isCount(frameCount) || !isCount(floatsPerFrame) || !isCount(jointCount)) {
+    return { frames: [], droppedCount: 0, error: 'frame buffer header is not a set of counts' };
+  }
+  if (!isCount(angleCount) || !isCount(droppedCount)) {
+    return { frames: [], droppedCount: 0, error: 'frame buffer header is not a set of counts' };
+  }
+  if (frameCount === 0 || floatsPerFrame === 0) return { frames: [], droppedCount };
+
+  const hasWorld = (flags & WIRE_FLAG_WORLD_LANDMARKS) !== 0;
+  const hasAngles = (flags & WIRE_FLAG_ANGLES) !== 0;
+  const landmarkFloats = jointCount * LANDMARK_STRIDE;
+  const blocks =
+    landmarkFloats * (hasWorld ? 2 : 1) + (hasAngles ? angleCount : 0) + SCALARS_PER_FRAME;
+
+  if (blocks !== floatsPerFrame) {
+    return {
+      frames: [],
+      droppedCount,
+      error: `frame stride is ${floatsPerFrame} floats but its blocks add up to ${blocks}`,
+    };
+  }
+  if (buffer.byteLength !== expectedByteLength(frameCount, floatsPerFrame)) {
+    return {
+      frames: [],
+      droppedCount,
+      error: `frame buffer is ${buffer.byteLength} bytes, expected ${expectedByteLength(
+        frameCount,
+        floatsPerFrame,
+      )}`,
+    };
+  }
+
+  // A prop can change while frames sit in the ring buffer. Dropping one drain is self-healing,
+  // attaching the wrong joint or angle names is not.
+  const { selection } = options;
+  const expectedJoints = selection ? selection.length : LANDMARK_COUNT;
+  if (jointCount !== 0 && jointCount !== expectedJoints) {
+    return {
+      frames: [],
+      droppedCount,
+      error: `frame buffer holds ${jointCount} joints, expected ${expectedJoints}`,
+    };
+  }
+  if (hasAngles && angleCount !== options.angleJoints.length) {
+    return {
+      frames: [],
+      droppedCount,
+      error: `frame buffer holds ${angleCount} angles, expected ${options.angleJoints.length}`,
+    };
+  }
 
   const meta = new Float64Array(
     buffer,
     HEADER_FLOAT64S * Float64Array.BYTES_PER_ELEMENT,
     frameCount * FRAME_META_FLOAT64S,
   );
-
   const bodyOffset =
     (HEADER_FLOAT64S + frameCount * FRAME_META_FLOAT64S) * Float64Array.BYTES_PER_ELEMENT;
   const body = new Float32Array(buffer, bodyOffset, frameCount * floatsPerFrame);
 
-  const hasWorld = (flags & WIRE_FLAG_WORLD_LANDMARKS) !== 0;
-  const hasAngles = (flags & WIRE_FLAG_ANGLES) !== 0;
-  const landmarkFloats = jointCount * LANDMARK_STRIDE;
-
+  const nameAngles = hasAngles && angleCount > 0;
   const frames: PoseFrame[] = [];
 
   for (let index = 0; index < frameCount; index += 1) {
@@ -73,21 +131,20 @@ export function decodeFrames(buffer: ArrayBuffer, options: DecodeOptions): Decod
     }
 
     let angles: Partial<Record<AngleJointName, number>> | undefined;
-    if (hasAngles && options.angleJoints.length > 0) {
+    if (nameAngles) {
       angles = {};
-      for (let angleIndex = 0; angleIndex < options.angleJoints.length; angleIndex += 1) {
+      for (let angleIndex = 0; angleIndex < angleCount; angleIndex += 1) {
         const joint = options.angleJoints[angleIndex];
-        if (joint === undefined) continue;
-        angles[joint] = body[cursor + angleIndex] ?? 0;
+        if (joint !== undefined) angles[joint] = body[cursor + angleIndex] ?? 0;
       }
-      cursor += options.angleJoints.length;
     }
+    if (hasAngles) cursor += angleCount;
 
     const metaBase = index * FRAME_META_FLOAT64S;
 
     frames.push({
       landmarks,
-      ...(options.selection ? { selection: options.selection } : {}),
+      ...(selection ? { selection } : {}),
       ...(worldLandmarks ? { worldLandmarks } : {}),
       ...(angles ? { angles } : {}),
       centerOfMass: { x: body[cursor] ?? 0, y: body[cursor + 1] ?? 0 },
@@ -96,8 +153,6 @@ export function decodeFrames(buffer: ArrayBuffer, options: DecodeOptions): Decod
       timestamp: meta[metaBase] ?? 0,
       processingMs: meta[metaBase + 1] ?? 0,
     });
-
-    cursor += SCALARS_PER_FRAME;
   }
 
   return { frames, droppedCount };

@@ -3,7 +3,9 @@
 Real-time pose detection for React Native and Expo. 33 body landmarks, iOS and Android,
 powered by MediaPipe.
 
-> **Pre-release, not yet published.**
+> **Pre-release, not yet published.** Android has the camera, the detector and the native
+> overlay, written but not yet run on a device. The trigger and calibration engine is not built,
+> and iOS has not started. This describes `0.1.0`, not what installs today.
 
 ## Install
 
@@ -35,7 +37,8 @@ to JavaScript.
 ## Why
 
 - **No model files to hunt down**: the config plugin fetches, verifies, and installs one
-- **Zero peer dependencies**: no VisionCamera, no Reanimated; old and new architecture
+- **Zero runtime dependencies**: nothing installed alongside it. The peers are `expo`, `react`
+  and `react-native`, so no VisionCamera and no Reanimated; old and new architecture
 - **Zero bridge cost by default**: data crossing to JS is opt-in
 - **Logic runs natively**: declare thresholds, get called once per event
 - **Tunes itself**: measures the device, settles on the fastest sustainable config, remembers it

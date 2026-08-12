@@ -6,6 +6,9 @@ For bare React Native, where there's no config plugin.
 npx react-native-pose-detection <command>
 ```
 
+It runs on Node 22.22.1 or newer, the same floor the package declares in `engines`. It has no
+dependencies of its own, so `npx` fetches nothing beyond the package you already installed.
+
 ## `fetch-model <variant>`
 
 ```bash
@@ -50,10 +53,12 @@ Checks the things that actually break:
 ✓ SHA-256 matches manifest    pose_landmarker_full.task
 ✓ model installed             ios/MyApp/Resources/pose_landmarker_full.task
 ✓ SHA-256 matches manifest    pose_landmarker_full.task
+✓ model in the app target     pose_landmarker_full.task is a build resource
 – minSdkVersion 24            resolved by the Expo Gradle plugin, not readable from the project
 ✓ iOS deployment target 15.1  found 16.4
 ✓ android.permission.CAMERA   AndroidManifest.xml
 ✗ NSCameraUsageDescription    missing from Info.plist
+1 of 9 checks failed
 ```
 
 | Mark | Meaning |
@@ -70,6 +75,15 @@ output, which is worse than not checking it. Bare React Native writes the value 
 Two models in one directory is a `✗`. That's the failure this command exists to catch, because
 which one wins at load time is not something your app gets to decide.
 
+`model in the app target` is the second one worth knowing about. A `.task` sitting in
+`ios/<App>/Resources` that no target builds is never copied into the bundle, and the app fails at
+runtime with `MODEL_NOT_FOUND` even though the file is plainly there. `fetch-model` produces
+exactly that state on purpose when `expo/config-plugins` cannot be resolved, so it has to be
+checked rather than assumed.
+
+`doctor` takes no flags and no arguments, and says so rather than ignoring one. `doctor
+--cache-dir /tmp/x` reads as a request the tool honors, and it never was one.
+
 Run it first when reporting a setup bug.
 
 ## `clear-cache`
@@ -79,3 +93,8 @@ npx react-native-pose-detection clear-cache
 ```
 
 Takes `--cache-dir` too. The next `fetch-model` or prebuild downloads again.
+
+It clears the whole cache, every variant, plus the `.part` and `.lock` sidecars the downloader
+leaves. A lock another process is currently holding is left alone, because deleting it would let
+a second download start into the same path. It takes no variant argument: `clear-cache full`
+reads as clearing one model and it never did that, so it is an error rather than a surprise.

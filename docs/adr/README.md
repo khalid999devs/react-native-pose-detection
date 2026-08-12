@@ -31,3 +31,4 @@ What this costs us, and what it rules out.
 | [0006](./0006-checksums-are-fatal-except-in-the-cache.md) | A checksum mismatch is fatal, except in the cache |
 | [0007](./0007-pin-mediapipe-0-10-35.md) | Pin MediaPipe to 0.10.35, superseding 0003 |
 | [0008](./0008-frames-are-drained-not-pushed.md) | Frames are drained, not pushed |
+| [0009](./0009-trigger-snapshots-are-claimed.md) | Trigger snapshots are claimed, not carried |

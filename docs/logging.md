@@ -2,6 +2,12 @@
 
 A diagnostic channel that costs nothing when it's off and streams live when it's on.
 
+**Status:** the JavaScript side exists. `setLogLevel()` validates and forwards, `addLogListener()`
+maintains the registry and starts and stops the native stream, and `onLog` fans a batch out. The
+native channel behind it is Phase 4 work: Android writes to Logcat only today and emits nothing to
+JavaScript, and there is no iOS. Everything below the contract section describes what the native
+side must do, not what it does.
+
 ## Contract
 
 **Disabled is the default and must be free.** The only cost when logging is off is one
@@ -48,9 +54,21 @@ silently turns a free feature into a per-frame cost.
 | `triggers` | condition evaluation, phase changes, debounce suppression |
 | `calibration` | probe results, convergence steps, cache hits |
 | `overlay` | draw path, layer lifecycle |
-| `plugin` | model fetch, checksum, install (build time, not runtime) |
+
+Those six are the runtime categories, and `LogCategory` in `src/types/logging.ts` is exactly that
+list. There is a seventh label, `plugin`, on the model fetch, checksum and install output, but it
+comes from Node at build time and never reaches this channel. `setLogLevel({ plugin: 'debug' })`
+is a type error, not a setting.
 
 Levels are set per category, so `trace` on `triggers` doesn't drown you in `camera` output.
+
+An unknown level or an unknown category throws a `PoseConfigError` listing what was expected. A
+silently ignored level looks exactly like a bug in whatever you were trying to diagnose, which is
+the worst possible failure mode for a diagnostic tool.
+
+`addLogListener()` is a multiset, not a set. The same function registered twice needs two
+`remove()` calls, because two independent callers passing the same handler is legitimate and
+identity dedupe would let the first remove silently unsubscribe the second caller.
 
 ## Delivery
 
@@ -71,7 +89,9 @@ enabled, so native-only debugging works without a JS listener attached.
 
 ## Implementation notes
 
-- The level mask is a single atomic int: 3 bits of level × 7 categories. One compare per call site.
+- The level mask is a single atomic int: 3 bits of level × 6 runtime categories, 18 bits. One
+  compare per call site. Both platforms must pack the same six in the same order, or a level set
+  on one is read as another on the other.
 - Changing the level is a write to that int, no re-initialization, safe at any time.
 - Timestamps come from the same monotonic clock as `PoseFrame.timestamp`, so logs and frames
   can be correlated.

@@ -1,7 +1,7 @@
 import type { XcodeProject } from 'expo/config-plugins';
 import { IOSConfig } from 'expo/config-plugins';
 import { writeFile } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import { basename } from 'node:path';
 
 import { MODEL_FILE_PATTERN } from './manifest';
 
@@ -10,11 +10,7 @@ import { MODEL_FILE_PATTERN } from './manifest';
 // Xcode project layout changes.
 const RESOURCE_GROUP = 'Resources';
 
-/**
- * Every model file reference in the project, whichever variant it names. A reference left behind
- * after a variant switch ships a second model, and then which one wins at
- * `Bundle.main.path(forResource:)` is not something the app gets to decide.
- */
+/** Every model reference, any variant. One left behind after a switch ships a second model. */
 function findModelReferences(project: XcodeProject): string[] {
   const section = project.pbxFileReferenceSection() as Record<string, unknown>;
   const paths = new Set<string>();
@@ -26,16 +22,25 @@ function findModelReferences(project: XcodeProject): string[] {
     const raw = entry.path ?? entry.name;
     if (typeof raw !== 'string') continue;
 
-    const filePath = raw.replace(/^"|"$/g, '');
+    // A project written by an older run on Windows holds backslashes. Normalizing here is what
+    // lets that reference be recognized and cleaned up rather than left beside a new one.
+    const filePath = raw.replace(/^"|"$/g, '').replace(/\\/g, '/');
     if (MODEL_FILE_PATTERN.test(basename(filePath))) paths.add(filePath);
   }
   return [...paths];
 }
 
-/**
- * Leaves the project referencing exactly one model: `fileName`. Safe to run repeatedly, the add
- * is a no-op when the reference is already there.
- */
+/** `getFirstTarget` is index 0 with no product-type check, so it is only the fallback. */
+function applicationTargetUuid(project: XcodeProject): string {
+  const application = project.getTarget('com.apple.product-type.application') as
+    | { uuid?: string }
+    | null
+    | undefined;
+
+  return application?.uuid ?? project.getFirstTarget().uuid;
+}
+
+/** Leaves exactly one model referenced. Idempotent. */
 export function syncModelReference(
   project: XcodeProject,
   projectName: string,
@@ -43,21 +48,26 @@ export function syncModelReference(
 ): { added: string; removed: string[] } {
   IOSConfig.XcodeUtils.ensureGroupRecursively(project, RESOURCE_GROUP);
   const groupKey = project.findPBXGroupKey({ name: RESOURCE_GROUP });
-  const targetUuid = project.getFirstTarget().uuid;
 
-  const filepath = join(projectName, RESOURCE_GROUP, fileName);
+  // A pbxproj path is always forward-slashed, whatever the platform running prebuild. Xcode
+  // treats a backslash as part of the filename, so path.join here would write a reference that
+  // no Mac can build, and that the stale-reference comparison below would never match again.
+  const filepath = [projectName, RESOURCE_GROUP, fileName].join('/');
 
+  const targetUuid = applicationTargetUuid(project);
   const removed = findModelReferences(project).filter((stale) => stale !== filepath);
   for (const stale of removed) {
     project.removeResourceFile(stale, { target: targetUuid }, groupKey);
   }
 
+  // No targetUuid: config-plugins then resolves the application target itself, which is what
+  // expo-font and expo-asset rely on. The first target is not always the app, and a model added
+  // to a widget or a test target never reaches the bundle.
   IOSConfig.XcodeUtils.addResourceFileToGroup({
     filepath,
     groupName: RESOURCE_GROUP,
     project,
     isBuildFile: true,
-    targetUuid,
   });
 
   return { added: filepath, removed };
@@ -70,4 +80,13 @@ export function loadProject(projectRoot: string): XcodeProject {
 export async function saveProject(project: XcodeProject): Promise<string> {
   await writeFile(project.filepath, project.writeSync());
   return project.filepath;
+}
+
+/** Asked through here so the CLI and the plugin agree in a renamed project. */
+export function iosSourceRootName(projectRoot: string): string | null {
+  try {
+    return basename(IOSConfig.Paths.getSourceRoot(projectRoot));
+  } catch {
+    return null;
+  }
 }

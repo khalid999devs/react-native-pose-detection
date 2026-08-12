@@ -14,20 +14,15 @@ import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import java.util.concurrent.Executor
-import java.util.concurrent.atomic.AtomicInteger
 
 internal enum class Facing { FRONT, BACK }
 
 /**
- * Owns the capture session and nothing else. It knows about frames, not about poses.
+ * Owns the capture session. Knows about frames, not poses.
  *
- * **Every field here is read and written on the main thread only.** CameraX requires
- * `bindToLifecycle` on the main thread, so the main thread is the serial session queue rather
- * than a second queue racing it. Booleans shared across queues were the root cause of the legacy
- * package's camera-switch crashes, and the fix is not to have two queues.
- *
- * Analysis runs on its own single thread, handed in as [analysisExecutor], so inference never
- * blocks the UI.
+ * **Every field here is main thread only.** CameraX requires `bindToLifecycle` on main, so main
+ * is the serial session queue rather than a second queue racing it. Analysis runs on
+ * [analysisExecutor] so inference never blocks the UI.
  */
 internal class CameraSource(
     private val context: Context,
@@ -48,11 +43,14 @@ internal class CameraSource(
     var previewSize: Size = Size(1280, 720)
     var analysisSize: Size = Size(640, 480)
 
-    /**
-     * Bumped on every switch. Results produced before the bump are dropped by the view rather than
-     * drawn against the new camera's geometry.
-     */
-    val generation = AtomicInteger(0)
+    /** `auto` prefers front and falls back to back. A pinned lens fails instead of falling back. */
+    var facingFallbackAllowed: Boolean = false
+
+    /** Tells the provider callback, which lands a turn later, whether its session still exists. */
+    private var startToken = 0
+
+    /** Kept so `resume()` can re-issue a start whose provider fetch a `pause()` cancelled. */
+    private var onBound: (() -> Unit)? = null
 
     private val mainExecutor: Executor = ContextCompat.getMainExecutor(context)
 
@@ -72,14 +70,23 @@ internal class CameraSource(
         onBound: () -> Unit,
         onFailed: (ErrorCode, Throwable?) -> Unit,
     ) {
+        val token = ++startToken
         this.lifecycleOwner = owner
         this.facing = facing
+        this.onBound = onBound
 
         val future = ProcessCameraProvider.getInstance(context)
         future.addListener({
+            // A pause, a release or a newer start landed while the provider was being fetched, so
+            // this binding is no longer wanted. Without the token it would bring the camera and the
+            // landmarker back up behind a session that has already stopped.
+            if (token != startToken) {
+                PoseLog.debug(LogCategory.CAMERA) { "ignoring a stale camera provider callback" }
+                return@addListener
+            }
             try {
                 provider = future.get()
-                bind(facing)
+                bind(this.facing)
                 onBound()
             } catch (error: Throwable) {
                 PoseLog.error(LogCategory.CAMERA) { "camera provider failed: ${error.message}" }
@@ -88,10 +95,7 @@ internal class CameraSource(
         }, mainExecutor)
     }
 
-    /**
-     * Rebinds to the other camera, and puts the old one back if that fails. The generation is only
-     * bumped once the new binding succeeded, so a failed switch leaves nothing to reconcile.
-     */
+    /** Rebinds, restoring the old lens on failure. `onDone` reports the lens actually bound. */
     fun switchTo(
         target: Facing,
         onDone: (Facing) -> Unit,
@@ -105,13 +109,23 @@ internal class CameraSource(
             onDone(facing)
             return
         }
+        // The `auto` fallback belongs on the first bind, not here. Letting it run would rebind the
+        // lens that is already up, flash the preview, and resolve the switch as a success that
+        // changed nothing. guides/camera-control.md promises a CAMERA_SWITCH_FAILED instead.
+        val available = provider?.let { hasCamera(it, target) } ?: false
+        if (!available) {
+            onFailed(
+                ErrorCode.CAMERA_SWITCH_FAILED,
+                IllegalStateException("this device has no $target camera"),
+            )
+            return
+        }
 
         val previous = facing
         try {
             bind(target)
-            generation.incrementAndGet()
-            PoseLog.debug(LogCategory.CAMERA) { "switched $previous to $target, gen=${generation.get()}" }
-            onDone(target)
+            PoseLog.debug(LogCategory.CAMERA) { "switched $previous to $facing" }
+            onDone(facing)
         } catch (error: Throwable) {
             PoseLog.warn(LogCategory.CAMERA) { "switch to $target failed, rolling back: ${error.message}" }
             try {
@@ -132,7 +146,14 @@ internal class CameraSource(
         PoseLog.debug(LogCategory.CAMERA) { "target rotation now $rotation" }
     }
 
+    /** Parks a facing change made while unbound so the next bind picks it up. */
+    fun setPendingFacing(target: Facing) {
+        if (isBound) return
+        facing = target
+    }
+
     fun pause() {
+        startToken++
         if (!isBound) return
         provider?.unbindAll()
         isBound = false
@@ -140,21 +161,33 @@ internal class CameraSource(
     }
 
     fun resume(onFailed: (ErrorCode, Throwable?) -> Unit) {
-        if (isBound || provider == null || lifecycleOwner == null) return
+        if (isBound) return
+        val owner = lifecycleOwner ?: return
+
+        // A pause that landed while the provider was still being fetched cancelled that start and
+        // left `provider` null, so there is nothing to rebind to. Re-issuing the start is what
+        // makes pause-then-resume during startup recoverable instead of permanently dead.
+        if (provider == null) {
+            start(owner, facing, onBound ?: {}, onFailed)
+            return
+        }
         try {
             bind(facing)
+            onBound?.invoke()
         } catch (error: Throwable) {
             onFailed(ErrorCode.CAMERA_START_FAILED, error)
         }
     }
 
     fun release() {
+        startToken++
         analysis?.clearAnalyzer()
         provider?.unbindAll()
         analysis = null
         analyzer = null
         provider = null
         lifecycleOwner = null
+        onBound = null
         isBound = false
     }
 
@@ -162,6 +195,7 @@ internal class CameraSource(
         val provider = this.provider ?: throw IllegalStateException("no camera provider")
         val owner = this.lifecycleOwner ?: throw IllegalStateException("no lifecycle owner")
 
+        val lens = resolveAvailable(provider, target)
         val rotation = currentRotation()
 
         val preview =
@@ -185,26 +219,44 @@ internal class CameraSource(
 
         analyzer?.let { analysis.setAnalyzer(analysisExecutor, it) }
 
-        val selector =
-            CameraSelector
-                .Builder()
-                .requireLensFacing(
-                    if (target == Facing.FRONT) CameraSelector.LENS_FACING_FRONT else CameraSelector.LENS_FACING_BACK,
-                ).build()
-
         provider.unbindAll()
-        provider.bindToLifecycle(owner, selector, preview, analysis)
+        provider.bindToLifecycle(owner, selectorFor(lens), preview, analysis)
         preview.surfaceProvider = previewView.surfaceProvider
 
         this.analysis = analysis
-        this.facing = target
+        this.facing = lens
         this.isBound = true
 
         PoseLog.info(LogCategory.CAMERA) {
-            "bound $target preview=${previewSize.width}x${previewSize.height} " +
+            "bound $lens preview=${previewSize.width}x${previewSize.height} " +
                 "analysis=${analysisSize.width}x${analysisSize.height} rotation=$rotation"
         }
     }
+
+    /** Binding a lens the device lacks throws and leaves a dead preview, so resolve first. */
+    private fun resolveAvailable(
+        provider: ProcessCameraProvider,
+        target: Facing,
+    ): Facing {
+        if (!facingFallbackAllowed || hasCamera(provider, target)) return target
+        val fallback = if (target == Facing.FRONT) Facing.BACK else Facing.FRONT
+        if (!hasCamera(provider, fallback)) return target
+        PoseLog.info(LogCategory.CAMERA) { "no $target camera on this device, using $fallback" }
+        return fallback
+    }
+
+    // hasCamera throws CameraInfoUnavailableException, which is the same answer as false here.
+    private fun hasCamera(
+        provider: ProcessCameraProvider,
+        target: Facing,
+    ): Boolean = runCatching { provider.hasCamera(selectorFor(target)) }.getOrDefault(false)
+
+    private fun selectorFor(target: Facing): CameraSelector =
+        CameraSelector
+            .Builder()
+            .requireLensFacing(
+                if (target == Facing.FRONT) CameraSelector.LENS_FACING_FRONT else CameraSelector.LENS_FACING_BACK,
+            ).build()
 
     private fun currentRotation(): Int = previewView.display?.rotation ?: Surface.ROTATION_0
 

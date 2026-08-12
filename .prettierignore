@@ -1,4 +1,5 @@
 build/
+.test-build/
 lib/
 dist/
 node_modules/

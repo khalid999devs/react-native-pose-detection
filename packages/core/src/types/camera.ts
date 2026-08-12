@@ -57,7 +57,7 @@ export type AngleOverlay = {
   radius?: number;
   /** Defaults to the overlay color. */
   color?: string;
-  /** Decimal places on the label. Default 0. */
+  /** Decimal places on the label, 0 to 3. Default 0. Larger values are capped at 3. */
   decimals?: number;
   /** Hide the arc when the vertex is tracked below this. Default 0.5. */
   minVisibility?: number;
@@ -83,17 +83,22 @@ export type DataMode = 'off' | 'throttled' | 'batched' | 'live';
 
 export type DataConfig = {
   /** Default `'off'`, which is zero crossings per second. */
-  mode: DataMode;
+  mode?: DataMode;
   /** `'throttled'` only. Default 100. */
   throttleMs?: number;
   /** `'batched'` only. Default 500. */
   flushMs?: number;
   landmarks?: boolean;
   worldLandmarks?: boolean;
-  angles?: boolean;
   /**
-   * Narrows the landmark buffer to these joints and drives lazy angle computation. The joints
-   * appear on `PoseFrame.selection` in buffer order.
+   * `true` computes all 12. An array computes only those. Triggers and `overlay.angles` add to
+   * whatever this asks for, so leaving it unset still gets you the angles they need.
+   */
+  angles?: boolean | readonly AngleJointName[];
+  /**
+   * Narrows the landmark buffer to these joints, which appear on `PoseFrame.selection` in buffer
+   * order. It holds exactly these: angles are computed natively from the full set beforehand, so
+   * asking for an angle never widens the payload.
    */
   select?: readonly JointName[];
 };

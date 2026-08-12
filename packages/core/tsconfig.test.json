@@ -1,0 +1,17 @@
+// Tests are compiled, not run off disk: the package is "type": "commonjs", so Node's type
+// stripping loads a .ts test as CommonJS and rejects its `import` statements.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../../.test-build",
+    "rootDir": ".",
+    "noEmit": false,
+    "declaration": false,
+    "declarationMap": false,
+    // Listing types switches off automatic @types inclusion, so react-native is named too:
+    // PoseCamera.tsx reads the __DEV__ global.
+    "types": ["node", "react-native"]
+  },
+  "include": ["src", "tests"],
+  "exclude": ["build"]
+}

@@ -1,12 +1,7 @@
 import type { AngleJointName, JointName } from './joints';
 import { LANDMARK_COUNT } from './joints';
 
-/**
- * Floats per landmark: `[x, y, z, visibility]`.
- *
- * Changing this changes the buffer both native encoders write and every accessor reads, so it is
- * the one number in the package that is genuinely expensive to move.
- */
+/** Floats per landmark: `[x, y, z, visibility]`. */
 export const LANDMARK_STRIDE = 4;
 
 /** Offsets within one landmark's stride. Native writes in this order. */
@@ -42,17 +37,13 @@ export type Vec2 = { readonly x: number; readonly y: number };
 
 export type PoseFrame = {
   /**
-   * Flat `[x, y, z, visibility, ...]`. Read it with `landmark()` rather than by hand.
-   *
-   * Length is `FULL_FRAME_FLOAT_COUNT`, or `selection.length * LANDMARK_STRIDE` when `data.select`
-   * narrows it, or `0` when `data.landmarks` is false.
+   * Flat `[x, y, z, visibility, ...]`. Read it with `landmark()`. Length is
+   * `FULL_FRAME_FLOAT_COUNT`, `selection.length * LANDMARK_STRIDE` under `data.select`, or `0`
+   * when `data.landmarks` is false.
    */
   readonly landmarks: Float32Array;
 
-  /**
-   * Present only when `data.select` was set, listing the joints the buffer holds in buffer order.
-   * The same frozen array instance is reused across frames, it is not rebuilt per frame.
-   */
+  /** Set by `data.select`, in buffer order. The same frozen instance across frames. */
   readonly selection?: readonly JointName[];
 
   /** Metric 3D in meters, origin at the hip midpoint. Same stride and same `selection` as above. */

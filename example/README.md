@@ -1,5 +1,9 @@
 # Example apps
 
+**Neither app is written yet.** This directory holds only this file. Both are Phase 6 work in the
+[development plan](../docs/development-plan.md), which is also why nothing in this repository has
+ever run on a device. What follows is the specification they get built against.
+
 Real applications, not smoke tests. They are the **reference implementation**, the manual QA
 harness, and the demo. And they are never published to npm.
 
@@ -24,8 +28,10 @@ A bug that only appears in one of them is the common case, not the rare one: the
 prebuild and the CLI runs on a project that already exists, so they touch the native projects at
 different moments and in different states.
 
-The CI matrix in [testing](../docs/testing.md#ci-matrix) already builds both, on both platforms,
-on both architectures. These are what it builds.
+The CI matrix in [testing](../docs/testing.md#ci-matrix) is what will build both, on both
+platforms and both architectures. It is reserved by a comment at the end of
+`.github/workflows/ci.yml` and cannot be wired up before these two apps exist, because they are
+what it would build.
 
 **`expo/` is the one with all the screens.** The bare app is deliberately small: the basic
 camera, the scenarios panel, and a doctor readout. Duplicating eleven screens across two apps
@@ -118,6 +124,8 @@ prebuild to regenerate them, so the CLI has to work against native projects that
 which is exactly the case the config plugin never sees.
 
 ## Running
+
+Once they exist:
 
 ```bash
 npm install

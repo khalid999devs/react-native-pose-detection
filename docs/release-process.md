@@ -2,7 +2,9 @@
 
 ## Versioning
 
-Semantic versioning. The public surface is whatever `src/index.ts` exports, nothing else.
+Semantic versioning. The public surface is whatever `src/index.ts` exports, nothing else, and the
+`exports` map in `packages/core/package.json` is what makes that enforceable: deep imports into
+`build/` are blocked, so an internal file cannot become someone's dependency by accident.
 
 | Change | Bump |
 | --- | --- |
@@ -12,8 +14,9 @@ Semantic versioning. The public surface is whatever `src/index.ts` exports, noth
 | Default behavior change users can observe | major |
 | Bug fix, internal refactor, docs | patch |
 
-Dropping an ABI (`armeabi-v7a`, `x86`) is a **major**. It silently breaks devices that
-previously worked. See [ADR 0003](./adr/0003-pin-mediapipe-0-10-21.md).
+Dropping an ABI (`armeabi-v7a`, `x86`, `x86_64`) is a **major**. It silently breaks devices and
+emulators that previously worked, which is the failure the current pin exists to avoid. The ABI
+policy lives in [ADR 0007](./adr/0007-pin-mediapipe-0-10-35.md).
 
 ## Release history in git
 
@@ -62,7 +65,8 @@ someone actually needs the backport.
 
 ## Before a release
 
-- [ ] CI green on all matrix cells, iOS + Android × Expo + bare × old + new arch
+- [ ] CI green on all matrix cells, iOS + Android × Expo + bare × old + new arch (Phase 6 builds
+      that matrix; it does not run today)
 - [ ] Device regression suite passes: camera-switch stress, leak, memory budget, calibration, thermal
 - [ ] `guides/reference/` matches the exported types exactly
 - [ ] App-size table in `guides/performance.md` re-measured if native deps changed
@@ -82,16 +86,24 @@ it can't be tested from inside this repo.
 ## Verifying the tarball
 
 ```bash
-npm pack --dry-run
+npm pack --dry-run -w react-native-pose-detection
 ```
+
+That runs the package's `prepack`, which cleans and rebuilds both the module and the config
+plugin. It exists because `plugin/build` is generated, and a publish from a tree where it was
+never built ships a package whose config plugin is missing at prebuild time.
 
 Confirm:
 
 - **No `.task` files.** Models are fetched, never bundled, [ADR 0002](./adr/0002-models-fetched-not-bundled.md)
-- No `node_modules`, no `Pods`, no build output
+- `build/index.js`, `plugin/build/index.js`, `plugin/build/cli.js`, `cli/index.js`,
+  `app.plugin.js` and `expo-module.config.json` are all present
+- `android/proguard-rules.pro` is present, or release builds in consumer apps lose their keep rules
+- No `node_modules`, no `Pods`, no stray build output
 - Total size in the tens of KB, not MB
 
-A tarball that grows by megabytes means something leaked into `files`.
+CI asserts all of this on every PR, in both directions: nothing leaks in, nothing required drops
+out. A tarball that grows by megabytes means something leaked into `files`.
 
 ## After a release
 

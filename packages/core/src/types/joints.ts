@@ -49,8 +49,12 @@ export const JOINT_INDEX = Object.fromEntries(
   NAMES.map((name, index) => [name, index]),
 ) as Readonly<Record<JointName, number>>;
 
+// A Set rather than `value in JOINT_INDEX`: the `in` operator walks the prototype chain, so
+// 'toString' and 'constructor' would pass a guard that gates the wire format and the evaluator.
+const JOINT_NAME_SET: ReadonlySet<string> = new Set(NAMES);
+
 export function isJointName(value: unknown): value is JointName {
-  return typeof value === 'string' && value in JOINT_INDEX;
+  return typeof value === 'string' && JOINT_NAME_SET.has(value);
 }
 
 const CONNECTIONS = [
@@ -141,6 +145,8 @@ export const ANGLE_JOINTS = {
   rightAnkle: ['rightKnee', 'rightAnkle', 'rightFootIndex'],
 } as const satisfies Readonly<Record<AngleJointName, readonly [JointName, JointName, JointName]>>;
 
+const ANGLE_JOINT_NAME_SET: ReadonlySet<string> = new Set(ANGLE_NAMES);
+
 export function isAngleJointName(value: unknown): value is AngleJointName {
-  return typeof value === 'string' && value in ANGLE_JOINTS;
+  return typeof value === 'string' && ANGLE_JOINT_NAME_SET.has(value);
 }

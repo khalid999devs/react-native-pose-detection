@@ -6,6 +6,5 @@
     "MD024": { "siblings_only": true },
     "MD041": false
   },
-  "globs": ["**/*.md"],
   "ignores": ["**/node_modules/**", "ideation/**", "**/build/**", "CHANGELOG.md"]
 }

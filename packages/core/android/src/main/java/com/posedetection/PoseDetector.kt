@@ -19,13 +19,11 @@ internal class PoseDetector private constructor(
     val modelFileName: String,
 ) {
     /**
-     * MediaPipe LIVE_STREAM rejects any timestamp that does not strictly increase, and a rejected
-     * frame takes the whole stream down. Camera timestamps can repeat within a millisecond, so the
-     * value is clamped here rather than trusted.
+     * LIVE_STREAM rejects a timestamp that does not strictly increase, and one rejection takes the
+     * stream down. Camera timestamps can repeat within a millisecond, so the value is clamped.
      *
-     * Written only from the analysis thread. Volatile because the main thread reads it when a
-     * camera switch completes, to work out which in-flight results belong to the old camera. A
-     * slightly stale read there costs one extra dropped frame and nothing else.
+     * Written on the analysis thread, read on main when a switch completes. A stale read there
+     * costs one dropped frame.
      */
     @Volatile
     var lastTimestampMs = 0L
@@ -55,11 +53,7 @@ internal class PoseDetector private constructor(
     }
 
     companion object {
-        /**
-         * The plugin installs exactly one model, and its name carries the variant. Listing the assets
-         * rather than hard-coding a name means the runtime does not have to be told which variant the
-         * build selected.
-         */
+        /** The plugin installs exactly one model, so listing beats being told which variant. */
         fun findModelAsset(context: Context): String? =
             context.assets
                 .list("")
@@ -76,14 +70,21 @@ internal class PoseDetector private constructor(
         ): PoseDetector {
             val delegate =
                 when (request) {
-                    DelegateRequest.CPU -> Delegate.CPU
-                    DelegateRequest.GPU -> Delegate.GPU
-                    DelegateRequest.AUTO ->
+                    DelegateRequest.CPU -> {
+                        Delegate.CPU
+                    }
+
+                    DelegateRequest.GPU -> {
+                        Delegate.GPU
+                    }
+
+                    DelegateRequest.AUTO -> {
                         if (gpuProducesAnInference(context, modelFileName)) {
                             Delegate.GPU
                         } else {
                             Delegate.CPU
                         }
+                    }
                 }
 
             val landmarker =
@@ -103,18 +104,16 @@ internal class PoseDetector private constructor(
         }
 
         /**
-         * Constructing a GPU landmarker succeeds on devices whose GPU delegate then fails on the
-         * first real frame, which is how the legacy package shipped a black screen instead of a CPU
-         * fallback. So the probe runs an actual inference, in IMAGE mode where the result is
-         * synchronous and a failure is catchable, and only then commits to GPU.
-         *
-         * Cost is one inference on a blank bitmap during camera setup.
+         * Construction succeeds on devices whose GPU delegate then fails on the first real frame,
+         * so the probe runs a real inference in IMAGE mode, where failure is catchable, before
+         * committing to GPU. Costs one inference on a blank bitmap at setup.
          */
         private fun gpuProducesAnInference(
             context: Context,
             modelFileName: String,
         ): Boolean {
             var probe: PoseLandmarker? = null
+            var blank: Bitmap? = null
             return try {
                 probe =
                     build(
@@ -127,15 +126,19 @@ internal class PoseDetector private constructor(
                         onResult = null,
                         onError = null,
                     )
-                val blank = Bitmap.createBitmap(PROBE_SIZE, PROBE_SIZE, Bitmap.Config.ARGB_8888)
-                probe.detect(BitmapImageBuilder(blank).build())
-                blank.recycle()
+                val bitmap = Bitmap.createBitmap(PROBE_SIZE, PROBE_SIZE, Bitmap.Config.ARGB_8888)
+                blank = bitmap
+                probe.detect(BitmapImageBuilder(bitmap).build())
                 true
             } catch (error: Throwable) {
                 PoseLog.warn(LogCategory.DETECTOR) { "GPU delegate rejected on probe, using CPU: ${error.message}" }
                 false
             } finally {
+                // The throwing path is the one this probe exists for, so the bitmap is recycled
+                // here rather than after the detect call. The probe goes first: nothing may still
+                // be holding the pixels when they are freed.
                 runCatching { probe?.close() }
+                blank?.recycle()
             }
         }
 

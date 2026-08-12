@@ -12,8 +12,11 @@ class PoseDetectionModule : Module() {
 
             Function("setLogLevel") { config: Any? ->
                 when (config) {
-                    is String -> PoseLog.setLevel(LogLevel.from(config))
-                    is Map<*, *> ->
+                    is String -> {
+                        PoseLog.setLevel(LogLevel.from(config))
+                    }
+
+                    is Map<*, *> -> {
                         PoseLog.setLevels(
                             config.entries
                                 .mapNotNull { (key, value) ->
@@ -21,7 +24,11 @@ class PoseDetectionModule : Module() {
                                     category to LogLevel.from(value as? String)
                                 }.toMap(),
                         )
-                    else -> PoseLog.setLevel(LogLevel.OFF)
+                    }
+
+                    else -> {
+                        PoseLog.setLevel(LogLevel.OFF)
+                    }
                 }
             }
 
@@ -118,9 +125,11 @@ private fun parseOverlay(raw: Map<*, *>): OverlayConfig {
 
     (raw["landmarks"] as? Boolean)?.let { config.landmarks = it }
     (raw["connections"] as? Boolean)?.let { config.connections = it }
-    (raw["lineWidth"] as? Number)?.let { config.lineWidthDp = it.toFloat() }
-    (raw["pointRadius"] as? Number)?.let { config.pointRadiusDp = it.toFloat() }
-    (raw["minVisibility"] as? Number)?.let { config.minVisibility = it.toFloat() }
+    // Clamped here rather than trusted: these come from a JavaScript object that may have been
+    // built dynamically and skipped validation, and a negative stroke or radius draws nothing.
+    (raw["lineWidth"] as? Number)?.let { config.lineWidthDp = it.clamped(0f, Float.MAX_VALUE, 3f) }
+    (raw["pointRadius"] as? Number)?.let { config.pointRadiusDp = it.clamped(0f, Float.MAX_VALUE, 4f) }
+    (raw["minVisibility"] as? Number)?.let { config.minVisibility = it.clamped(0f, 1f, 0.5f) }
     parseColor(raw["color"])?.let { config.color = it }
 
     (raw["only"] as? List<*>)?.let { names ->
@@ -153,11 +162,25 @@ private fun parseAngle(raw: Map<*, *>): AngleOverlaySpec? {
         joint = joint,
         triple = triple,
         label = raw["label"] as? Boolean ?: true,
-        radiusDp = (raw["radius"] as? Number)?.toFloat() ?: 40f,
+        radiusDp = (raw["radius"] as? Number)?.clamped(1f, Float.MAX_VALUE, 40f) ?: 40f,
         color = parseColor(raw["color"]),
-        decimals = (raw["decimals"] as? Number)?.toInt() ?: 0,
-        minVisibility = (raw["minVisibility"] as? Number)?.toFloat() ?: 0.5f,
+        // Capped because the label goes into a fixed 16 char buffer: a large value would build a
+        // long string on the draw path every frame only to have it truncated on the way in.
+        decimals = ((raw["decimals"] as? Number)?.toInt() ?: 0).coerceIn(0, MAX_LABEL_DECIMALS),
+        minVisibility = (raw["minVisibility"] as? Number)?.clamped(0f, 1f, 0.5f) ?: 0.5f,
     )
+}
+
+private const val MAX_LABEL_DECIMALS = 3
+
+/** NaN survives `coerceIn`, and a NaN `minVisibility` disables the gate instead of clamping it. */
+private fun Number.clamped(
+    min: Float,
+    max: Float,
+    fallback: Float,
+): Float {
+    val value = toFloat()
+    return if (value.isNaN()) fallback else value.coerceIn(min, max)
 }
 
 private fun parseColor(value: Any?): Int? {

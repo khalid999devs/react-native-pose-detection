@@ -5,6 +5,15 @@
   "description": "Real-time pose detection for React Native and Expo. 33 landmarks, iOS and Android, powered by MediaPipe.",
   "main": "build/index.js",
   "types": "build/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./build/index.d.ts",
+      "default": "./build/index.js"
+    },
+    "./app.plugin.js": "./app.plugin.js",
+    "./expo-module.config.json": "./expo-module.config.json",
+    "./package.json": "./package.json"
+  },
   "bin": {
     "react-native-pose-detection": "cli/index.js"
   },
@@ -15,6 +24,7 @@
     "ios",
     "android/src",
     "android/build.gradle",
+    "android/proguard-rules.pro",
     "plugin/build",
     "cli/index.js",
     "app.plugin.js",
@@ -25,10 +35,8 @@
   "scripts": {
     "build": "expo-module build && npm run build:plugin",
     "clean": "expo-module clean && rm -rf plugin/build",
-    "lint": "expo-module lint",
-    "prepare": "expo-module prepare",
-    "prepublishOnly": "expo-module prepublishOnly",
-    "build:plugin": "tsc -p plugin/tsconfig.json"
+    "build:plugin": "tsc -p plugin/tsconfig.json",
+    "prepack": "npm run clean && npm run build"
   },
   "keywords": [
     "react-native",
@@ -58,9 +66,9 @@
     "access": "public"
   },
   "peerDependencies": {
-    "expo": "*",
-    "react": "*",
-    "react-native": "*"
+    "expo": ">=51",
+    "react": ">=18",
+    "react-native": ">=0.74"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",

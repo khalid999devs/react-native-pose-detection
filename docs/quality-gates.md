@@ -14,9 +14,14 @@ npm run check:all   # adds Swift/Kotlin lint, audit, licenses
 | ESLint | `npm run lint` | `any` in the public API, untyped imports, stray `console.log` |
 | Prettier | `npm run format:check` | formatting churn in diffs |
 | TypeScript | `npm run typecheck` | strict mode, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes` |
+| Tests | `npm test` | the wire format, the accessors, trigger validation, the joint tables |
 | Knip | `npm run deadcode` | unused exports, unused dependencies, orphaned files |
 
 `--max-warnings=0`, warnings are errors. A warning nobody fixes is noise that hides real ones.
+
+`npm test` compiles `packages/core/tests/` and runs it on Node's built-in runner. No
+test framework is installed. See [testing](./testing.md) for what the 60 tests cover and, more
+importantly, what they do not.
 
 ## Docs
 
@@ -48,11 +53,22 @@ live, and an unexpected nil there takes the app down mid-session.
 | --- | --- | --- |
 | publint | `npm run check:package` | malformed `exports`, wrong `main`/`types`, ESM/CJS mismatch |
 | Are The Types Wrong | `npm run check:package` | type resolution failures across node10, node16, bundler |
-| Tarball guard (CI) | n/a | **model files leaking into the tarball**; tarball over 2 MB |
+| Tarball guard (CI) | n/a | **model files leaking into the tarball**; a missing build artifact; tarball over 2 MB |
+| Packed CLI smoke test (CI) | n/a | a `bin` that only works from a checkout |
 
 The tarball guard is the important one. [ADR 0002](./adr/0002-models-fetched-not-bundled.md) is
 the whole reason this package is small; a stray `files[]` entry would silently undo it. CI fails
 the build rather than letting it ship.
+
+It also asserts the opposite direction, that `build/`, `plugin/build/`, `cli/index.js`,
+`app.plugin.js` and `expo-module.config.json` are all present. The `package` job deliberately does
+not run `npm run build` first: every step packs the way `npm publish` does, through the package's
+own `prepack`, so a publish path that forgets to build the config plugin fails in CI instead of
+shipping a plugin-less tarball.
+
+`exports` in `packages/core/package.json` is a gate too, not just metadata. It closes deep imports
+like `react-native-pose-detection/build/wire`, which would otherwise make every internal file
+public API by accident.
 
 ## Security
 
@@ -61,8 +77,8 @@ the build rather than letting it ship.
 | npm audit (prod) | `npm run audit:deps` | shipped vulnerabilities at high or above |
 | npm audit (dev) | `npm run audit:dev` | build-chain vulnerabilities at critical |
 | License check | `npm run audit:license` | copyleft contamination |
-| CodeQL (CI) | n/a | static analysis, weekly and per-PR |
-| Dependabot | n/a | stale dependencies |
+| CodeQL | `.github/workflows/codeql.yml` | static analysis on JavaScript and TypeScript, per PR and weekly |
+| Dependabot | `.github/dependabot.yml` | security advisories, and GitHub Actions whose tag moved or was yanked |
 
 The production audit uses `--omit=dev` because **this package ships zero JavaScript
 dependencies**, nothing in `node_modules` reaches a user's app. Dev-chain advisories (Metro,
@@ -74,18 +90,25 @@ This is not ceremony: pose estimation is full of AGPL-3.0 models and toolkits, U
 YOLO-pose among them. And a single AGPL dependency would make this package unusable in the
 closed-source apps it is built for.
 
+`audit:license` runs `scripts/no-production-deps.sh` first. `license-checker` prints an error and
+still exits 0 on an empty dependency tree, which made this gate one that could never fail. The
+script proves the production tree is empty instead of inferring it from an error message, and
+falls through to the real license scan the moment a runtime dependency is added.
+
 ### Dependabot policy
 
 | Setting | Why |
 | --- | --- |
-| Monthly, max 3 PRs | Weekly batches of tooling bumps are noise, not security |
-| `dev-tooling` group is **minor/patch only** | A major in one tool cannot hide inside a batch of routine bumps |
-| `typescript` and `eslint` majors ignored | Bumped deliberately, one at a time, with the whole suite re-run |
-| `expo`, `react`, `react-native`, `expo-module-scripts` ignored | Peer-satisfying devDependencies that must match a combination tested on device |
-| MediaPipe ignored | Pinned: see [ADR 0003](./adr/0003-pin-mediapipe-0-10-21.md) |
+| npm: `open-pull-requests-limit: 0` | Routine version PRs are off. The toolchain was brought current in August 2026 and there is no release cadence yet, so a monthly batch of bumps would be noise nobody triages |
+| GitHub Actions: monthly, up to 5 | Actions are pinned to commit SHAs, so an update PR is the only way a moved tag or a yanked action ever reaches a reviewer |
+| `typescript` majors ignored | `typescript-eslint` peers on `typescript <6.1.0`, so a 7.x bump breaks linting |
+| `expo`, `expo-module-scripts`, `react`, `react-native` ignored | Peer-satisfying devDependencies that must match a combination tested on device |
+| MediaPipe ignored | Pinned: see [ADR 0007](./adr/0007-pin-mediapipe-0-10-35.md) |
 
-Security advisories still open PRs regardless of these settings; the grouping rules only apply
-to routine version bumps.
+**Security advisories are unaffected by the zero limit.** They come from the security alerts
+system rather than from this schedule, so an advisory affecting the repository still opens a PR.
+Raising the npm limit is the one-line change that turns routine updates back on once someone is
+around to triage them.
 
 ## Commits
 
@@ -103,12 +126,16 @@ whether a release is major, minor, or patch.
 
 `lint-staged` runs on staged files only, ESLint, Prettier, markdownlint, cspell, SwiftFormat,
 SwiftLint, ktlint. Fast enough not to be bypassed, which is the only property that matters
-in a pre-commit hook.
+in a pre-commit hook. The native linters go through `scripts/optional-lint.sh`, so a contributor
+who installed none of the Homebrew tools is not blocked from committing. CI runs ktlint on every
+PR, and SwiftLint once Swift sources exist, and blocks there. The hook also skips `npm test`, to
+stay under a couple of seconds; CI runs the tests on the push.
 
 ## Device tests
 
-Not part of `npm run check`. They need hardware. See [testing](./testing.md). Phase 6 adds
-them on a schedule, plus the build matrix: platform × install method × architecture.
+Not part of `npm run check`, and not part of CI either: they need hardware, and the two example
+apps they would run in do not exist yet. Phase 6 adds them on a schedule, plus the build matrix
+of platform × install method × architecture. See [testing](./testing.md).
 
 ## Running links locally
 
@@ -121,6 +148,31 @@ brew install lychee   # macOS
 It is not part of `npm run check` for that reason, but it runs on every PR. Run it before
 pushing documentation changes. A hand-rolled grep will miss malformed links like
 `](.reference/file.md)`, which resolve to nothing but look plausible.
+
+## What CI actually runs
+
+One job per line, in `.github/workflows/ci.yml`, plus CodeQL in its own workflow.
+
+| Job | Runner | Steps |
+| --- | --- | --- |
+| `code` | ubuntu, Node 22.22.1 **and** 24 | `lint`, `format:check`, `typecheck`, `test`, `deadcode` |
+| `docs` | ubuntu | `lint:md`, `spell`, and lychee for links |
+| `kotlin` | ubuntu | ktlint over `packages/core/android` |
+| `swift-sources` | ubuntu | Looks for `*.swift` and reports whether the macOS job should start |
+| `swift` | macOS, gated on the above | `swiftlint lint --strict` |
+| `package` | ubuntu, Node 22.22.1 **and** 24 | `check:package`, the tarball guard, and a smoke test of the packed CLI |
+| `security` | ubuntu | `audit:deps`, `audit:license`, `audit:dev` |
+| `commits` | ubuntu, pull requests only | commitlint from the base commit to HEAD |
+| CodeQL | ubuntu | Per PR and weekly, JavaScript and TypeScript |
+
+Two details worth knowing before editing the file. Every action is pinned to a commit SHA rather
+than a tag, because a tag is a pointer its owner can move onto different code after review.
+And `swift` is split from `swift-sources` so the macOS runner, billed at ten times the Linux
+rate, never starts while there is no Swift to lint. The detection needs a checkout, so it cannot
+be a job-level `if`.
+
+The Node versions in `code` and `package` are the floor from `engines` and the version `.nvmrc`
+pins, which makes the floor a tested promise rather than a guess.
 
 ## Adding a gate
 

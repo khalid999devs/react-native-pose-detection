@@ -22,7 +22,7 @@ New contributor, in order:
 | --- | --- |
 | [Native modules](./native-modules.md) | How the iOS and Android layers are built, and how to extend them |
 | [Logging](./logging.md) | The zero-overhead diagnostic channel and its contract |
-| [Example app](../example/README.md) | The reference implementation and manual QA harness |
+| [Example apps](../example/README.md) | The reference implementation and manual QA harness, specified but not built yet |
 | [Development plan](./development-plan.md) | The 7 phases to v0.1.0, with exit criteria |
 | [Release process](./release-process.md) | Versioning, publishing, what gets checked |
 | [ADRs](./adr/README.md) | Why decisions were made: read before proposing a reversal |
@@ -47,7 +47,8 @@ Details and rationale in [architecture](./architecture.md#camera-switching).
 
 1. **Primitives, not policy.** If it needs to know the activity, it's a recipe, not library code.
 2. **Zero bridge cost by default.** Data crossing to JS is opt-in.
-3. **Zero peer dependencies.** No VisionCamera, no Reanimated; old and new architecture.
+3. **Zero runtime dependencies.** The peers are `expo`, `react` and `react-native` and nothing
+   else: no VisionCamera, no Reanimated. Old and new architecture.
 4. **Auto by default, override anything.** Safe floor, no ceiling.
 5. **One model in the app**, selected by config, never bundled in the npm tarball.
 6. **Camera, detection, and overlay** are three independent switches.
@@ -56,7 +57,14 @@ Details and rationale in [architecture](./architecture.md#camera-switching).
 
 ## Current status
 
-Pre-release, Phase 0. See [development plan](./development-plan.md) for what's built and what's next.
+Pre-release. Phases 0 to 3 are done: contracts, config plugin and CLI, and the Android camera,
+detector and overlay, the last of those written and building but never run on a device. Phase 4
+is half done, the JavaScript side of frame delivery is written and tested and the Kotlin engine
+is not started, so triggers, geometry, calibration and static input do nothing yet. iOS has not
+begun.
+
+The phase table in the [development plan](./development-plan.md) is the record. Check the boxes
+there rather than trusting this paragraph, which is the one that goes stale.
 
 Documentation follows [Diátaxis](https://diataxis.fr/): `guides/` holds tutorials, how-to guides,
 and user-facing reference; `docs/` holds explanation and contributor reference.

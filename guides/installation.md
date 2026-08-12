@@ -1,5 +1,9 @@
 # Installation
 
+**Android only so far.** The package ships no `ios/` sources and no podspec yet, so the iOS
+steps below are what will apply once the iOS module lands, not something to run today. Nothing
+about them is guesswork: the deployment target and the permission key are already fixed.
+
 ## Requirements
 
 | | |
@@ -43,7 +47,7 @@ Full plugin options: [config plugin reference](./reference/config-plugin.md).
 ```bash
 npm i react-native-pose-detection
 npx react-native-pose-detection fetch-model full
-cd ios && pod install
+cd ios && pod install   # once iOS ships
 ```
 
 ### iOS
@@ -88,8 +92,13 @@ the model there. Cache `~/.cache/react-native-pose-detection` to skip the downlo
 
 ## Android release builds
 
-**Ship an AAB.** A universal APK bundles arm64 + armeabi-v7a + x86, 40.3 MB of native
-libraries instead of 12.4 MB. If you must ship an APK:
+**Ship an AAB.** MediaPipe ships four ABI slices and a universal APK carries all of them:
+10.5 MB for `arm64-v8a`, 7.4 MB for `armeabi-v7a`, 15.0 MB for `x86` and 13.0 MB for `x86_64`,
+45.9 MB of native library against the 10.5 MB a phone actually loads. Measured from an
+assembled APK on the pinned MediaPipe 0.10.35, see
+[ADR 0007](../docs/adr/0007-pin-mediapipe-0-10-35.md).
+
+If you must ship an APK, filter it in your **release** build only:
 
 ```groovy
 android {
@@ -98,3 +107,6 @@ android {
   }
 }
 ```
+
+Leave debug builds alone. Dropping `x86_64` there is what breaks the standard Android Studio
+emulator on an Intel, Windows or Linux host.

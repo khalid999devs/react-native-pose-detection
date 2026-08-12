@@ -1,11 +1,9 @@
 package com.posedetection
 
 /**
- * The BlazePose landmark order, the skeleton, and the joints that have an angle.
- *
- * These three tables are the contract from `src/types/joints.ts`. iOS carries the same three.
- * A divergence between any of the copies is a bug even when each side looks right alone, which
- * is why the shared fixtures in `docs/testing.md` drive both platforms.
+ * BlazePose landmark order, the skeleton, and the joints that have an angle. These three tables
+ * are the contract from `src/types/joints.ts`, and iOS carries the same three. Any divergence is
+ * a bug even when each side looks right alone.
  */
 internal object Skeleton {
     const val LANDMARK_COUNT = 33
@@ -92,10 +90,7 @@ internal object Skeleton {
 
     fun indexOf(name: String): Int = NAME_TO_INDEX[name] ?: -1
 
-    /**
-     * 35 pairs, flattened. Iterated per frame by the overlay, so it is a primitive array rather
-     * than a list of pairs: no boxing, no iterator allocation on the draw path.
-     */
+    /** 35 pairs, flattened: a primitive array avoids boxing on the per-frame draw path. */
     val CONNECTIONS =
         intArrayOf(
             NOSE,

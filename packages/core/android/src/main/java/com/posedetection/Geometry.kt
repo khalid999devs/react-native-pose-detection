@@ -4,32 +4,35 @@ import kotlin.math.abs
 import kotlin.math.acos
 import kotlin.math.sqrt
 
-/**
- * Pure functions over the flat landmark buffer. No allocation, no state, no camera.
- *
- * Phase 4 adds center of mass, velocity, and body span here. Phase 3 needs only the joint angle,
- * because the overlay can draw one.
- */
+/** Pure functions over the flat landmark buffer. No allocation, no state, no camera. */
 internal object Geometry {
     /**
-     * The angle at `vertex` between the segments to `proximal` and `distal`, in degrees, 0 to 180.
+     * The angle at `vertex`, in degrees, 0 to 180.
      *
-     * Returns `Float.NaN` when the triangle is degenerate, which happens when a joint is tracked
-     * badly enough that two points land on top of each other. NaN is the honest answer: 0 would be
-     * indistinguishable from a fully folded joint.
+     * MediaPipe divides x by width and y by height, so on a non-square frame the normalized space
+     * is anisotropic and an angle read straight off it is wrong by tens of degrees. The frame size
+     * is what puts both axes back in a common unit.
+     *
+     * `Float.NaN` when the triangle is degenerate: 0 would be indistinguishable from a folded
+     * joint.
      */
     fun angleDegrees(
         landmarks: FloatArray,
         proximal: Int,
         vertex: Int,
         distal: Int,
+        frameWidth: Int,
+        frameHeight: Int,
     ): Float {
+        if (frameWidth <= 0 || frameHeight <= 0) return Float.NaN
+        val aspect = frameWidth.toFloat() / frameHeight.toFloat()
+
         val vx = landmarks[vertex * Skeleton.LANDMARK_STRIDE]
         val vy = landmarks[vertex * Skeleton.LANDMARK_STRIDE + 1]
 
-        val ax = landmarks[proximal * Skeleton.LANDMARK_STRIDE] - vx
+        val ax = (landmarks[proximal * Skeleton.LANDMARK_STRIDE] - vx) * aspect
         val ay = landmarks[proximal * Skeleton.LANDMARK_STRIDE + 1] - vy
-        val bx = landmarks[distal * Skeleton.LANDMARK_STRIDE] - vx
+        val bx = (landmarks[distal * Skeleton.LANDMARK_STRIDE] - vx) * aspect
         val by = landmarks[distal * Skeleton.LANDMARK_STRIDE + 1] - vy
 
         val magnitude = sqrt((ax * ax + ay * ay) * (bx * bx + by * by))
@@ -40,20 +43,22 @@ internal object Geometry {
         return Math.toDegrees(acos(cosine).toDouble()).toFloat()
     }
 
-    /** The direction of the angle's bisector at the vertex, used to place the arc and its label. */
+    /**
+     * Direction of the angle's bisector, for placing the arc and its label. Takes projected screen
+     * pixels: a direction taken before projection lands outside the joint on a mirrored preview.
+     */
     fun bisectorRadians(
-        landmarks: FloatArray,
-        proximal: Int,
-        vertex: Int,
-        distal: Int,
+        proximalX: Float,
+        proximalY: Float,
+        vertexX: Float,
+        vertexY: Float,
+        distalX: Float,
+        distalY: Float,
     ): Float {
-        val vx = landmarks[vertex * Skeleton.LANDMARK_STRIDE]
-        val vy = landmarks[vertex * Skeleton.LANDMARK_STRIDE + 1]
-
-        val ax = landmarks[proximal * Skeleton.LANDMARK_STRIDE] - vx
-        val ay = landmarks[proximal * Skeleton.LANDMARK_STRIDE + 1] - vy
-        val bx = landmarks[distal * Skeleton.LANDMARK_STRIDE] - vx
-        val by = landmarks[distal * Skeleton.LANDMARK_STRIDE + 1] - vy
+        val ax = proximalX - vertexX
+        val ay = proximalY - vertexY
+        val bx = distalX - vertexX
+        val by = distalY - vertexY
 
         val aLength = sqrt(ax * ax + ay * ay)
         val bLength = sqrt(bx * bx + by * by)

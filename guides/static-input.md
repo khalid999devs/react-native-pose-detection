@@ -1,5 +1,10 @@
 # Images and video files
 
+**Not available yet.** `detectOnImage` and `detectOnVideo` are not exported and there is nothing
+native behind them. They are part of the Phase 4 engine and ship in `0.1.0` with the rest of it,
+see the [development plan](../docs/development-plan.md). This page is the contract they are being
+built to, so that the shape is settled before anyone writes against it.
+
 Same detector, no camera.
 
 ```ts
@@ -24,11 +29,17 @@ Accepts a local file URI, a `content://` URI on Android, or a bundled asset.
 
 ## Video
 
+A video job can run for minutes, so it is not a bare promise. `detectOnVideo` returns a task you
+can cancel, and the frames arrive on the task's promise:
+
 ```ts
-const frames = await detectOnVideo(uri, {
+const task = detectOnVideo(uri, {
   fps: 10,
-  onProgress: (p) => setProgress(p),   // 0…1
+  onProgress: (p) => setProgress(p),   // 0…1, on the JS thread, throttled
 });
+
+const frames = await task.frames;      // PoseFrame[]
+task.cancel();                         // resolves task.frames with what was decoded so far
 ```
 
 | Option | Default | Notes |
@@ -37,24 +48,16 @@ const frames = await detectOnVideo(uri, {
 | `maxPoses` | `1` | |
 | `startMs` / `endMs` | full clip | trim a range |
 | `smoothing` | `true` | temporal, so it applies here |
-| `onProgress` | n/a | called on the JS thread, throttled |
+| `onProgress` | n/a | `(progress: number) => void`, never frames |
 
 Runs `VIDEO` mode with monotonic timestamps, so temporal tracking and smoothing behave the
 same as they do live.
 
 ## Notes
 
-**Memory.** A long clip at high `fps` produces a lot of frames, 10 minutes at 30 fps is 18,000
-`PoseFrame`s. Prefer a low `fps` and trim with `startMs`/`endMs`. Frames are yielded
-incrementally to `onProgress` consumers rather than all retained, but the returned array holds
-everything.
-
-**Cancellation:**
-
-```ts
-const task = detectOnVideo(uri, { fps: 10 });
-task.cancel();
-```
+**Memory.** The task holds every frame it has decoded so it can resolve with them, so a long clip
+at a high `fps` holds a lot: 10 minutes at 30 fps is 18,000 `PoseFrame`s. Prefer a low `fps` and
+trim with `startMs`/`endMs`.
 
 **No calibration.** Static input runs at full quality. There is no live frame budget to hit,
 so the profile and thermal systems don't apply. Long video jobs still respect the thermal

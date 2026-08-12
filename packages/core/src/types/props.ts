@@ -47,7 +47,7 @@ export type PoseCameraProps = {
   data?: DataConfig;
   triggers?: readonly Trigger[];
 
-  /** Scoped to this camera. `setLogLevel()` sets it globally. */
+  /** Raises the level while this camera is mounted. `setLogLevel()` sets it globally. */
   logLevel?: LogLevelConfig;
 
   onReady?: (event: ReadyEvent) => void;
@@ -57,8 +57,13 @@ export type PoseCameraProps = {
   onTrigger?: (event: TriggerEvent) => void;
   /** `data.mode` of `'throttled'` or `'live'`. */
   onPose?: (frame: PoseFrame) => void;
-  /** `data.mode` of `'batched'`. The array is reused between flushes, copy what you retain. */
+  /** `data.mode` of `'batched'`. */
   onPoseBatch?: (frames: readonly PoseFrame[]) => void;
+  /**
+   * Frames the native ring buffer dropped because this consumer could not keep up. Reported per
+   * delivery, so a steady trickle here means the callback is doing too much work.
+   */
+  onFramesDropped?: (count: number) => void;
   onLog?: (entries: readonly LogEntry[]) => void;
 };
 
@@ -67,15 +72,21 @@ export type PoseCameraRef = {
   switchCamera(): Promise<void>;
   setFacing(facing: Facing): Promise<void>;
 
-  pause(): void;
-  resume(): void;
-  startDetection(): void;
+  /**
+   * These reach native over the same asynchronous path as everything else, so they return a
+   * promise. Ignoring it is fine and common; awaiting it is how you see a failure.
+   */
+  pause(): Promise<void>;
+  resume(): Promise<void>;
+  startDetection(): Promise<void>;
   /** Releases GPU resources rather than gating a still-running pipeline. */
-  stopDetection(): void;
-  setOverlayEnabled(enabled: boolean): void;
+  stopDetection(): Promise<void>;
+  setOverlayEnabled(enabled: boolean): Promise<void>;
 
+  /** Not implemented yet. Both throw until calibration lands. */
   setProfile(profile: Profile): void;
   getProfile(): ProfileState;
+  /** The last known state, mirrored from the events that carry it. Never a bridge call. */
   getState(): CameraState;
 
   /**

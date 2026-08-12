@@ -26,6 +26,7 @@ const withModelResource: ConfigPlugin<ResolvedOptions> = (config, options) =>
       const installed = await installModelFile(
         cachePath,
         iosResourcesDir(projectRoot, projectName),
+        options.model,
       );
       log.line(`copied → ${relative(projectRoot, installed)}`);
 

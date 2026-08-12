@@ -10,9 +10,8 @@ export const DEFAULT_MODEL: ModelVariant = 'full';
 const BASE_URL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker';
 
 /**
- * Revision `1`, never `latest`. The two paths carry the same weights but differ by four zip
- * timestamp bytes on the `full` bundle, which is enough to fail a checksum on one variant only.
- * See docs/adr/0004-pin-model-revision-not-latest.md.
+ * Revision `1`, never `latest`: the two carry the same weights but differ by four zip timestamp
+ * bytes on `full`, enough to fail a checksum. See ADR 0004.
  */
 const REVISION = 'float16/1';
 
@@ -53,8 +52,17 @@ const MODEL_MANIFEST: Readonly<Record<ModelVariant, ModelEntry>> = {
   ),
 };
 
-/** Matches any installed model, not just the selected one, so a variant switch cleans up. */
-export const MODEL_FILE_PATTERN = /^pose_landmarker_(?:lite|full|heavy)\.task$/;
+/**
+ * Matches what the native side matches (`pose_landmarker_*.task`): a file this misses is one the
+ * runtime can still load ahead of the installed model.
+ */
+export const MODEL_FILE_PATTERN = /^pose_landmarker_[A-Za-z0-9_.-]*\.task$/;
+
+/** The three names this package installs, for the places that map a file back to a variant. */
+export const KNOWN_MODEL_FILE_PATTERN = /^pose_landmarker_(?:lite|full|heavy)\.task$/;
+
+/** The downloader's sidecars, so `clear-cache` sweeps them with the models they belong to. */
+export const MODEL_SIDECAR_FILE_PATTERN = /^pose_landmarker_[A-Za-z0-9_.-]*\.task\.(?:part|lock)$/;
 
 function isModelVariant(value: unknown): value is ModelVariant {
   return typeof value === 'string' && MODEL_VARIANTS.includes(value as ModelVariant);

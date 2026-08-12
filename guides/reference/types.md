@@ -1,5 +1,9 @@
 # Types
 
+Everything on this page is exported from the package root, and the root is the only entry point.
+The `exports` map blocks deep imports like `react-native-pose-detection/build/wire`, so anything
+not re-exported from the root is internal and can change without a major version.
+
 ## `PoseFrame`
 
 ```ts
@@ -16,8 +20,18 @@ type PoseFrame = {
 };
 ```
 
-Only fields enabled in `data` are populated. `angles` is partial because angles are computed
-lazily, if your triggers and `select` reference two joints, two angles are computed, not ten.
+Nothing produces a `PoseFrame` yet. The decoder, the accessors and the type are done; the native
+ring buffer that fills the wire format is not, so `onPose`, `onPoseBatch` and `snapshot()` deliver
+nothing on either platform today. Everything below describes the format they will deliver, and it
+is the format the decoder already enforces.
+
+Every field is `readonly` in the real declaration, dropped above for readability. The same is true
+of the event types in [events](./events.md).
+
+Only fields enabled in `data` are populated. `angles` is partial because only referenced angles
+are computed, and exactly three things reference one: an `angle` condition in a trigger, an entry
+in `overlay.angles`, and `data.angles`. Nothing else does. Naming a joint as a comparison bound
+(`below: 'leftShoulder'`) or in `data.select` asks for its position, not its angle.
 
 `timestamp` is milliseconds on a monotonic clock, not wall clock. It is the same clock
 `LogEntry.timestamp` uses, so a log line can be matched to the frame that produced it.
@@ -42,9 +56,19 @@ have to hard-code a stride:
 | `FULL_FRAME_FLOAT_COUNT` | `132` |
 | `FULL_FRAME_BYTE_LENGTH` | `528` |
 
+`frame.landmarks` is a `subarray` view into the buffer the drain returned, never a copy. Retaining
+a frame retains that whole buffer, and the numbers are only stable while it lives, so copy with
+`.slice()` if you keep anything past the callback.
+
 Coordinates are normalized `0…1` relative to the **analysis frame**, origin top-left.
 Front-camera `x` is un-mirrored so it matches the real world, not the preview. The overlay
 compensates automatically.
+
+Normalizing `x` by the frame width and `y` by the height independently makes the space
+anisotropic, so one unit of `x` is not one unit of `y` on anything but a square frame. That does
+not matter for a threshold on a single axis, which is what `landmarkX` and `landmarkY` are. It
+matters enormously for anything angular, which is why angles are computed natively with an aspect
+correction rather than read off these coordinates.
 
 `worldLandmarks` uses the same stride and the same `selection`, in meters, with the origin at
 the hip midpoint.
@@ -54,11 +78,19 @@ the hip midpoint.
 With `data.select`, the buffer carries only the joints you named, in the order you named them,
 and `frame.selection` lists them. Three joints is 12 floats, 48 bytes, instead of 528.
 
+It is exactly those joints and nothing else. Angles are computed natively from the full 33
+landmarks before the buffer is narrowed, so referencing an angle never widens the payload and
+never adds a joint you did not ask for. A `PoseFrame` handed to you as a trigger snapshot is
+narrowed the same way.
+
 The accessors read `selection` for you, so `landmark(frame, 'leftKnee')` works the same either
 way. Asking for a joint you did not select throws rather than returning a silent zero.
 
-`frame.selection` is the same frozen array on every frame of a session, it is not rebuilt per
-frame, and the accessors cache their lookup against it.
+`frame.selection` is one frozen array instance, held for as long as the joint list is unchanged,
+and the accessors cache their name-to-position map against that identity in a `WeakMap`. It is
+held by content, not by prop identity, so passing `data` as an inline object literal (which every
+example here does, and which produces a new array on every render) does not churn it. Changing
+which joints you select does, and it should: it is a different buffer shape.
 
 ## Accessors
 
@@ -91,10 +123,12 @@ function handle(frame: PoseFrame) {
 }
 ```
 
-`landmark()` and `landmarkInto()` throw `PoseConfigError` when the joint is not in the frame,
-either because `data.landmarks` is off or because `data.select` excluded it. That is a config
-mistake, not a runtime condition, so it fails loudly. Use `hasLandmark()` or `visibilityOf()`
-when you would rather branch than catch.
+`landmark()`, `landmarkInto()` and `worldLandmark()` throw `PoseConfigError` when the joint is not
+in the frame, either because `data.landmarks` is off or because `data.select` excluded it. That is
+a config mistake, not a runtime condition, so it fails loudly with the joint name in the message.
+`worldLandmark()` returns `null` for the different case of `data.worldLandmarks` being off, which
+is a whole missing block rather than a joint you forgot to select. Use `hasLandmark()` or
+`visibilityOf()` when you would rather branch than catch.
 
 ## `JointName` / landmark indices
 
@@ -111,7 +145,9 @@ BlazePose, 33 points:
 
 String constants are exported for all 33. `JointName` is a union of those literals, `JOINT_NAMES`
 is the ordered list, and `JOINT_INDEX` maps a name to its position in the buffer.
-`isJointName(value)` is a type guard for when a joint name arrives from outside your code.
+`isJointName(value)` is a type guard for when a joint name arrives from outside your code. It
+matches against a `Set`, not the `in` operator, so `'toString'` and `'constructor'` are rejected
+like any other unknown string.
 
 ## `AngleJointName`
 
@@ -123,14 +159,17 @@ leftShoulder  rightShoulder   leftElbow  rightElbow   leftWrist  rightWrist
 leftHip       rightHip        leftKnee   rightKnee    leftAnkle  rightAnkle
 ```
 
-`Condition.angle`, `AngleOverlay.joint`, and the keys of `PoseFrame.angles` are all
-`AngleJointName` rather than `JointName`. Writing `{ angle: 'nose' }` is a type error, and it is
-caught by [validation](#validation) at runtime too, instead of becoming a trigger that never
-fires.
+`Condition.angle`, `AngleOverlay.joint`, the elements of `data.angles`, and the keys of
+`PoseFrame.angles` are all `AngleJointName` rather than `JointName`. Writing `{ angle: 'nose' }`
+is a type error, and it is caught by [validation](#validation) at runtime too, instead of becoming
+a trigger that never fires.
 
-`ANGLE_JOINT_NAMES` is the list, `isAngleJointName(value)` is the type guard, and `ANGLE_JOINTS`
-gives the triple each angle is measured from as `[proximal, vertex, distal]`. `leftKnee` is
-`['leftHip', 'leftKnee', 'leftAnkle']`.
+`ANGLE_JOINT_NAMES` is the list and `isAngleJointName(value)` is the type guard, with the same
+prototype-key handling as `isJointName`. `ANGLE_JOINTS` gives the triple each angle is measured
+from as `[proximal, vertex, distal]`, so `leftKnee` is `['leftHip', 'leftKnee', 'leftAnkle']`.
+
+Angles are degrees, 0 to 180, always. They come out of an `acos`, so 180 is the ceiling and a
+bound above it can never be met.
 
 ## Skeleton connections
 
@@ -154,6 +193,9 @@ type ProfileState = {
   p50InferenceMs: number;
 };
 ```
+
+Nothing returns a `ProfileState` yet. `getProfile()` throws until calibration lands, see
+[ref methods](./ref-methods.md#setprofile-and-getprofile-throw).
 
 ## `CameraState`
 
@@ -184,8 +226,13 @@ type ValidationIssue = { path: string; message: string };
 ```
 
 `path` points at the exact field, for example `triggers[0].enter.angle`. `<PoseCamera>` runs
-`assertValidTriggers` on mount, so you only need to call these yourself when you build trigger
+`assertValidTriggers` during render, not in an effect, so a bad config fails at the call site
+before anything walks the conditions. You only need to call these yourself when you build trigger
 configs dynamically and want to check one before rendering.
+
+`PoseConfigError` carries every problem it found on `.issues`, not just the first, so a generated
+config can be fixed in one pass. `setLogLevel()` throws the same error type for an unknown level
+or category.
 
 The full rule list is in [trigger schema → validation](./trigger-schema.md#validation).
 

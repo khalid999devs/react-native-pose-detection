@@ -27,6 +27,7 @@ packages/*/.eslintrc.js
 #  Build output
 # ══════════════════════════════════════════════════════════════════
 build/
+.test-build/
 lib/
 dist/
 out/

@@ -1,5 +1,10 @@
 # Getting Started
 
+**Android only so far, and pre-1.0.** The camera, the native overlay and camera switching run
+today. Triggers, frame delivery to JavaScript, calibration and the thermal ladder are typed and
+decoded in JavaScript but have no Kotlin behind them yet, so the sections below marked *not
+built yet* describe what you will be able to call, not what fires today. iOS has not started.
+
 ## Requirements
 
 | | |
@@ -79,10 +84,13 @@ export default function App() {
 }
 ```
 
-That gives you a live camera with a skeleton overlay drawn natively, auto-tuned to the device,
-with **zero data crossing to JavaScript**.
+That gives you a live camera with a skeleton overlay drawn natively, and **zero data crossing to
+JavaScript**.
 
 ## Getting data out
+
+*Not built yet: the native engine that evaluates triggers and fills the frame buffer is the
+next thing being built. The props and callbacks below are final, nothing fires from them.*
 
 Nothing crosses the bridge until you ask. Three ways, cheapest first:
 
@@ -96,12 +104,15 @@ Nothing crosses the bridge until you ask. Three ways, cheapest first:
   onTrigger={(e) => setReps(e.count)}
 />
 
-// 2. Batched: every frame, 2 crossings/sec
+// 2. Batched: every frame, 4 crossings/sec
 <PoseCamera data={{ mode: 'batched', flushMs: 500 }} onPoseBatch={handle} />
 
-// 3. Throttled: latest frame, 10/sec
+// 3. Throttled: latest frame at 10 Hz, 20 crossings/sec
 <PoseCamera data={{ mode: 'throttled', throttleMs: 100 }} onPose={handle} />
 ```
+
+Two crossings per emission rather than one, because native signals and JavaScript pulls. See
+[data delivery](./data-delivery.md#modes) for why.
 
 Prefer triggers. See [triggers.md](./triggers.md) and [recipes.md](./recipes/README.md).
 

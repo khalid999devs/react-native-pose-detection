@@ -1,17 +1,9 @@
 {
-  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "$schema": "https://unpkg.com/knip@6/schema.json",
   "ignoreBinaries": ["swiftlint", "ktlint", "lychee"],
-  "ignoreDependencies": ["@types/react", "react"],
   "workspaces": {
     "packages/core": {
-      "entry": [
-        "src/index.ts",
-        "plugin/src/index.ts",
-        "plugin/src/cli.ts",
-        "app.plugin.js",
-        "cli/index.js"
-      ]
+      "entry": ["plugin/src/index.ts", "plugin/src/cli.ts"]
     }
-  },
-  "ignore": ["**/.eslintrc.js"]
+  }
 }

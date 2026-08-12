@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.view.View
+import java.util.Locale
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -55,28 +56,71 @@ internal class OverlayConfig {
     /** `null` means every joint. A set of indices when `only` narrows it. */
     var only: BooleanArray? = null
     var angles: List<AngleOverlaySpec> = emptyList()
+
+    // React hands down a fresh overlay object on most renders, so the view is reassigned a config
+    // that is usually identical to the one it holds. Comparing by content lets it skip the redraw.
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is OverlayConfig) return false
+        return landmarks == other.landmarks &&
+            connections == other.connections &&
+            color == other.color &&
+            lineWidthDp == other.lineWidthDp &&
+            pointRadiusDp == other.pointRadiusDp &&
+            minVisibility == other.minVisibility &&
+            only.contentEquals(other.only) &&
+            angles == other.angles
+    }
+
+    override fun hashCode(): Int {
+        var result = landmarks.hashCode()
+        result = 31 * result + connections.hashCode()
+        result = 31 * result + color
+        result = 31 * result + lineWidthDp.hashCode()
+        result = 31 * result + pointRadiusDp.hashCode()
+        result = 31 * result + minVisibility.hashCode()
+        result = 31 * result + (only?.contentHashCode() ?: 0)
+        result = 31 * result + angles.hashCode()
+        return result
+    }
 }
 
 /**
  * Draws the skeleton over the preview. Nothing here crosses to JavaScript.
  *
- * The draw path allocates nothing. Points and segments go through preallocated float arrays
- * handed to `drawPoints` and `drawLines` in one call each, rather than a Path rebuilt per frame,
- * and degree labels are formatted into a reusable char buffer.
+ * The draw path allocates nothing: preallocated float arrays go to `drawPoints` and `drawLines`
+ * in one call each, and degree labels are formatted into a reusable char buffer.
  */
 internal class OverlayView(
     context: Context,
 ) : View(context) {
+    // The detector's result thread writes `incoming`, the UI thread draws from `landmarks`, and
+    // `frameLock` is held only for the copy between them. Without it a draw already in flight can
+    // read some joints from one frame and the rest from the next, and the skeleton snaps apart.
+    private val frameLock = Any()
+    private val incoming = FloatArray(Skeleton.LANDMARK_COUNT * Skeleton.LANDMARK_STRIDE)
+    private var incomingHasPose = false
+    private var incomingMirrored = false
+    private var incomingWidth = 0
+    private var incomingHeight = 0
+
+    // Everything below is the snapshot taken under the lock at the top of onDraw, and is touched
+    // only on the UI thread from there on. Mirroring and the source size ride in the same snapshot
+    // as the landmarks, so a camera switch can never draw new landmarks with the old mirroring.
     private val landmarks = FloatArray(Skeleton.LANDMARK_COUNT * Skeleton.LANDMARK_STRIDE)
     private var hasPose = false
     private var mirrored = false
 
-    /** Source frame dimensions in display orientation, which set the aspect for the fill. */
+    /**
+     * Frame size in display orientation, the space the landmarks are normalized against. At 90 and
+     * 270 degrees the sensor dimensions are swapped, so portrait is 480x640, not 640x480.
+     */
     private var sourceWidth = 0
     private var sourceHeight = 0
 
     var config = OverlayConfig()
         set(value) {
+            if (value == field) return
             field = value
             applyConfig()
             invalidate()
@@ -116,6 +160,14 @@ internal class OverlayView(
     private val labelBounds = RectF()
     private val labelChars = CharArray(16)
     private val screen = FloatArray(2)
+    private val fontMetrics = Paint.FontMetrics()
+
+    // The fill scale and offsets are constant within a draw, so they are computed once per frame
+    // rather than on each of the hundred-odd project() calls a frame makes.
+    private var fillScaleX = 0f
+    private var fillScaleY = 0f
+    private var fillOffsetX = 0f
+    private var fillOffsetY = 0f
 
     init {
         setWillNotDraw(false)
@@ -131,35 +183,56 @@ internal class OverlayView(
         labelPaint.textSize = LABEL_SP * density
     }
 
+    /** Display-space frame size. The caller has already folded rotation into these numbers. */
     fun setSourceSize(
-        width: Int,
-        height: Int,
+        rotatedWidth: Int,
+        rotatedHeight: Int,
     ) {
-        if (width == sourceWidth && height == sourceHeight) return
-        sourceWidth = width
-        sourceHeight = height
+        synchronized(frameLock) {
+            incomingWidth = rotatedWidth
+            incomingHeight = rotatedHeight
+        }
     }
 
     fun setMirrored(mirrored: Boolean) {
-        this.mirrored = mirrored
+        synchronized(frameLock) {
+            incomingMirrored = mirrored
+        }
     }
 
-    /** Called from the analysis thread; copies into the view's buffer and posts a redraw. */
+    /** Called from the detector's result thread; copies into the view's buffer and posts a redraw. */
     fun submit(frame: FloatArray) {
-        System.arraycopy(frame, 0, landmarks, 0, landmarks.size)
-        hasPose = true
+        synchronized(frameLock) {
+            System.arraycopy(frame, 0, incoming, 0, incoming.size)
+            incomingHasPose = true
+        }
         postInvalidateOnAnimation()
     }
 
     fun clearPose() {
-        hasPose = false
+        synchronized(frameLock) {
+            incomingHasPose = false
+        }
         postInvalidateOnAnimation()
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
+
+        // One copy under the lock, then the rest of the draw runs on a frame that cannot change
+        // underneath it. The producer waits only for the copy, never for the draw.
+        synchronized(frameLock) {
+            hasPose = incomingHasPose
+            mirrored = incomingMirrored
+            sourceWidth = incomingWidth
+            sourceHeight = incomingHeight
+            if (hasPose) System.arraycopy(incoming, 0, landmarks, 0, landmarks.size)
+        }
+
         if (!hasPose || sourceWidth == 0 || sourceHeight == 0) return
         if (width == 0 || height == 0) return
+
+        updateProjection()
 
         if (config.connections) drawConnections(canvas)
         if (config.landmarks) drawLandmarks(canvas)
@@ -205,19 +278,39 @@ internal class OverlayView(
     }
 
     private fun drawAngles(canvas: Canvas) {
-        for (spec in config.angles) {
+        val angles = config.angles
+        // By index, because a for-in over a List allocates an iterator on every frame.
+        for (index in angles.indices) {
+            val spec = angles[index]
             val vertex = spec.triple[1]
             if (Geometry.visibility(landmarks, vertex) < spec.minVisibility) continue
 
-            val degrees = Geometry.angleDegrees(landmarks, spec.triple[0], vertex, spec.triple[2])
+            val degrees =
+                Geometry.angleDegrees(
+                    landmarks,
+                    spec.triple[0],
+                    vertex,
+                    spec.triple[2],
+                    sourceWidth,
+                    sourceHeight,
+                )
             if (degrees.isNaN()) continue
 
-            val bisector = Geometry.bisectorRadians(landmarks, spec.triple[0], vertex, spec.triple[2])
-            if (bisector.isNaN()) continue
-
+            project(spec.triple[0])
+            val proximalX = screen[0]
+            val proximalY = screen[1]
             project(vertex)
             val cx = screen[0]
             val cy = screen[1]
+            project(spec.triple[2])
+            val distalX = screen[0]
+            val distalY = screen[1]
+
+            // Taken in screen pixels, after the mirror and the fill, so the arc opens into the
+            // joint on both cameras instead of straddling the limb on the front one.
+            val bisector = Geometry.bisectorRadians(proximalX, proximalY, cx, cy, distalX, distalY)
+            if (bisector.isNaN()) continue
+
             val radius = spec.radiusDp * density
 
             arcPaint.color = spec.color ?: config.color
@@ -248,14 +341,14 @@ internal class OverlayView(
 
         val length = formatDegrees(degrees, spec.decimals)
         val textWidth = labelPaint.measureText(labelChars, 0, length)
-        val metrics = labelPaint.fontMetrics
+        labelPaint.getFontMetrics(fontMetrics)
         val padding = LABEL_PADDING_DP * density
 
         labelBounds.set(
             lx - textWidth / 2f - padding,
-            ly + metrics.ascent - padding / 2f,
+            ly + fontMetrics.ascent - padding / 2f,
             lx + textWidth / 2f + padding,
-            ly + metrics.descent + padding / 2f,
+            ly + fontMetrics.descent + padding / 2f,
         )
         val corner = padding
         canvas.drawRoundRect(labelBounds, corner, corner, labelBackdrop)
@@ -265,9 +358,8 @@ internal class OverlayView(
     }
 
     /**
-     * Writes the degree label into the reusable buffer and returns its length. Whole degrees, the
-     * default, take an integer path that allocates nothing. Fractional degrees fall back to
-     * `String.format`, which does allocate, but only when a consumer opts into decimals.
+     * Writes the label into the reusable buffer and returns its length. Whole degrees allocate
+     * nothing; decimals fall back to `String.format`, only when a consumer opts in.
      */
     private fun formatDegrees(
         degrees: Float,
@@ -302,26 +394,15 @@ internal class OverlayView(
             return digits + 1
         }
 
-        val text = String.format("%.${decimals}f$DEGREE_SIGN", degrees)
+        // Locale.US because a de-DE device would otherwise render "90,5" for the same build.
+        val text = String.format(Locale.US, "%.${decimals}f$DEGREE_SIGN", degrees)
         val length = minOf(text.length, labelChars.size)
         text.toCharArray(labelChars, 0, 0, length)
         return length
     }
 
-    /**
-     * Normalized frame coordinates to view pixels, matching `PreviewView`'s FILL_CENTER: the source
-     * is scaled to cover and the overflowing axis is cropped evenly, so the skeleton stays on the
-     * body instead of drifting on a letterboxed preview.
-     */
-    private fun project(joint: Int) {
-        val base = joint * Skeleton.LANDMARK_STRIDE
-        var x = landmarks[base + Skeleton.OFFSET_X]
-        val y = landmarks[base + Skeleton.OFFSET_Y]
-
-        // Landmarks are un-mirrored so they describe the real world. The preview is mirrored on the
-        // front camera, so the overlay mirrors here to stay aligned with what is on screen.
-        if (mirrored) x = 1f - x
-
+    /** Matches `PreviewView` FILL_CENTER: scale to cover, crop the overflowing axis evenly. */
+    private fun updateProjection() {
         val sourceAspect = sourceWidth.toFloat() / sourceHeight.toFloat()
         val viewAspect = width.toFloat() / height.toFloat()
 
@@ -335,8 +416,24 @@ internal class OverlayView(
             scaledHeight = scaledWidth / sourceAspect
         }
 
-        screen[0] = (width - scaledWidth) / 2f + x * scaledWidth
-        screen[1] = (height - scaledHeight) / 2f + y * scaledHeight
+        fillScaleX = scaledWidth
+        fillScaleY = scaledHeight
+        fillOffsetX = (width - scaledWidth) / 2f
+        fillOffsetY = (height - scaledHeight) / 2f
+    }
+
+    /** Normalized frame coordinates to view pixels, using the fill `updateProjection` computed. */
+    private fun project(joint: Int) {
+        val base = joint * Skeleton.LANDMARK_STRIDE
+        var x = landmarks[base + Skeleton.OFFSET_X]
+        val y = landmarks[base + Skeleton.OFFSET_Y]
+
+        // Landmarks are un-mirrored so they describe the real world. The preview is mirrored on the
+        // front camera, so the overlay mirrors here to stay aligned with what is on screen.
+        if (mirrored) x = 1f - x
+
+        screen[0] = fillOffsetX + x * fillScaleX
+        screen[1] = fillOffsetY + y * fillScaleY
     }
 
     private companion object {

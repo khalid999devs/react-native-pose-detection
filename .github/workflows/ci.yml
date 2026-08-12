@@ -5,65 +5,118 @@ on:
     branches: [main]
   pull_request:
 
+# `npm ci` executes third-party lifecycle scripts, so the token those scripts inherit is
+# read-only. Nothing in these jobs writes back to the repository.
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   code:
-    name: 'Code: lint, format, types, dead code'
+    name: 'Code: lint, format, types, tests, dead code'
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # 22 is the floor declared in engines, 24 is what .nvmrc pins for development. Both are
+        # exercised so the floor is a tested promise rather than a guess.
+        node: ['22.22.1', '24']
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version-file: .nvmrc
+          node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
       - run: npm run lint
       - run: npm run format:check
       - run: npm run typecheck
+      - run: npm test
       - run: npm run deadcode
 
   docs:
     name: 'Docs: markdown, spelling, links'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
       - run: npm run lint:md
       - run: npm run spell
-      - uses: lycheeverse/lychee-action@v2
+      # Third-party action, so it is pinned to a commit rather than to a tag its owner can move.
+      - uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
         with:
           args: '--config lychee.toml --no-progress "**/*.md"'
 
-  native:
-    name: 'Native: Swift and Kotlin lint'
+  kotlin:
+    name: 'Native: Kotlin lint'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install ktlint
+        env:
+          KTLINT_VERSION: '1.8.0'
+        run: |
+          curl -sSLO "https://github.com/pinterest/ktlint/releases/download/${KTLINT_VERSION}/ktlint"
+          chmod +x ktlint
+          sudo mv ktlint /usr/local/bin/ktlint
+      - run: ktlint 'packages/core/android/**/*.kt'
+
+  # Split in two so the macOS runner, billed at ten times the Linux rate, is only started when
+  # there is actually Swift to lint. The detection needs a checkout, so it cannot be a job-level
+  # `if` on the macOS job itself.
+  swift-sources:
+    name: 'Native: Swift sources present?'
+    runs-on: ubuntu-latest
+    outputs:
+      present: ${{ steps.detect.outputs.present }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: detect
+        run: |
+          if [ -n "$(find packages/core/ios -name '*.swift' 2>/dev/null)" ]; then
+            echo 'present=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'present=false' >> "$GITHUB_OUTPUT"
+            echo 'No Swift sources yet, skipping the macOS runner.'
+          fi
+
+  swift:
+    name: 'Native: Swift lint'
+    needs: swift-sources
+    if: needs.swift-sources.outputs.present == 'true'
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
-      - run: brew install swiftlint swiftformat ktlint
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: brew install swiftlint
       - run: swiftlint lint --strict
-        continue-on-error: true # no Swift sources until Phase 5
-      - run: ktlint 'packages/core/android/**/*.kt'
 
   package:
     name: 'Package: exports, types, tarball'
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: ['22.22.1', '24']
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version-file: .nvmrc
+          node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
-      - run: npm run build
+      # Deliberately no `npm run build` first. Every step below packs the way `npm publish` does,
+      # through the package's own prepack, so a publish path that forgets an artifact fails here.
       - run: npm run check:package
-      - name: Assert no model files in tarball
+      - name: Assert the tarball has what consumers load
         run: |
           # expo-module-scripts prints a preamble before the JSON
           npm pack --dry-run --json -w react-native-pose-detection \
@@ -72,19 +125,42 @@ jobs:
             echo "::error::A model file leaked into the tarball. See docs/adr/0002."
             exit 1
           fi
+          node -e "
+            const files = require('/tmp/pack.json')[0].files.map((file) => file.path);
+            const required = [
+              'build/index.js',
+              'build/index.d.ts',
+              'plugin/build/index.js',
+              'plugin/build/cli.js',
+              'cli/index.js',
+              'app.plugin.js',
+              'expo-module.config.json',
+            ];
+            const missing = required.filter((file) => !files.includes(file));
+            if (missing.length > 0) {
+              console.log('::error::Missing from the tarball: ' + missing.join(', '));
+              process.exit(1);
+            }
+          "
           SIZE=$(node -p "JSON.parse(require('fs').readFileSync('/tmp/pack.json'))[0].unpackedSize")
           echo "unpacked: $SIZE bytes"
           if [ "$SIZE" -gt 2000000 ]; then
             echo "::error::Tarball exceeds 2 MB: something leaked into files[]."
             exit 1
           fi
+      - name: Smoke test the packed CLI
+        run: |
+          npm pack -w react-native-pose-detection --pack-destination /tmp
+          mkdir -p /tmp/tarball
+          tar -xzf /tmp/react-native-pose-detection-*.tgz -C /tmp/tarball
+          node /tmp/tarball/package/cli/index.js --help
 
   security:
     name: 'Security: audit and licenses'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -98,10 +174,10 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
           cache: npm

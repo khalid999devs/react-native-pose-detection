@@ -6,6 +6,10 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Color
+import android.hardware.display.DisplayManager
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.util.Size
 import android.widget.FrameLayout
 import androidx.camera.core.ImageAnalysis
@@ -14,11 +18,13 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import com.google.mediapipe.framework.image.BitmapImageBuilder
+import com.google.mediapipe.tasks.core.Delegate
 import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarkerResult
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.viewevent.EventDispatcher
 import expo.modules.kotlin.views.ExpoView
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
 class PoseCameraView(
@@ -48,13 +54,51 @@ class PoseCameraView(
     private val camera = CameraSource(context, previewView, analysisExecutor)
     private val converter = FrameConverter()
 
+    /** `View.post` holds runnables while detached, which would strand a landmarker unclosed. */
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    /** Written on main, read on the analysis thread, so a teardown is seen on the next frame. */
+    @Volatile
     private var detector: PoseDetector? = null
     private var modelFileName: String? = null
 
     /**
-     * Results with a timestamp below this were produced by the previous camera. Set on the main
-     * thread at the moment a switch succeeds, read on MediaPipe's callback thread. An atomic rather
-     * than a lock because dropping one extra frame is harmless and blocking the frame path is not.
+     * In-flight construction state, main thread only. [detectorGeneration] is bumped by every
+     * teardown so a build landing afterwards is closed rather than installed. `maxPoses` and the
+     * delegate are baked in at construction, so the last two force a rebuild when they change.
+     */
+    private var detectorPending = false
+    private var detectorGeneration = 0
+    private var detectorRequest: DelegateRequest? = null
+    private var detectorMaxPoses = 0
+
+    /** Survives [releaseDetector] so `getState` reports the pipeline, not instance liveness. */
+    private var resolvedDelegate: String? = null
+
+    /** A dead delegate fails every frame, and 30 identical events a second helps nobody. */
+    private val lastDetectionErrorMs = AtomicLong(0)
+
+    /**
+     * A rebind only attaches the use cases. The switch is reported once the new camera delivers a
+     * frame, with [switchTimeout] resolving one that never does.
+     */
+    private val awaitingFirstFrame = AtomicBoolean(false)
+    private var pendingSwitchDone: (() -> Unit)? = null
+    private val switchTimeout = Runnable { completeSwitch() }
+
+    /**
+     * Rotation of the most recent analysis frame. The bitmap is never rotated, so this is what
+     * turns the sensor buffer size into the display-upright size the overlay projects against.
+     */
+    @Volatile
+    private var frameRotationDegrees = 0
+
+    /** The owner the observer was actually registered on, see [observeLifecycle]. */
+    private var observedOwner: LifecycleOwner? = null
+
+    /**
+     * Results below this timestamp came from the previous camera. Atomic rather than locked:
+     * dropping one extra frame is harmless, blocking the frame path is not.
      */
     private val staleBefore = AtomicLong(0)
 
@@ -136,10 +180,7 @@ class PoseCameraView(
         pendingOverlayConfig = config
     }
 
-    /**
-     * Runs once after a batch of prop writes. Resolution changes need a rebind and the rest do not,
-     * so the expensive path is taken only when something on it actually moved.
-     */
+    /** Runs once per prop batch. Only a resolution change takes the rebind path. */
     fun onPropsUpdated() {
         overlayView.config = pendingOverlayConfig
         overlayView.visibility = if (overlayEnabled) VISIBLE else GONE
@@ -149,6 +190,9 @@ class PoseCameraView(
         val geometryChanged = preview != camera.previewSize || analysis != camera.analysisSize
         camera.previewSize = preview
         camera.analysisSize = analysis
+        // Only 'auto' is documented to fall back to the other lens; a pinned one stays pinned.
+        val pinnedFacing = propFacing == "front" || propFacing == "back"
+        camera.facingFallbackAllowed = !pinnedFacing
 
         if (!propActive) {
             stopSession()
@@ -167,8 +211,15 @@ class PoseCameraView(
 
         applyDetectionState()
 
+        // 'auto' takes whatever the device could bind, the fallback lens included, and it is also
+        // what `switchCamera()` leaves behind, so only a pinned facing is reconciled here.
+        if (!pinnedFacing) return
         val target = resolveFacing()
-        if (target != camera.facing) setFacingInternal(target, null)
+        if (target == camera.facing) return
+        // Reconciling a prop is not the interactive switch, and a paused session has nothing to
+        // switch, so the value is parked for the next bind instead of failing a switch nobody asked
+        // for and then losing the change.
+        if (camera.isBound) setFacingInternal(target, null) else camera.setPendingFacing(target)
     }
 
     // endregion
@@ -215,6 +266,7 @@ class PoseCameraView(
             owner = owner,
             facing = resolveFacing(),
             onBound = {
+                syncOverlayMirroring()
                 applyDetectionState()
                 emitReadyOnce()
             },
@@ -227,8 +279,9 @@ class PoseCameraView(
         camera.setAnalyzer(null)
         camera.pause()
         releaseDetector()
-        converter.release()
+        releaseConverter()
         overlayView.clearPose()
+        completeSwitch()
         started = false
         readySent = false
     }
@@ -238,60 +291,140 @@ class PoseCameraView(
         startSession()
     }
 
-    /**
-     * `detection = false` tears the landmarker down rather than gating a running pipeline, so the
-     * GPU memory it holds is actually returned. The preview keeps running.
-     */
+    /** `detection = false` tears the landmarker down so its GPU memory is actually returned. */
     private fun applyDetectionState() {
-        if (propDetection) {
-            ensureDetector()
-        } else {
+        if (!propDetection) {
             releaseDetector()
             overlayView.clearPose()
+            // Nothing else will emit ready once the pending build is discarded, and a camera that
+            // is running with detection off is still a camera that came up.
+            emitReadyOnce()
+            return
         }
+
+        // maxPoses and the delegate are baked into the landmarker at construction, so a change to
+        // either has to rebuild it rather than wait for the next unrelated restart to notice.
+        val request = delegateRequest()
+        if ((detector != null || detectorPending) &&
+            (request != detectorRequest || propMaxPoses != detectorMaxPoses)
+        ) {
+            PoseLog.info(LogCategory.DETECTOR) { "delegate or maxPoses changed, rebuilding" }
+            releaseDetector()
+        }
+        ensureDetector()
     }
 
+    private fun delegateRequest(): DelegateRequest =
+        when (propDelegate) {
+            "gpu" -> DelegateRequest.GPU
+            "cpu" -> DelegateRequest.CPU
+            else -> DelegateRequest.AUTO
+        }
+
+    /**
+     * Runs on the analysis thread. The heavy model takes seconds to build and `auto` runs a probe
+     * inference first, which on main is an ANR window on every foreground.
+     */
     private fun ensureDetector() {
-        if (detector != null) return
+        if (detector != null || detectorPending) return
         val model = modelFileName ?: return
 
-        val request =
-            when (propDelegate) {
-                "gpu" -> DelegateRequest.GPU
-                "cpu" -> DelegateRequest.CPU
-                else -> DelegateRequest.AUTO
-            }
+        val request = delegateRequest()
+        val maxPoses = propMaxPoses
+        val generation = detectorGeneration
+        detectorPending = true
+        detectorRequest = request
+        detectorMaxPoses = maxPoses
 
-        try {
-            detector =
-                PoseDetector.create(
-                    context = context,
-                    modelFileName = model,
-                    request = request,
-                    maxPoses = propMaxPoses,
-                    minConfidence = MIN_CONFIDENCE,
-                    onResult = ::onLandmarks,
-                    onError = { error ->
-                        PoseLog.warn(LogCategory.DETECTOR) { "inference failed: ${error.message}" }
-                        post { emitError(ErrorCode.DETECTION_FAILED, error.message ?: "inference failed") }
-                    },
-                )
-            if (request == DelegateRequest.GPU && detector?.delegate?.name == "CPU") {
-                emitError(ErrorCode.GPU_UNAVAILABLE, "The GPU delegate is unavailable, running on CPU.")
+        val submitted =
+            onAnalysisThread {
+                try {
+                    val created =
+                        PoseDetector.create(
+                            context = context,
+                            modelFileName = model,
+                            request = request,
+                            maxPoses = maxPoses,
+                            minConfidence = MIN_CONFIDENCE,
+                            onResult = ::onLandmarks,
+                            onError = ::onDetectionError,
+                        )
+                    mainHandler.post { adoptDetector(created, request, generation) }
+                } catch (error: Throwable) {
+                    PoseLog.error(LogCategory.DETECTOR) { "landmarker init failed: ${error.message}" }
+                    mainHandler.post { failDetector(error, generation) }
+                }
             }
-        } catch (error: Throwable) {
-            PoseLog.error(LogCategory.DETECTOR) { "landmarker init failed: ${error.message}" }
-            emitError(
-                ErrorCode.DETECTOR_INIT_FAILED,
-                error.message ?: "The pose landmarker could not be created.",
-            )
+        if (!submitted) detectorPending = false
+    }
+
+    private fun adoptDetector(
+        created: PoseDetector,
+        request: DelegateRequest,
+        generation: Int,
+    ) {
+        if (generation != detectorGeneration) {
+            // A teardown landed while this was still building, so it is closed instead of installed.
+            closeDetector(created)
+            return
         }
+        detectorPending = false
+        detector = created
+        resolvedDelegate = created.delegate.name
+
+        // The one path that actually downgrades is 'auto'. An explicit 'gpu' is pinned and never
+        // falls back, so comparing the resolved delegate against the request is the whole test.
+        if (request != DelegateRequest.CPU && created.delegate == Delegate.CPU) {
+            emitError(ErrorCode.GPU_UNAVAILABLE, "The GPU delegate is unavailable, running on CPU.")
+        }
+        emitReadyOnce()
     }
 
-    private fun releaseDetector() {
-        detector?.close()
-        detector = null
+    private fun failDetector(
+        error: Throwable,
+        generation: Int,
+    ) {
+        if (generation != detectorGeneration) return
+        detectorPending = false
+        // The build that would have set it failed, so keeping the previous value would report a
+        // delegate that nothing is running on.
+        resolvedDelegate = null
+        emitError(
+            ErrorCode.DETECTOR_INIT_FAILED,
+            error.message ?: "The pose landmarker could not be created.",
+        )
+        emitReadyOnce()
     }
+
+    /**
+     * The analysis thread may be inside `detectAsync` right now, so the field is cleared on main,
+     * stopping the next frame, and the close is queued behind the frame already running.
+     */
+    private fun releaseDetector() {
+        detectorGeneration++
+        detectorPending = false
+        detectorRequest = null
+        val doomed = detector ?: return
+        detector = null
+        closeDetector(doomed)
+    }
+
+    private fun closeDetector(doomed: PoseDetector) {
+        // A rejected task means the analysis thread is gone, so there is nothing left to serialise
+        // against and closing here is safe.
+        if (!onAnalysisThread { doomed.close() }) doomed.close()
+    }
+
+    /** The bitmaps belong to the analysis thread, so the reset queues behind the frame using them. */
+    private fun releaseConverter() {
+        onAnalysisThread { converter.release() }
+    }
+
+    /** Serial queue for everything the landmarker touches, so build, close and detect cannot overlap. */
+    private fun onAnalysisThread(block: () -> Unit): Boolean =
+        runCatching { analysisExecutor.execute(block) }
+            .onFailure { PoseLog.warn(LogCategory.DETECTOR) { "the analysis thread is gone: ${it.message}" } }
+            .isSuccess
 
     // endregion
 
@@ -301,10 +434,16 @@ class PoseCameraView(
         ImageAnalysis.Analyzer { proxy ->
             // One missed close stalls the analyzer forever, so it is the only thing in the finally.
             try {
+                // The first frame after a rebind is what tells the main thread the new camera is
+                // really producing, which is what a switch waits on.
+                if (awaitingFirstFrame.compareAndSet(true, false)) post { completeSwitch() }
+
                 val detector = this.detector ?: return@Analyzer
+                val rotation = proxy.imageInfo.rotationDegrees
+                frameRotationDegrees = rotation
                 val bitmap = converter.convert(proxy)
                 val image = BitmapImageBuilder(bitmap).build()
-                detector.detect(image, proxy.imageInfo.rotationDegrees, proxy.imageInfo.timestamp / 1_000_000)
+                detector.detect(image, rotation, proxy.imageInfo.timestamp / 1_000_000)
             } catch (error: Throwable) {
                 PoseLog.warn(LogCategory.DETECTOR) { "frame dropped: ${error.message}" }
             } finally {
@@ -340,9 +479,27 @@ class PoseCameraView(
             landmarkBuffer[base + Skeleton.OFFSET_VISIBILITY] = landmark.visibility().orElse(0f)
         }
 
-        overlayView.setSourceSize(image.width, image.height)
-        overlayView.setMirrored(camera.facing == Facing.FRONT)
+        // Landmarks are normalized to the rotated frame MediaPipe was asked to process, not to the
+        // sensor buffer, so the overlay is handed the display-upright size. The mirror flag comes
+        // from the session, which is main-thread state, and is pushed in from there.
+        val rotation = frameRotationDegrees
+        if (rotation % 180 == 0) {
+            overlayView.setSourceSize(image.width, image.height)
+        } else {
+            overlayView.setSourceSize(image.height, image.width)
+        }
         overlayView.submit(landmarkBuffer)
+    }
+
+    /** On MediaPipe's callback thread. Rate limited: a dead delegate fails every frame. */
+    private fun onDetectionError(error: RuntimeException) {
+        PoseLog.warn(LogCategory.DETECTOR) { "inference failed: ${error.message}" }
+        val now = SystemClock.elapsedRealtime()
+        val previous = lastDetectionErrorMs.get()
+        if (now - previous < DETECTION_ERROR_INTERVAL_MS) return
+        if (!lastDetectionErrorMs.compareAndSet(previous, now)) return
+        val message = error.message ?: "inference failed"
+        post { emitError(ErrorCode.DETECTION_FAILED, message) }
     }
 
     // endregion
@@ -365,17 +522,44 @@ class PoseCameraView(
         camera.switchTo(
             target = target,
             onDone = { facing ->
-                // Everything from before this point belongs to the old camera.
+                // Everything from before this point belongs to the old camera. Frames already on
+                // the analysis thread can still be stamped after this read, which costs at most a
+                // frame or two drawn with the new mirroring.
                 staleBefore.set((detector?.lastTimestampMs ?: 0L) + 1)
+                syncOverlayMirroring()
+
+                // Anything still waiting from an earlier switch is settled first, so no promise is
+                // left dangling when two switches overlap.
+                completeSwitch()
                 val name = facing.nameForJs()
-                onCameraChange(mapOf("facing" to name))
-                onDone?.invoke(name)
+                pendingSwitchDone = {
+                    onCameraChange(mapOf("facing" to name))
+                    onDone?.invoke(name)
+                }
+                // A rebind is not a frame. Reporting the switch waits for the new camera to deliver
+                // one, with a timeout so a camera that never does still settles the promise.
+                awaitingFirstFrame.set(true)
+                postDelayed(switchTimeout, SWITCH_FRAME_TIMEOUT_MS)
             },
             onFailed = { code, error ->
                 emitError(code, error?.message ?: "The camera could not be switched.")
                 onFailed?.invoke(error?.message ?: code.name)
             },
         )
+    }
+
+    /** Main thread only. Idempotent, so the frame path and the timeout can both call it. */
+    private fun completeSwitch() {
+        awaitingFirstFrame.set(false)
+        removeCallbacks(switchTimeout)
+        val done = pendingSwitchDone ?: return
+        pendingSwitchDone = null
+        done()
+    }
+
+    /** Facing is main-thread state, so it is pushed on bind rather than read per frame. */
+    private fun syncOverlayMirroring() {
+        overlayView.setMirrored(camera.facing == Facing.FRONT)
     }
 
     fun pauseCamera() {
@@ -387,6 +571,7 @@ class PoseCameraView(
     fun resumeCamera() {
         camera.setAnalyzer(analyzer)
         camera.resume(::emitError)
+        syncOverlayMirroring()
     }
 
     fun startDetection() {
@@ -408,17 +593,20 @@ class PoseCameraView(
         mapOf(
             "facing" to camera.facing.nameForJs(),
             "active" to camera.isBound,
-            "detecting" to (detector != null),
+            "detecting" to (detector != null || detectorPending),
             // Measured frame rate and the resolved tier arrive with calibration in Phase 4.
             "fps" to 0.0,
-            "delegate" to (detector?.delegate?.name ?: "CPU"),
+            "delegate" to (resolvedDelegate ?: "CPU"),
             "deviceTier" to "medium",
         )
 
     // endregion
 
     private fun emitReadyOnce() {
-        if (readySent) return
+        if (readySent || !camera.isBound) return
+        // onReady reports the delegate that is actually in use, and that is not known until the
+        // landmarker has finished building, so a pending build holds the event back.
+        if (detectorPending) return
         readySent = true
 
         val variant =
@@ -430,7 +618,7 @@ class PoseCameraView(
         onReady(
             mapOf(
                 "model" to variant,
-                "delegate" to (detector?.delegate?.name ?: "CPU"),
+                "delegate" to (resolvedDelegate ?: "CPU"),
                 "delegateRequested" to propDelegate,
                 "targetFps" to 30,
                 "deviceTier" to "medium",
@@ -462,17 +650,34 @@ class PoseCameraView(
         camera.updateTargetRotation()
     }
 
+    /**
+     * Android reports no configuration change for a 180 degree turn, so the analysis buffer would
+     * keep a stale rotation and every landmark would arrive upside down. Watch the display instead.
+     */
+    private val displayListener =
+        object : DisplayManager.DisplayListener {
+            override fun onDisplayAdded(displayId: Int) = Unit
+
+            override fun onDisplayRemoved(displayId: Int) = Unit
+
+            override fun onDisplayChanged(displayId: Int) {
+                if (displayId != previewView.display?.displayId) return
+                camera.updateTargetRotation()
+            }
+        }
+
+    private val displayManager: DisplayManager?
+        get() = context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
+
     override fun onDetachedFromWindow() {
         runCatching { context.applicationContext.unregisterComponentCallbacks(memoryCallbacks) }
-        lifecycleOwnerOrNull()?.lifecycle?.removeObserver(lifecycleObserver)
+        runCatching { displayManager?.unregisterDisplayListener(displayListener) }
+        stopObservingLifecycle()
         releaseForDetach()
         super.onDetachedFromWindow()
     }
 
-    /**
-     * Views do not receive `onTrimMemory`, the application does, so the view subscribes for the
-     * time it is attached. Without this the handler is dead code that reads like a feature.
-     */
+    /** Views do not receive `onTrimMemory`, the application does, so subscribe while attached. */
     private val memoryCallbacks =
         object : ComponentCallbacks2 {
             override fun onTrimMemory(level: Int) = this@PoseCameraView.onTrimMemory(level)
@@ -484,16 +689,15 @@ class PoseCameraView(
         }
 
     /**
-     * Backgrounding gives up the landmarker entirely rather than holding a few hundred megabytes
-     * of GPU memory for a screen nobody is looking at. CameraX releases the capture session on
-     * its own through the lifecycle owner; this is the half it does not know about.
+     * Backgrounding gives up the landmarker rather than holding its GPU memory. CameraX releases
+     * the capture session itself; this is the half it does not know about.
      */
     private val lifecycleObserver =
         object : DefaultLifecycleObserver {
             override fun onStop(owner: LifecycleOwner) {
                 PoseLog.info(LogCategory.CAMERA) { "backgrounded, releasing the detector" }
                 releaseDetector()
-                converter.release()
+                releaseConverter()
                 overlayView.clearPose()
             }
 
@@ -504,16 +708,12 @@ class PoseCameraView(
             }
         }
 
-    /**
-     * `TRIM_MEMORY_COMPLETE` means the process is next in line to be killed. Dropping the
-     * landmarker gives back the largest block we hold; the preview costs little and keeps the
-     * screen from going black.
-     */
+    /** The process is next to be killed. The landmarker is the largest block we can give back. */
     fun onTrimMemory(level: Int) {
         if (level >= TRIM_MEMORY_COMPLETE_LEVEL) {
             PoseLog.warn(LogCategory.DETECTOR) { "trim level $level, releasing the landmarker" }
             releaseDetector()
-            converter.release()
+            releaseConverter()
             overlayView.clearPose()
         }
     }
@@ -521,26 +721,42 @@ class PoseCameraView(
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         context.applicationContext.registerComponentCallbacks(memoryCallbacks)
-        lifecycleOwnerOrNull()?.lifecycle?.addObserver(lifecycleObserver)
+        observeLifecycle()
+        displayManager?.registerDisplayListener(displayListener, null)
         // Reattaching after a temporary detach re-establishes whatever the props already say,
         // rather than waiting for a prop to change before the camera comes back.
         onPropsUpdated()
+    }
+
+    /**
+     * The current activity can change while this view lives, so the owner actually observed is
+     * remembered. Resolving again at detach can leave the observer registered on the old one.
+     */
+    private fun observeLifecycle() {
+        stopObservingLifecycle()
+        val owner = lifecycleOwnerOrNull() ?: return
+        observedOwner = owner
+        owner.lifecycle.addObserver(lifecycleObserver)
+    }
+
+    private fun stopObservingLifecycle() {
+        observedOwner?.lifecycle?.removeObserver(lifecycleObserver)
+        observedOwner = null
     }
 
     private fun lifecycleOwnerOrNull(): LifecycleOwner? =
         context as? LifecycleOwner ?: appContext.currentActivity as? LifecycleOwner
 
     /**
-     * Detaching is not destruction. A view scrolled out of a list, or moved during a relayout,
-     * gets detached and attached again, so this releases the session but keeps the analysis
-     * thread alive. Shutting the executor down here would leave a reattached view with a camera
-     * it can never feed.
+     * Detaching is not destruction: a view scrolled out of a list comes back. Releases the session
+     * but keeps the analysis thread, which a reattached view still needs.
      */
     private fun releaseForDetach() {
         camera.setAnalyzer(null)
         camera.release()
         releaseDetector()
-        converter.release()
+        releaseConverter()
+        completeSwitch()
         started = false
         readySent = false
     }
@@ -548,12 +764,17 @@ class PoseCameraView(
     /** Called from `OnViewDestroys`, where the view really is going away. */
     fun releaseEverything() {
         releaseForDetach()
+        stopObservingLifecycle()
+        // Shutdown, not shutdownNow: the queued close of the landmarker has to run before the
+        // thread goes away.
         analysisExecutor.shutdown()
     }
 
     private companion object {
         const val MIN_CONFIDENCE = 0.6f
         const val TRIM_MEMORY_COMPLETE_LEVEL = 80
+        const val DETECTION_ERROR_INTERVAL_MS = 1_000L
+        const val SWITCH_FRAME_TIMEOUT_MS = 1_500L
     }
 }
 

@@ -34,15 +34,11 @@ internal enum class LogCategory {
 }
 
 /**
- * Disabled logging has to be free. The only cost at a disabled call site is one atomic read and
- * an integer compare: the message lambda is inlined and never invoked, so no string is built and
- * nothing is allocated.
+ * A disabled call site costs one atomic read and an integer compare: the lambda is inlined and
+ * never invoked, so nothing is built or allocated. Formatting outside the lambda turns that into
+ * a per-frame cost at 30 fps. See docs/logging.md.
  *
- * A call site that formats a string outside the lambda silently turns that into a per-frame cost
- * at 30 fps. See docs/logging.md.
- *
- * Phase 4 adds the bounded ring buffer and the batched flush to JavaScript. Today entries go to
- * Logcat only, which is what native-only debugging needs during bring-up.
+ * Entries go to Logcat only. The ring buffer and the flush to JavaScript are not built yet.
  */
 internal object PoseLog {
     private const val TAG = "PoseDetection"

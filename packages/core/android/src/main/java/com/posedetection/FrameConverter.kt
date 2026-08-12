@@ -6,14 +6,13 @@ import android.graphics.Rect
 import androidx.camera.core.ImageProxy
 
 /**
- * Turns an RGBA_8888 [ImageProxy] into a bitmap MediaPipe can take, reusing the same bitmaps for
- * the life of the session so the frame path allocates nothing.
+ * Turns an RGBA_8888 [ImageProxy] into a bitmap MediaPipe can take, reusing bitmaps for the life
+ * of the session so the frame path allocates nothing.
  *
- * The awkward part is row padding. CameraX usually hands back a buffer whose rows are exactly
- * `width * 4` bytes, and then a straight `copyPixelsFromBuffer` is correct. Some devices pad each
- * row out to an alignment boundary, and copying that buffer into a `width`-wide bitmap shears the
- * image diagonally: every row lands a few pixels further left than the one above it. So the
- * padded case copies into a full-stride bitmap and blits the real region out of it.
+ * Some devices pad each row to an alignment boundary. Copying such a buffer into a `width`-wide
+ * bitmap shears the image diagonally, so the padded case blits through a full-stride bitmap.
+ *
+ * **Analysis thread only, including [release].**
  */
 internal class FrameConverter {
     private var source: Bitmap? = null
@@ -70,9 +69,11 @@ internal class FrameConverter {
         }
     }
 
+    /**
+     * Drops the bitmaps without recycling. MediaPipe may still be reading one after `detectAsync`
+     * returns, and recycling there is a read of freed native memory.
+     */
     fun release() {
-        source?.recycle()
-        cropped?.recycle()
         source = null
         cropped = null
         canvas = null

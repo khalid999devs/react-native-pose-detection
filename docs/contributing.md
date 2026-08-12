@@ -8,25 +8,35 @@ Node **22.22.1 or newer** (`.nvmrc` pins 24). The lint and spell tooling require
 git clone <repo> && cd react-native-pose-detection
 npm install
 npm run build
-cd example && npx expo prebuild
-npx expo run:ios      # or run:android
+npm run check
 ```
 
-A **physical device is required.** Simulators have no camera and MediaPipe's GPU delegate
-behaves differently there.
+**There is no app to run yet.** `example/expo` and `example/bare` are Phase 6 work and the
+directory holds only its README, so `cd example && npx expo prebuild` has nothing to prebuild.
+Until they land, the loop is `npm run check` for the JavaScript side and a Gradle
+`assembleDebug` against a host app of your own for the Android side.
+
+When the example apps do exist, a **physical device is required** for anything touching the
+camera. Simulators have no camera and MediaPipe's GPU delegate behaves differently there.
 
 ## Layout
 
 ```text
 packages/core/
   src/          TypeScript: API, types, validation
-  ios/          Swift: CameraSource, PoseDetector, OverlayRenderer
+  tests/        Node test runner suites, mirroring src/
+  ios/          Swift: CameraSource, PoseDetector, OverlayRenderer   (not written yet)
   android/      Kotlin: same three, CameraX-based
   plugin/       Expo config plugin
   cli/          fetch-model
-example/        one app exercising everything
+example/
+  expo/         Expo app, the config-plugin install path   (Phase 6)
+  bare/         bare React Native app, the CLI install path (Phase 6)
 docs/           this directory
 ```
+
+Two example apps rather than one because the two install paths share almost no code. See
+[example/README.md](../example/README.md).
 
 `PoseEngine` must never import camera code. The frame source is an input, that's what keeps
 alternative frame sources (VisionCamera, static images) cheap to add.
@@ -71,10 +81,16 @@ Each of these exists because its absence caused a production crash.
 New conditions must describe **a body**, not an activity. `angle`, `visibility`, `velocityY`
 pass. `isSquatting` does not, that's a recipe.
 
-1. Extend `Condition` in `src/types.ts`
-2. Implement in both evaluators (Swift + Kotlin), they must agree exactly
-3. Unit test both
-4. Document in `guides/triggers.md`
+1. Extend the `Condition` union in `src/types/triggers.ts`
+2. Teach `src/validation/triggers.ts` about it, and add the rejection cases to
+   `src/validation/triggers.test.ts`. A condition the validator does not know is a condition
+   whose typos reach native
+3. Implement in both evaluators (Swift + Kotlin), they must agree exactly
+4. Unit test both
+5. Document in `guides/triggers.md` and `guides/reference/trigger-schema.md`
+
+A condition that is typed and validated but not evaluated is worse than one that does not exist:
+it type-checks, it passes validation, and it never fires.
 
 ## Workflow
 
@@ -249,7 +265,7 @@ CI, and it breaks changelog generation for the release it lands in.
 - Tested on a physical device, both platforms (say so if you couldn't)
 - Include device model + OS version for anything performance-related
 - Public API changes need docs in the same PR
-- New props, events, or trigger conditions need a control in `example/`
+- New props, events, or trigger conditions need a control in `example/expo`, once it exists
 
 ### Demo
 
@@ -270,8 +286,9 @@ squash-merge commit, so they land in the CHANGELOG.
 
 ### What CI checks
 
-Six jobs run on every PR: code, docs, native, package, security, and commits. Run them locally
-first:
+`code`, `docs`, `kotlin`, `swift` (skipped while there are no Swift sources), `package`,
+`security` and `commits`, plus CodeQL in its own workflow. `code` and `package` each run twice,
+on Node 22.22.1 and on 24. Run the local half first:
 
 ```bash
 npm run check       # everything that needs no native toolchain
@@ -292,9 +309,11 @@ cost real crashes and real scope creep in the past.
 Include:
 
 - Device model and OS version
-- `cam.current.getProfile()` output
+- `cam.current.getProfile()` output, once calibration lands. It throws today, so send the
+  `onReady` and `onPerformanceChange` payloads instead
 - `data.mode`, `maxPoses`, model variant
 - Expo or bare, old or new architecture
 - Minimal reproduction
 
-Performance reports without `getProfile()` output can't be acted on.
+Performance reports with no resolved configuration in them can't be acted on: the same code runs
+at four different resolutions and two delegates.

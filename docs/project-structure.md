@@ -8,7 +8,7 @@ react-native-pose-detection/
 ├── packages/
 │   └── core/                  the published package
 │       ├── src/               TypeScript: public API, types, validation
-│       ├── ios/               Swift
+│       ├── ios/               Swift                     (not written yet)
 │       ├── android/           Kotlin
 │       ├── plugin/            Expo config plugin, model manifest, downloader
 │       └── cli/               bin shim, the implementation lives in plugin/
@@ -16,6 +16,9 @@ react-native-pose-detection/
     ├── expo/                  Expo app: every screen, installed via the config plugin
     └── bare/                  bare React Native app: install path only, via the CLI
 ```
+
+`ios/` and both example apps are Phase 6 and Phase 5 work, so the tree above is where they go
+rather than what is currently checked in.
 
 ## `packages/core/src`
 
@@ -25,11 +28,16 @@ src/
 ├── PoseCamera.tsx         the view component
 ├── types/                 PoseFrame, Trigger, events, JointName constants
 ├── validation/            trigger config validation, runs before native sees it
+├── wire.ts                the buffer header layout, shared with both native encoders
+├── decodeFrames.ts        one drained buffer into frames, as views rather than copies
 ├── accessors.ts           zero-copy Float32Array readers
 ├── errors.ts              PoseConfigError, ValidationIssue
 ├── logging.ts             setLogLevel, addLogListener
 └── native/                Expo module bindings, and the contract they must satisfy
 ```
+
+Tests live in `packages/core/tests/`, mirroring the layout of `src/`. One tree keeps them out of
+the tarball without an exclusion rule. See [testing](./testing.md).
 
 ## `packages/core/plugin`
 
@@ -58,7 +66,9 @@ compile and be reviewed before either native project does, and so a native chang
 JS surface fails at typecheck rather than on a device.
 
 `index.ts` is the only public surface. If it isn't exported there, it isn't API, and it can
-change without a major version.
+change without a major version. The `exports` map in `package.json` enforces that from the
+outside: a consumer cannot reach `react-native-pose-detection/build/wire`, so no internal file
+becomes public by accident.
 
 ## Native layout
 
@@ -81,7 +91,7 @@ video files, cheap to add rather than requiring a fork. See [ADR 0001](./adr/000
 | Adding | Goes in |
 | --- | --- |
 | A new prop | `src/types/`, both native modules, [`guides/reference/pose-camera.md`](../guides/reference/pose-camera.md) |
-| A new trigger condition | `src/types/`, **both** evaluators, both test suites, `guides/reference/trigger-schema.md` |
+| A new trigger condition | `src/types/triggers.ts`, `src/validation/triggers.ts` and its test, **both** evaluators, both native test suites, `guides/reference/trigger-schema.md` |
 | A new derived value (angle, ratio) | `PoseEngine` on both platforms, `PoseFrame` type |
 | Sport-specific logic | **Nowhere.** It's a recipe: `guides/recipes/` |
 | A build-time behavior change | `plugin/`, and `guides/reference/config-plugin.md` |
@@ -89,9 +99,10 @@ video files, cheap to add rather than requiring a fork. See [ADR 0001](./adr/000
 
 ## Two implementations, one behavior
 
-The condition evaluator and geometry exist twice, Swift and Kotlin. They must produce
-identical output for identical input. Shared JSON fixtures drive both test suites; a
-divergence is a bug even when each side looks correct alone. See [testing](./testing.md).
+The condition evaluator and geometry will exist twice, Swift and Kotlin. They must produce
+identical output for identical input. Shared JSON fixtures are meant to drive both test suites; a
+divergence is a bug even when each side looks correct alone. Neither exists yet, so this is a rule
+for Phases 4 and 5 rather than something enforced today. See [testing](./testing.md).
 
 ## What is deliberately absent
 

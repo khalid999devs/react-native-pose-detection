@@ -24,6 +24,59 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/**
+ * `JSON.stringify` throws on a BigInt and on a cyclic object. This function only ever builds an
+ * error message, so it must not be the thing that fails while reporting someone else's mistake.
+ */
+function describe(value: unknown): string {
+  try {
+    const text = JSON.stringify(value);
+    return text === undefined ? String(value) : text;
+  } catch {
+    return typeof value === 'object' && value !== null ? '[object]' : String(value);
+  }
+}
+
+// Own keys only, and an explicitly undefined value counts as absent. A condition built by
+// spreading optional fields carries `above: undefined`, and `in` would call that a bound.
+function has(condition: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(condition, key) && condition[key] !== undefined;
+}
+
+function checkKeys(
+  condition: Record<string, unknown>,
+  allowed: readonly string[],
+  path: string,
+  issues: ValidationIssue[],
+): void {
+  for (const key of Object.keys(condition)) {
+    if (condition[key] === undefined) continue;
+    if (!allowed.includes(key)) {
+      issues.push({
+        path: `${path}.${key}`,
+        message: `unknown key, expected one of: ${allowed.join(', ')}`,
+      });
+    }
+  }
+}
+
+// Two numeric bounds that exclude each other mean the condition can never hold. Catching it here
+// is the difference between a build-time message and a trigger that silently never fires.
+function checkContradiction(
+  condition: Record<string, unknown>,
+  path: string,
+  issues: ValidationIssue[],
+): void {
+  const below = condition['below'];
+  const above = condition['above'];
+  if (typeof below === 'number' && typeof above === 'number' && above >= below) {
+    issues.push({
+      path,
+      message: `nothing is both above ${above} and below ${below}, this can never fire`,
+    });
+  }
+}
+
 function checkDuration(value: unknown, path: string, issues: ValidationIssue[]): void {
   if (value === undefined) return;
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
@@ -47,7 +100,7 @@ function checkJointOrNumericBound(value: unknown, path: string, issues: Validati
   if (!isJointName(value)) {
     issues.push({
       path,
-      message: `must be a number or a joint name, received ${JSON.stringify(value)}`,
+      message: `must be a number or a joint name, received ${describe(value)}`,
     });
   }
 }
@@ -56,13 +109,17 @@ function checkHasBound(
   condition: Record<string, unknown>,
   path: string,
   issues: ValidationIssue[],
+  allowBetween: boolean,
 ): void {
-  if (
-    condition['below'] === undefined &&
-    condition['above'] === undefined &&
-    condition['between'] === undefined
-  ) {
-    issues.push({ path, message: 'needs at least one of below, above, or between' });
+  const bounds = allowBetween ? ['below', 'above', 'between'] : ['below', 'above'];
+  if (!bounds.some((key) => has(condition, key))) {
+    issues.push({ path, message: `needs at least one of ${bounds.join(', ')}` });
+  }
+  if (!allowBetween && has(condition, 'between')) {
+    issues.push({
+      path: `${path}.between`,
+      message: 'is only valid on an angle condition, use below and above here',
+    });
   }
 }
 
@@ -71,8 +128,10 @@ function checkAngleCondition(
   path: string,
   issues: ValidationIssue[],
 ): void {
+  checkKeys(condition, ['angle', 'below', 'above', 'between'], path, issues);
+
   if (!isAngleJointName(condition['angle'])) {
-    const received = JSON.stringify(condition['angle']);
+    const received = describe(condition['angle']);
     issues.push({
       path: `${path}.angle`,
       message: isJointName(condition['angle'])
@@ -81,7 +140,7 @@ function checkAngleCondition(
     });
   }
 
-  checkHasBound(condition, path, issues);
+  checkHasBound(condition, path, issues, true);
   checkNumericBound(condition['below'], `${path}.below`, issues);
   checkNumericBound(condition['above'], `${path}.above`, issues);
 
@@ -99,23 +158,20 @@ function checkAngleCondition(
           message: `min (${min}) must be below max (${max})`,
         });
       }
+      checkAngleRange(min, `${path}.between[0]`, issues);
+      checkAngleRange(max, `${path}.between[1]`, issues);
     }
   }
 
-  const below = condition['below'];
-  const above = condition['above'];
-  if (typeof below === 'number' && typeof above === 'number' && above >= below) {
-    issues.push({
-      path,
-      message: `no angle is both above ${above} and below ${below}, this can never fire`,
-    });
-  }
+  checkContradiction(condition, path, issues);
 
-  for (const key of ['below', 'above'] as const) {
-    const value = condition[key];
-    if (typeof value === 'number' && (value < 0 || value > 180)) {
-      issues.push({ path: `${path}.${key}`, message: 'angles are 0 to 180 degrees' });
-    }
+  checkAngleRange(condition['below'], `${path}.below`, issues);
+  checkAngleRange(condition['above'], `${path}.above`, issues);
+}
+
+function checkAngleRange(value: unknown, path: string, issues: ValidationIssue[]): void {
+  if (typeof value === 'number' && (value < 0 || value > 180)) {
+    issues.push({ path, message: 'angles are 0 to 180 degrees' });
   }
 }
 
@@ -125,15 +181,18 @@ function checkLandmarkCondition(
   path: string,
   issues: ValidationIssue[],
 ): void {
+  checkKeys(condition, [key, 'below', 'above'], path, issues);
+
   if (!isJointName(condition[key])) {
     issues.push({
       path: `${path}.${key}`,
-      message: `unknown joint ${JSON.stringify(condition[key])}`,
+      message: `unknown joint ${describe(condition[key])}`,
     });
   }
-  checkHasBound(condition, path, issues);
+  checkHasBound(condition, path, issues, false);
   checkJointOrNumericBound(condition['below'], `${path}.below`, issues);
   checkJointOrNumericBound(condition['above'], `${path}.above`, issues);
+  checkContradiction(condition, path, issues);
 }
 
 function checkVelocityCondition(
@@ -142,16 +201,19 @@ function checkVelocityCondition(
   path: string,
   issues: ValidationIssue[],
 ): void {
+  checkKeys(condition, [key, 'below', 'above'], path, issues);
+
   const subject = condition[key];
   if (subject !== 'centerOfMass' && !isJointName(subject)) {
     issues.push({
       path: `${path}.${key}`,
-      message: `must be 'centerOfMass' or a joint name, received ${JSON.stringify(subject)}`,
+      message: `must be 'centerOfMass' or a joint name, received ${describe(subject)}`,
     });
   }
-  checkHasBound(condition, path, issues);
+  checkHasBound(condition, path, issues, false);
   checkNumericBound(condition['below'], `${path}.below`, issues);
   checkNumericBound(condition['above'], `${path}.above`, issues);
+  checkContradiction(condition, path, issues);
 }
 
 function checkVisibilityCondition(
@@ -159,10 +221,12 @@ function checkVisibilityCondition(
   path: string,
   issues: ValidationIssue[],
 ): void {
+  checkKeys(condition, ['visibility', 'above'], path, issues);
+
   if (!isJointName(condition['visibility'])) {
     issues.push({
       path: `${path}.visibility`,
-      message: `unknown joint ${JSON.stringify(condition['visibility'])}`,
+      message: `unknown joint ${describe(condition['visibility'])}`,
     });
   }
 
@@ -181,6 +245,8 @@ function checkGroup(
   depth: number,
   issues: ValidationIssue[],
 ): void {
+  checkKeys(condition, [key], path, issues);
+
   const members = condition[key];
   if (!Array.isArray(members)) {
     issues.push({ path: `${path}.${key}`, message: 'must be an array of conditions' });
@@ -211,7 +277,7 @@ function checkCondition(
     return;
   }
 
-  const present = CONDITION_KEYS.filter((key) => key in condition);
+  const present = CONDITION_KEYS.filter((key) => has(condition, key));
   if (present.length === 0) {
     issues.push({ path, message: `must have one of: ${CONDITION_KEYS.join(', ')}` });
     return;
@@ -266,6 +332,13 @@ export function validateTriggers(triggers: readonly Trigger[]): ValidationIssue[
       issues.push({ path, message: 'must be a trigger object' });
       return;
     }
+
+    checkKeys(
+      trigger,
+      ['id', 'enter', 'exit', 'emit', 'debounceMs', 'minDurationMs', 'snapshot', 'throttleMs'],
+      path,
+      issues,
+    );
 
     const id = trigger['id'];
     if (typeof id !== 'string' || id.trim() === '') {

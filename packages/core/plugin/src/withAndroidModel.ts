@@ -16,7 +16,11 @@ const withModelAsset: ConfigPlugin<ResolvedOptions> = (config, options) =>
       if (!cachePath) return config;
 
       const { projectRoot } = config.modRequest;
-      const installed = await installModelFile(cachePath, androidAssetsDir(projectRoot));
+      const installed = await installModelFile(
+        cachePath,
+        androidAssetsDir(projectRoot),
+        options.model,
+      );
       log.line(`copied → ${relative(projectRoot, installed)}`);
 
       return config;

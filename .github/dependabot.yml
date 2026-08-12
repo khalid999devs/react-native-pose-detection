@@ -1,6 +1,7 @@
 version: 2
 
-# Routine version-update PRs are disabled (open-pull-requests-limit: 0).
+# Routine npm version-update PRs are disabled (open-pull-requests-limit: 0). The
+# github-actions ecosystem below is left on.
 #
 # Security updates are NOT affected. Dependabot still opens a PR for any
 # advisory affecting this repository, because those come from the security
@@ -20,7 +21,7 @@ updates:
       prefix: 'chore(deps)'
       prefix-development: 'chore(deps-dev)'
     ignore:
-      # Pinned deliberately, see docs/adr/0003-pin-mediapipe-0-10-21.md
+      # Pinned deliberately, see docs/adr/0007-pin-mediapipe-0-10-35.md
       - dependency-name: 'com.google.mediapipe:tasks-vision'
       - dependency-name: 'MediaPipeTasksVision'
       # typescript-eslint peers on typescript <6.1.0, so 7.x breaks linting
@@ -33,8 +34,12 @@ updates:
       - dependency-name: 'react'
       - dependency-name: 'react-native'
 
+  # Actions stay on: they are pinned to commit SHAs, so an update PR is the only way a retagged
+  # or yanked action ever reaches a reviewer.
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
-    open-pull-requests-limit: 0
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: 'ci'
