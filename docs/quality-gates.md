@@ -85,8 +85,9 @@ see [ADR 0003](./adr/0003-pin-mediapipe-0-10-21.md).
 | husky `commit-msg` | catching it before push |
 | CI `commits` job | catching it on the PR |
 
-Scopes are enumerated in `commitlint.config.mjs`. Conventional commits are what make automated
-changelog generation possible.
+Format, type list, and scope list: [contributing → Commits](./contributing.md#commits).
+Conventional commits are what make automated changelog generation possible — the type decides
+whether a release is major, minor, or patch.
 
 ## Pre-commit
 

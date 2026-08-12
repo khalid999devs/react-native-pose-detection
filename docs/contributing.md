@@ -74,12 +74,114 @@ pass. `isSquatting` does not — that's a recipe.
 3. Unit test both
 4. Document in `guides/triggers.md`
 
+## Commits
+
+Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/). This is
+enforced by a `commit-msg` hook locally and by CI on every PR.
+
+```text
+type(scope): subject
+
+[optional body]
+
+[optional footer]
+```
+
+```text
+feat(triggers): add velocityY condition
+fix(camera): drop stale frames after switch using generation counter
+perf(engine): compute only angles referenced by triggers
+docs(guides): add plank hold recipe
+```
+
+It isn't ceremony — the type drives the release. `feat` produces a minor bump, `fix` a patch,
+and a `BREAKING CHANGE:` footer a major, which is how the CHANGELOG and version numbers are
+generated.
+
+### Types
+
+| Type | Use for | Release |
+| --- | --- | --- |
+| `feat` | new capability | minor |
+| `fix` | bug fix | patch |
+| `perf` | performance with no API change | patch |
+| `refactor` | restructuring, no behavior change | none |
+| `docs` | documentation only | none |
+| `test` | tests only | none |
+| `build` | build system, dependencies | none |
+| `ci` | CI configuration | none |
+| `chore` | everything else | none |
+
+### Scopes
+
+Optional, but validated when present. Kept in sync with `commitlint.config.mjs`.
+
+| Group | Scopes |
+| --- | --- |
+| Package | `core` `ios` `android` `engine` `camera` `triggers` `calibration` `overlay` `logging` `plugin` `cli` |
+| Repository | `repo` `example` `docs` `guides` `ci` `deps` `release` |
+
+Adding a scope means editing `commitlint.config.mjs` and this table in the same commit.
+
+### Breaking changes
+
+```text
+feat(core)!: rename data.mode 'stream' to 'live'
+
+BREAKING CHANGE: `data.mode: 'stream'` is now `'live'`. Update any component
+passing 'stream'.
+```
+
+Both the `!` and the footer are required. The footer text goes into the CHANGELOG verbatim, so
+write it for someone upgrading, not for yourself.
+
+### When a commit is rejected
+
+```text
+✖ subject may not be empty [subject-empty]
+✖ type may not be empty [type-empty]
+```
+
+That means the message had no `type:` prefix. Amend it:
+
+```bash
+git commit --amend
+```
+
+Don't bypass with `--no-verify`. A message that skips the hook still fails the `commits` job in
+CI, and it breaks changelog generation for the release it lands in.
+
 ## Pull requests
 
 - One concern per PR
 - Tested on a physical device, both platforms (say so if you couldn't)
 - Include device model + OS version for anything performance-related
 - Public API changes need docs in the same PR
+- New props, events, or trigger conditions need a control in `example/`
+
+### Title
+
+PR titles follow the same Conventional Commits format as commit messages — they become the
+squash-merge commit, so they land in the CHANGELOG.
+
+### What CI checks
+
+Six jobs run on every PR: code, docs, native, package, security, and commits. Run them locally
+first:
+
+```bash
+npm run check       # everything that needs no native toolchain
+npm run check:all   # adds Swift/Kotlin lint, audit, licenses
+```
+
+Full list and rationale: [quality gates](./quality-gates.md).
+
+### Review
+
+Expect questions about the [eight rules](./README.md#the-eight-rules) and about whether a change
+belongs in the library at all — see the litmus test in
+[project structure](./project-structure.md#where-to-add-things). Neither is personal; both have
+cost real crashes and real scope creep in the past.
 
 ## Reporting bugs
 

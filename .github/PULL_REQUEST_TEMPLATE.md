@@ -6,6 +6,9 @@
 
 <!-- Link the issue, or explain the problem. -->
 
+> Title must follow [Conventional Commits](../docs/contributing.md#commits) — it becomes the
+> squash-merge commit message.
+
 ## Checklist
 
 - [ ] Tested on a **physical device** (say which, and if you couldn't test one platform)
