@@ -12,7 +12,9 @@ react-native-pose-detection/
 │       ├── android/           Kotlin
 │       ├── plugin/            Expo config plugin, model manifest, downloader
 │       └── cli/               bin shim, the implementation lives in plugin/
-└── example/                   one app exercising everything
+└── example/
+    ├── expo/                  Expo app: every screen, installed via the config plugin
+    └── bare/                  bare React Native app: install path only, via the CLI
 ```
 
 ## `packages/core/src`

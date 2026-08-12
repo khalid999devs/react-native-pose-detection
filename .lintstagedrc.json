@@ -2,6 +2,9 @@
   "*.{ts,tsx}": ["eslint --fix --max-warnings=0", "prettier --write"],
   "*.{js,mjs,cjs,json,yml,yaml}": ["prettier --write"],
   "*.md": ["markdownlint-cli2 --fix", "cspell --no-must-find-files"],
-  "*.swift": ["swiftformat", "swiftlint lint --quiet --strict"],
-  "*.kt": ["ktlint -F"]
+  "*.swift": [
+    "./scripts/optional-lint.sh swiftformat",
+    "./scripts/optional-lint.sh swiftlint lint --quiet --strict"
+  ],
+  "*.kt": ["./scripts/optional-lint.sh ktlint -F"]
 }

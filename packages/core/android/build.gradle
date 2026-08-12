@@ -1,0 +1,33 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.posedetection'
+version = '0.0.0'
+
+android {
+  namespace 'com.posedetection'
+
+  defaultConfig {
+    // CameraX needs 21, MediaPipe Tasks needs 24.
+    minSdk 24
+    versionCode 1
+    versionName '0.0.0'
+  }
+}
+
+dependencies {
+  implementation 'com.facebook.react:react-android'
+
+  // Pinned deliberately. tasks-vision is a thin facade from 0.10.33 on; the native libraries
+  // live in tasks-core, which it pulls transitively with all four ABIs.
+  // See docs/adr/0007-pin-mediapipe-0-10-35.md.
+  implementation 'com.google.mediapipe:tasks-vision:0.10.35'
+
+  def cameraxVersion = '1.6.1'
+  implementation "androidx.camera:camera-core:$cameraxVersion"
+  implementation "androidx.camera:camera-camera2:$cameraxVersion"
+  implementation "androidx.camera:camera-lifecycle:$cameraxVersion"
+  implementation "androidx.camera:camera-view:$cameraxVersion"
+}

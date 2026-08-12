@@ -1,10 +1,36 @@
-# Example app
+# Example apps
 
-A real application, not a smoke test. It is the **reference implementation**, the manual QA
-harness, and the demo. And it is never published to npm.
+Real applications, not smoke tests. They are the **reference implementation**, the manual QA
+harness, and the demo. And they are never published to npm.
 
-Excluded from the tarball via `files` in `packages/core/package.json`, so it can be as large
-and as well built as it needs to be.
+Excluded from the tarball via `files` in `packages/core/package.json`, so they can be as large
+and as well built as they need to be.
+
+## Two apps, not one
+
+```text
+example/
+├── expo/    Expo app, installed through the config plugin
+└── bare/    bare React Native app, installed through the CLI
+```
+
+**Both are required.** They exercise the two install paths, and those paths share almost no
+code. The Expo app proves `npx expo prebuild` puts the model in place, writes the permissions,
+and registers the resource in the Xcode target. The bare app proves
+`npx react-native-pose-detection fetch-model` does the same thing without any of Expo's config
+machinery, and that autolinking finds the module without a plugin.
+
+A bug that only appears in one of them is the common case, not the rare one: the plugin runs at
+prebuild and the CLI runs on a project that already exists, so they touch the native projects at
+different moments and in different states.
+
+The CI matrix in [testing](../docs/testing.md#ci-matrix) already builds both, on both platforms,
+on both architectures. These are what it builds.
+
+**`expo/` is the one with all the screens.** The bare app is deliberately small: the basic
+camera, the scenarios panel, and a doctor readout. Duplicating eleven screens across two apps
+would mean every UI change lands twice, and the second copy would rot. What the bare app has to
+prove is that install and teardown work, not that the UI does.
 
 ## Goals
 
@@ -70,33 +96,58 @@ a device without attaching a profiler.
 
 ```text
 example/
-├── App.tsx
-├── app.json                  plugin configured with model: "full"
-├── src/
-│   ├── screens/              one file per screen above
-│   ├── components/           controls: sliders, toggles, pickers, stat tiles
-│   ├── scenarios/            stress runners, each returning a pass/fail report
-│   └── theme/                shared UI so screens stay short
+├── expo/
+│   ├── App.tsx
+│   ├── app.json              plugin configured with model: "full"
+│   └── src/
+│       ├── screens/          one file per screen above
+│       ├── components/       controls: sliders, toggles, pickers, stat tiles
+│       ├── scenarios/        stress runners, each returning a pass/fail report
+│       └── theme/            shared UI so screens stay short
+├── bare/
+│   ├── App.tsx               basic camera, scenarios panel, doctor readout
+│   └── ios/ · android/       committed, because a bare app has no prebuild step
 └── README.md
 ```
 
 Keep the pose-related code in each screen short and obvious, someone reading `Basic.tsx`
 should see the library's API, not the app's UI framework.
 
+`bare/ios` and `bare/android` are committed. That is the point of a bare app: there is no
+prebuild to regenerate them, so the CLI has to work against native projects that already exist,
+which is exactly the case the config plugin never sees.
+
 ## Running
 
 ```bash
 npm install
-npm run build            # build the package first
-cd example
-npx expo prebuild
-npx expo run:ios         # or run:android
+npm run build                 # build the package first
 ```
 
-A **physical device is required.** Simulators have no camera and the GPU delegate behaves
-differently on them.
+Expo:
+
+```bash
+cd example/expo
+npx expo prebuild
+npx expo run:ios              # or run:android
+```
+
+Bare React Native:
+
+```bash
+cd example/bare
+npx react-native-pose-detection fetch-model full
+cd ios && pod install && cd ..
+npx react-native run-ios      # or run-android
+```
+
+A **physical device is required** for both. Simulators have no camera and the GPU delegate
+behaves differently on them.
 
 ## When to update it
 
-Adding a prop, event, or trigger condition means adding a control for it here in the same PR.
-A feature with no way to exercise it in the example app is a feature nobody will find.
+Adding a prop, event, or trigger condition means adding a control for it in `expo/` in the same
+PR. A feature with no way to exercise it in the example app is a feature nobody will find.
+
+`bare/` only changes when the install path does: a new CLI flag, a change to what gets copied
+where, a new native permission. Feature work does not touch it.

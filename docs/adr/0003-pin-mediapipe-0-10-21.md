@@ -1,6 +1,6 @@
 # 0003: Pin MediaPipe to 0.10.21
 
-**Status:** accepted
+**Status:** superseded by [0007](./0007-pin-mediapipe-0-10-35.md)
 **Date:** 2026-08-12
 
 ## Context

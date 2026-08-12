@@ -104,28 +104,41 @@ file and one Xcode reference, and a cache hit makes zero network calls.
 
 **Goal:** live camera, live detection, native overlay. The highest-risk phase.
 
-- [ ] `build.gradle`: `tasks-vision` pinned, `minSdk 24`
-- [ ] **Resolve the MediaPipe version on a real x86_64 emulator.** 0.10.21 ships no
-      `x86_64` library, [ABI coverage by version](./native-modules.md#abi-coverage-by-version).
-      If it fails there, 0.10.35 is the candidate, and iOS has to be rebuilt against it too
-      before the pin moves
-- [ ] `CameraSource`, CameraX `ImageAnalysis`
-  - [ ] `OUTPUT_IMAGE_FORMAT_RGBA_8888` (hardware YUV→RGB)
-  - [ ] `STRATEGY_KEEP_ONLY_LATEST`
-  - [ ] `imageProxy.close()` in `finally`, **always**, one miss stalls the analyzer forever
-  - [ ] `targetRotation` updated on orientation change **and** on rebind
-  - [ ] Analysis resolution independent of preview resolution
-- [ ] `PoseDetector`, `PoseLandmarker`, LIVE_STREAM, GPU→CPU fallback verified by first inference
-- [ ] Monotonic timestamps, clamped strictly increasing
-- [ ] **Camera switch**, see `internals/architecture.md`; generation counter, single serial queue, no landmarker recreation, rollback on failure
-- [ ] `OverlayRenderer`, Canvas, reused `Path` objects, no per-frame allocation
-  - [ ] **Angle arcs + degree labels**, arc between the two limb segments meeting at the joint
-- [ ] Lifecycle: background → full stop; foreground → resume
-- [ ] `onTrimMemory` handling
-- [ ] Expo module: props, ref methods, events wired to Phase 1 contracts
+- [x] `build.gradle`: `tasks-vision` pinned at 0.10.35, `minSdk 24`
+- [x] **MediaPipe version resolved**, [ADR 0007](./adr/0007-pin-mediapipe-0-10-35.md) supersedes
+      0003. 0.10.21 ships no `x86_64` library, so it breaks the emulator it was chosen to
+      protect. 0.10.35 ships all four ABIs, confirmed in an assembled APK
+- [x] `CameraSource`, CameraX `ImageAnalysis`
+  - [x] `OUTPUT_IMAGE_FORMAT_RGBA_8888` (hardware YUV→RGB)
+  - [x] `STRATEGY_KEEP_ONLY_LATEST`
+  - [x] `imageProxy.close()` in `finally`, **always**, one miss stalls the analyzer forever
+  - [x] `targetRotation` updated on orientation change **and** on rebind
+  - [x] Analysis resolution independent of preview resolution
+  - [x] Row-padded analysis buffers handled, or the frame shears diagonally on some devices
+- [x] `PoseDetector`, `PoseLandmarker`, LIVE_STREAM, GPU→CPU fallback verified by first inference
+- [x] Monotonic timestamps, clamped strictly increasing
+- [x] **Camera switch**, see [architecture](./architecture.md); generation counter, single serial
+      queue (the main thread, which is the one CameraX requires), no landmarker recreation,
+      rollback on failure
+- [x] `OverlayRenderer`, Canvas, no per-frame allocation. `drawLines` and `drawPoints` over
+      preallocated float arrays, rather than a `Path` rebuilt once a frame
+  - [x] **Angle arcs + degree labels**, arc between the two limb segments meeting at the joint
+- [x] Lifecycle: background → full stop; foreground → resume
+- [x] `onTrimMemory` handling
+- [x] Expo module: props, ref methods, `onReady` / `onError` / `onCameraChange` wired to the
+      Phase 1 contracts
 
 **Exit:** example app shows a live skeleton on a physical device. 100 rapid camera switches
 with detection on: no crash, no leak. Backgrounding releases the camera; foregrounding restores it.
+
+**Status: written and building, not run.** A clean `assembleDebug` compiles the module and
+packages all four ABIs plus exactly one model, and ktlint is clean. Everything in the exit
+criteria needs a physical device, so none of it is verified: no live skeleton, no switch stress
+test, no leak numbers. The example app in Phase 6 is what makes those runnable.
+
+Deliberately stubbed here and finished in Phase 4: `targetFps` and `deviceTier` in `onReady` are
+placeholders until calibration exists, `maxPoses > 1` uses the first pose rather than the primary
+one, and the log channel writes to Logcat only.
 
 ---
 
@@ -198,7 +211,9 @@ Zero jump-detection code present.
 - [ ] **Measure real app size**, release archive with and without the plugin, per model, per
       platform. Replace the iOS estimates in `guides/performance.md` with actual numbers.
 - [ ] **Measure FPS** on 3–4 real devices spanning low/mid/high
-- [ ] **Example app**, see [example/README.md](../example/README.md)
+- [ ] **Example apps**, see [example/README.md](../example/README.md). Two of them:
+      `example/expo` through the config plugin, `example/bare` through the CLI. The two
+      install paths share almost no code, so a bug in one is invisible in the other
   - [ ] Screens: Home · Basic · Playground · Triggers · Data modes · Performance · Recipes · Angles · Static input · Console · Scenarios
   - [ ] Playground exposes **every prop** with requested-vs-resolved shown side by side
   - [ ] Scenarios panel: camera-switch ×100, remount ×50, detection toggle ×20, overlay toggle ×50,

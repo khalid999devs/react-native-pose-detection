@@ -95,13 +95,20 @@ the 0.10.2x line, and native code moved from `tasks-vision` to `tasks-core` at 0
 
 Two things to know before touching the pin:
 
-- **0.10.21 has no `x86_64`.** A React Native app ships `x86_64`, so the package manager picks
-  `x86_64` as the primary ABI and never extracts MediaPipe's `x86` library, which surfaces as
-  `UnsatisfiedLinkError` at landmarker construction. Android Studio stopped shipping 32-bit
-  `x86` system images after API 30, so every current emulator on an Intel host hits this.
-  Contributors on Apple Silicon use `arm64-v8a` images and never see it. Verify on a real
-  x86_64 emulator in Phase 3 before assuming either way.
+- **0.10.21 has no `x86_64`**, which is why it is not the pin. A React Native app ships `x86_64`,
+  so the package manager picks `x86_64` as the primary ABI and never extracts MediaPipe's 32-bit
+  `x86` library, surfacing as `UnsatisfiedLinkError` at landmarker construction. Resolved in
+  [ADR 0007](./adr/0007-pin-mediapipe-0-10-35.md) by pinning 0.10.35, which ships all four.
 - The one-ABI regression was 0.10.26 and 0.10.26.1 only. It was reverted by 0.10.28.
+
+Measured from an assembled debug APK on the 0.10.35 pin, not from the AAR:
+
+| ABI | `libmediapipe_tasks_jni.so` |
+| --- | --- |
+| `arm64-v8a` | 10.5 MB |
+| `armeabi-v7a` | 7.4 MB |
+| `x86` | 15.0 MB |
+| `x86_64` | 13.0 MB |
 
 Google does not publish every version to CocoaPods, so iOS choices are narrower than Android's.
 

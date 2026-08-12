@@ -50,7 +50,6 @@ jobs:
       - run: swiftlint lint --strict
         continue-on-error: true # no Swift sources until Phase 5
       - run: ktlint 'packages/core/android/**/*.kt'
-        continue-on-error: true # no Kotlin sources until Phase 3
 
   package:
     name: 'Package: exports, types, tarball'
