@@ -3,13 +3,16 @@ updates:
   - package-ecosystem: npm
     directory: /
     schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
+      interval: monthly
+    open-pull-requests-limit: 3
     commit-message:
       prefix: 'chore(deps)'
       prefix-development: 'chore(deps-dev)'
     groups:
+      # Minor and patch only. Majors arrive as individual PRs so a breaking
+      # change in one tool cannot hide inside a batch of routine bumps.
       dev-tooling:
+        update-types: ['minor', 'patch']
         patterns:
           - 'eslint*'
           - 'prettier'
@@ -30,10 +33,16 @@ updates:
       - dependency-name: 'expo-module-scripts'
       - dependency-name: 'react'
       - dependency-name: 'react-native'
+      # Tooling majors are opt-in. Bump them deliberately, one at a time.
+      - dependency-name: 'typescript'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'eslint'
+        update-types: ['version-update:semver-major']
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
+    open-pull-requests-limit: 2
     commit-message:
       prefix: 'chore(ci)'

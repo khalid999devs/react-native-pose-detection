@@ -1,8 +1,8 @@
 name: CodeQL
 
+# Pull requests and a weekly sweep. Pushes to main are already covered by the
+# PR that produced them, so running on push too just doubles the notifications.
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
   schedule:

@@ -74,8 +74,18 @@ This is not ceremony: pose estimation is full of AGPL-3.0 models and toolkits �
 YOLO-pose among them — and a single AGPL dependency would make this package unusable in the
 closed-source apps it is built for.
 
-Dependabot is configured to **never** bump MediaPipe. That version is pinned deliberately —
-see [ADR 0003](./adr/0003-pin-mediapipe-0-10-21.md).
+### Dependabot policy
+
+| Setting | Why |
+| --- | --- |
+| Monthly, max 3 PRs | Weekly batches of tooling bumps are noise, not security |
+| `dev-tooling` group is **minor/patch only** | A major in one tool cannot hide inside a batch of routine bumps |
+| `typescript` and `eslint` majors ignored | Bumped deliberately, one at a time, with the whole suite re-run |
+| `expo`, `react`, `react-native`, `expo-module-scripts` ignored | Peer-satisfying devDependencies that must match a combination tested on device |
+| MediaPipe ignored | Pinned — see [ADR 0003](./adr/0003-pin-mediapipe-0-10-21.md) |
+
+Security advisories still open PRs regardless of these settings; the grouping rules only apply
+to routine version bumps.
 
 ## Commits
 
