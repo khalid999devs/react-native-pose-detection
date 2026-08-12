@@ -122,7 +122,25 @@ git switch main && git pull
 git switch -c feat/triggers-velocity-condition
 ```
 
-`main` is protected. Everything lands through a pull request, including your own.
+### Branch protection on main
+
+`main` is protected. Direct pushes are rejected for everyone except the maintainer, and every
+change lands through a pull request.
+
+| Rule | Effect |
+| --- | --- |
+| Pull request required | No direct pushes |
+| 1 approving review | From a code owner, so @khalid999devs approves every merge |
+| Stale reviews dismissed | New commits invalidate an earlier approval |
+| Re-approval after a push | The last push must be approved, not just an earlier state |
+| 5 status checks, up to date | Code, Docs, Package, Security, Commits must pass on current main |
+| Conversations resolved | No merging over unanswered review comments |
+| Linear history | Squash merge only, so the changelog stays readable |
+| No force push, no deletion | main cannot be rewritten or removed |
+
+Squash merge is the only method enabled, and head branches delete themselves after merge. The
+pull request title becomes the commit subject, which is why it has to follow
+[Conventional Commits](#commits).
 
 ## Commits
 

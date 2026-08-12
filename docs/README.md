@@ -12,7 +12,7 @@ New contributor, in order:
 | --- | --- |
 | **1.** [Project structure](./project-structure.md) | What lives where, and why |
 | **2.** [Architecture](./architecture.md) | Native pipeline, threading, camera-switch rules |
-| **3.** [Contributing](./contributing.md) | Setup, **branch / commit / PR conventions**, code style |
+| **3.** [Contributing](./contributing.md) | Setup, **branch / commit / PR rules**, branch protection, code style |
 | **4.** [Testing](./testing.md) | What must pass before merge |
 | **5.** [Quality gates](./quality-gates.md) | Every automated check and why it exists |
 

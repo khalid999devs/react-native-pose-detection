@@ -1,5 +1,7 @@
-*                       @khalid999devs
+# Every file is owned by the maintainer. Combined with "Require review from
+# Code Owners" on main, this means no pull request can be merged without an
+# approval from @khalid999devs.
+#
+# Add collaborators here as they earn areas of the codebase.
 
-/packages/core/ios/     @khalid999devs
-/packages/core/android/ @khalid999devs
-/docs/adr/              @khalid999devs
+*   @khalid999devs
