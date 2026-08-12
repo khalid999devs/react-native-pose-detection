@@ -28,7 +28,7 @@ type Trigger = {
 
 ```ts
 type Condition =
-  | { angle: JointName; below?: number; above?: number; between?: [number, number] }
+  | { angle: AngleJointName; below?: number; above?: number; between?: [number, number] }
   | { landmarkX: JointName; below?: number | JointName; above?: number | JointName }
   | { landmarkY: JointName; below?: number | JointName; above?: number | JointName }
   | { velocityX: 'centerOfMass' | JointName; below?: number; above?: number }
@@ -38,9 +38,12 @@ type Condition =
   | { any: Condition[] };
 ```
 
+A condition carries exactly one of those keys. Mixing two, `{ angle: 'leftKnee', landmarkY: 'nose' }`,
+is a validation error rather than one of them being silently ignored.
+
 | Field | Unit |
 | --- | --- |
-| `angle` | degrees, 0–180 |
+| `angle` | degrees, 0–180. Vertex must be an [`AngleJointName`](./types.md#anglejointname) |
 | `landmarkX` / `landmarkY` | normalized 0–1, origin top-left. A `JointName` compares against that joint |
 | `velocityX` / `velocityY` | normalized units per second |
 | `visibility` | 0–1 |
@@ -68,7 +71,26 @@ ACTIVE + still matches → emit if 'while' (throttled)
 Configs are validated in JS before reaching native. These are errors, not silent failures:
 
 - unknown `JointName`
-- `emit: 'cycle'` without `exit`
+- an `angle` on a joint that has none, `nose` for instance
+- missing or empty `id`, or a duplicate `id`
+- unknown `emit`
+- `emit: 'cycle'` or `emit: 'exit'` without `exit`
+- a condition with no key, or with more than one
+- a condition with no bound at all, no `below`, `above`, or `between`
 - `between` where `min >= max`
-- duplicate `id`
-- empty `all` / `any`
+- an angle bound outside 0–180
+- `{ below: 90, above: 160 }`, which no angle can satisfy, so it would never fire
+- `visibility` without `above`, or `above` outside 0–1
+- a negative `debounceMs`, `minDurationMs`, or `throttleMs`
+- empty `all` / `any`, or nesting deeper than 8 levels
+
+Each issue reports the path that caused it:
+
+```text
+2 configuration problems:
+  triggers[0].enter.angle: "nose" has no angle, only joints where two limb segments meet do
+  triggers[0].exit: is required when emit is 'cycle'
+```
+
+`<PoseCamera>` runs these on mount. You can run them yourself with `validateTriggers()`, see
+[types → validation](./types.md#validation).

@@ -48,20 +48,27 @@ they're listed separately because their exit criteria are independent.
 
 **Goal:** every type the native layer must satisfy, agreed before native code exists.
 
-- [ ] `PoseFrame`, `Landmark`, `JointName` (33 constants), `PoseCameraRef`
-- [ ] `Trigger`, `Condition`, `TriggerEvent`, full schema
-- [ ] `ReadyEvent`, `ErrorEvent`, `PerformanceEvent`, `CameraState`, `ProfileState`
-- [ ] Error code enum. The complete list, no ad-hoc strings later
-- [ ] **Float32Array wire format**: 33 × 4 floats, layout documented, zero-copy JS accessor
-- [ ] Skeleton connection table (35 pairs) shared by both platforms
-- [ ] `AngleOverlay` type, joint, label, radius, color, decimals, minVisibility
-- [ ] `LogEntry`, `LogLevel`, `LogCategory`; `setLogLevel()` / `addLogListener()` signatures
-- [ ] JS-side trigger validation with clear messages, catch bad configs before native sees them
+- [x] `PoseFrame`, `Landmark`, `JointName` (33 constants), `PoseCameraRef`
+- [x] `Trigger`, `Condition`, `TriggerEvent`, full schema
+- [x] `ReadyEvent`, `ErrorEvent`, `PerformanceEvent`, `CameraState`, `ProfileState`
+- [x] Error code enum. The complete list, no ad-hoc strings later
+- [x] **Float32Array wire format**: 33 × 4 floats, layout documented, zero-copy JS accessor.
+      `select` narrows the buffer, [ADR 0005](./adr/0005-select-narrows-the-buffer.md)
+- [x] Skeleton connection table (35 pairs) shared by both platforms
+- [x] `AngleOverlay` type, joint, label, radius, color, decimals, minVisibility
+- [x] `LogEntry`, `LogLevel`, `LogCategory`; `setLogLevel()` / `addLogListener()` signatures
+- [x] JS-side trigger validation with clear messages, catch bad configs before native sees them
+- [x] `AngleJointName`: only the 12 joints where two limb segments meet have an angle, so
+      `{ angle: 'nose' }` fails at compile time instead of never firing
 
 **Exit:** the public API compiles and is fully typed against a stub native module.
 `guides/reference/pose-camera.md` matches the types exactly.
 
 > The wire format is the one thing that's painful to change later. Get it right here.
+
+**Carried into Phase 3:** `src/native/contract.ts` is what both platforms must implement. The
+binding in `src/native/index.ts` points at a stub until the Expo module exists, so no call site
+changes when it is swapped.
 
 ---
 

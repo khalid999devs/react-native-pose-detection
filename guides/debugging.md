@@ -46,21 +46,30 @@ setLogLevel({ triggers: 'trace', camera: 'debug', engine: 'off' });
 
 Categories: `camera` · `detector` · `engine` · `triggers` · `calibration` · `overlay`
 
+`LOG_LEVELS` and `LOG_CATEGORIES` are exported if you are building a level picker.
+
 ## Entry shape
 
 ```ts
 type LogEntry = {
   level: 'error' | 'warn' | 'info' | 'debug' | 'trace';
-  category: string;
+  category: LogCategory;
   message: string;
   timestamp: number;   // same clock as PoseFrame.timestamp
   data?: Record<string, number | string | boolean>;
 };
 ```
 
+`level` cannot be `'off'`, that is a setting, never something an entry carries.
+
 Entries arrive **batched**. An array every ~250 ms, not one call per line. If your listener
-can't keep up, the oldest entries are dropped and reported as `droppedCount` rather than
-growing memory.
+can't keep up, the oldest entries are dropped rather than growing memory, and the next batch
+opens with a `warn` entry carrying the count:
+
+```ts
+{ level: 'warn', category: 'engine', message: 'log entries dropped',
+  timestamp: 1712, data: { droppedCount: 214 } }
+```
 
 ## What to look at
 

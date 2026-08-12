@@ -1,0 +1,83 @@
+import type { StyleProp, ViewStyle } from 'react-native';
+
+import type {
+  AnalysisResolutionPreset,
+  DataConfig,
+  DelegateRequest,
+  Facing,
+  FacingRequest,
+  OverlayConfig,
+  Profile,
+  ProfileState,
+  ResolutionPreset,
+  SmoothingConfig,
+  ThermalPolicy,
+  CameraState,
+} from './camera';
+import type { PoseFrame } from './frame';
+import type { CameraChangeEvent, ErrorEvent, PerformanceEvent, ReadyEvent } from './events';
+import type { LogEntry, LogLevelConfig } from './logging';
+import type { Trigger, TriggerEvent } from './triggers';
+
+/**
+ * Every axis defaults to `'auto'`. Setting one pins it and calibration leaves it alone, the rest
+ * keep adapting. See the precedence chain in guides/performance.md.
+ */
+export type PoseCameraProps = {
+  style?: StyleProp<ViewStyle>;
+
+  profile?: Profile;
+  facing?: FacingRequest;
+  delegate?: DelegateRequest;
+  targetFps?: 'auto' | number;
+  resolution?: 'auto' | ResolutionPreset;
+  /** What the model sees. Independent of `resolution`, which only affects the preview. */
+  analysisResolution?: 'auto' | AnalysisResolutionPreset;
+  thermalPolicy?: ThermalPolicy;
+  /** 1 to 5. Triggers evaluate against the primary pose. */
+  maxPoses?: number;
+  smoothing?: boolean | SmoothingConfig;
+
+  /** Camera on or off. The lowest power state short of unmounting. */
+  active?: boolean;
+  /** Inference on or off. `false` releases GPU resources, the preview keeps running. */
+  detection?: boolean;
+  overlay?: boolean | OverlayConfig;
+
+  data?: DataConfig;
+  triggers?: readonly Trigger[];
+
+  /** Scoped to this camera. `setLogLevel()` sets it globally. */
+  logLevel?: LogLevelConfig;
+
+  onReady?: (event: ReadyEvent) => void;
+  onError?: (event: ErrorEvent) => void;
+  onCameraChange?: (event: CameraChangeEvent) => void;
+  onPerformanceChange?: (event: PerformanceEvent) => void;
+  onTrigger?: (event: TriggerEvent) => void;
+  /** `data.mode` of `'throttled'` or `'live'`. */
+  onPose?: (frame: PoseFrame) => void;
+  /** `data.mode` of `'batched'`. The array is reused between flushes, copy what you retain. */
+  onPoseBatch?: (frames: readonly PoseFrame[]) => void;
+  onLog?: (entries: readonly LogEntry[]) => void;
+};
+
+export type PoseCameraRef = {
+  /** Resolves once the session is stable again, not when the switch begins. */
+  switchCamera(): Promise<void>;
+  setFacing(facing: Facing): Promise<void>;
+
+  pause(): void;
+  resume(): void;
+  startDetection(): void;
+  /** Releases GPU resources rather than gating a still-running pipeline. */
+  stopDetection(): void;
+  setOverlayEnabled(enabled: boolean): void;
+
+  setProfile(profile: Profile): void;
+  getProfile(): ProfileState;
+  getState(): CameraState;
+
+  /** The current frame regardless of `data.mode`. `null` when no pose is present. */
+  snapshot(): PoseFrame | null;
+};

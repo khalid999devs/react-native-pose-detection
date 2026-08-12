@@ -1,7 +1,7 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "ignoreBinaries": ["swiftlint", "swiftformat", "ktlint", "lychee"],
-  "ignoreDependencies": ["@types/react", "expo", "react", "react-native"],
+  "ignoreDependencies": ["@types/react", "expo", "react"],
   "workspaces": {
     "packages/core": {
       "entry": ["src/index.ts"]

@@ -24,8 +24,14 @@ src/
 ├── types/                 PoseFrame, Trigger, events, JointName constants
 ├── validation/            trigger config validation, runs before native sees it
 ├── accessors.ts           zero-copy Float32Array readers
-└── native/                Expo module bindings
+├── errors.ts              PoseConfigError, ValidationIssue
+├── logging.ts             setLogLevel, addLogListener
+└── native/                Expo module bindings, and the contract they must satisfy
 ```
+
+`native/contract.ts` is the interface both platforms implement. It exists so the public API can
+compile and be reviewed before either native project does, and so a native change that breaks the
+JS surface fails at typecheck rather than on a device.
 
 `index.ts` is the only public surface. If it isn't exported there, it isn't API, and it can
 change without a major version.

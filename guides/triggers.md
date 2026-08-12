@@ -26,7 +26,7 @@ function SquatCounter() {
   return (
     <PoseCamera
       style={{ flex: 1 }}
-      showOverlay
+      overlay
       triggers={[
         {
           id: 'rep',

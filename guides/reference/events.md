@@ -37,17 +37,30 @@ type ErrorEvent = {
 };
 ```
 
+This is the complete list. Native emits nothing outside it, so a `switch` on `code` can be
+exhaustive and a new failure mode has to be added here rather than appearing as a new string.
+`ERROR_CODES` is exported if you need to iterate them.
+
 | Code | Fatal | Meaning |
 | --- | --- | --- |
 | `PERMISSION_DENIED` | ✅ | Camera permission refused |
 | `MODEL_NOT_FOUND` | ✅ | Plugin didn't run, or prebuild was skipped |
+| `MODEL_LOAD_FAILED` | ✅ | The model file is present but could not be read |
 | `CAMERA_UNAVAILABLE` | ✅ | No camera for the requested facing |
+| `CAMERA_START_FAILED` | ✅ | The capture session could not be started |
 | `DETECTOR_INIT_FAILED` | ✅ | Landmarker could not be created on either delegate |
+| `INVALID_CONFIG` | ✅ | Native rejected a prop or trigger config |
+| `IMAGE_DECODE_FAILED` | ✅ | `detectOnImage` could not read the source |
+| `VIDEO_DECODE_FAILED` | ✅ | `detectOnVideo` could not read the source |
 | `CAMERA_SWITCH_FAILED` | ❌ | Rolled back to the previous camera |
 | `GPU_UNAVAILABLE` | ❌ | Fell back to CPU: expect lower frame rates |
 | `DETECTION_FAILED` | ❌ | A single frame failed; the pipeline continues |
 
 `fatal: false` is normal operation, not a bug. Only `fatal: true` means the camera stopped.
+
+`INVALID_CONFIG` should be unreachable from a typed call site. Trigger configs are
+[validated in JS](./trigger-schema.md#validation) first, so reaching native with a bad one means
+the config was built dynamically and skipped that check.
 
 ## `onCameraChange`
 
@@ -64,7 +77,7 @@ type PerformanceEvent = {
   reason: 'calibration' | 'thermal' | 'load' | 'headroom' | 'gpu_fallback';
   delegate: 'GPU' | 'CPU';
   targetFps: number;
-  analysisResolution: string;
+  analysisResolution: { width: number; height: number };
   actualFps: number;
 };
 ```

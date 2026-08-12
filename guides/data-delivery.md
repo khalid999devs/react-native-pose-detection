@@ -8,10 +8,13 @@ biggest performance decision you'll make.
 | Mode | Crossings/sec | Data loss | Fires |
 | --- | --- | --- | --- |
 | `off` *(default)* | **0** | n/a | nothing |
-| `triggers` | ~1 per event | n/a | `onTrigger` |
 | `batched` | **2** | none | `onPoseBatch` |
 | `throttled` | 10 | intermediate frames dropped | `onPose` |
 | `live` | 30 | none | `onPose` |
+
+Triggers are not a mode. They fire on their own schedule, roughly once per event, and they keep
+working at `mode: 'off'`. That combination, no frames crossing and triggers still firing, is the
+default and the cheapest thing this library does.
 
 ```tsx
 <PoseCamera data={{ mode: 'batched', flushMs: 500 }} onPoseBatch={handle} />
@@ -43,9 +46,14 @@ data={{
 }}
 ```
 
-A full frame is 33 landmarks × 4 floats = 528 bytes. Most rep counters need three joints,
-about 36 bytes. `select` also drives **lazy angle computation**: only the joints you name are
-computed natively, so trimming the payload also reduces per-frame CPU.
+A full frame is 33 landmarks × 4 floats = 528 bytes. Three joints is 48 bytes. `select` also
+drives **lazy angle computation**: only the joints you name are computed natively, so trimming
+the payload also reduces per-frame CPU.
+
+The narrowed buffer holds those joints in the order you listed them, and `frame.selection` names
+them. The accessors handle that for you, so nothing in your code changes when you add or drop a
+joint. Reading one you did not select throws instead of returning a zero, see
+[wire format](./reference/types.md#select-shrinks-the-buffer).
 
 ## Reading a frame
 
@@ -54,12 +62,14 @@ import { landmark } from 'react-native-pose-detection';
 
 function handle(frame: PoseFrame) {
   const knee = landmark(frame, 'leftKnee');   // no copy, no parse
-  if (knee.visibility > 0.6 && frame.angles.leftKnee < 90) { /* … */ }
+  const angle = frame.angles?.leftKnee;       // partial: only referenced joints are computed
+  if (knee.visibility > 0.6 && angle !== undefined && angle < 90) { /* … */ }
 }
 ```
 
 `frame.landmarks` is a `Float32Array`, not an array of objects, see
-[types](./reference/types.md#wire-format).
+[types](./reference/types.md#wire-format). On a `live`-mode path, `landmarkInto()` reads the same
+four floats without allocating, see [accessors](./reference/types.md#accessors).
 
 ## Batch consumers
 

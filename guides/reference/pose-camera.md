@@ -43,7 +43,7 @@ type OverlayConfig = {
 };
 
 type AngleOverlay = {
-  joint: JointName;         // vertex of the angle
+  joint: AngleJointName;    // vertex of the angle
   label?: boolean;          // show the degree value, default true
   radius?: number;          // arc radius in px, default 40
   color?: string;           // defaults to the overlay color
@@ -68,6 +68,9 @@ type AngleOverlay = {
 
 Drawn natively, nothing crosses to JavaScript. Declaring a joint here also marks its angle
 as needed, so it is computed by the lazy geometry pass whether or not a trigger references it.
+
+`AngleJointName` is the 12 joints where two limb segments meet, see
+[types](./types.md#anglejointname). `{ joint: 'nose' }` does not compile.
 
 See [camera control](../camera-control.md) for how the three combine.
 
@@ -94,6 +97,16 @@ triggers?: Trigger[];
 ```
 
 See [trigger schema](./trigger-schema.md).
+
+## Diagnostics
+
+```ts
+logLevel?: LogLevel | Partial<Record<LogCategory, LogLevel>>;   // default 'off'
+onLog?: (entries: LogEntry[]) => void;
+```
+
+Scoped to this camera. `setLogLevel()` sets it globally instead.
+See [debugging](../debugging.md).
 
 ## Callbacks
 
