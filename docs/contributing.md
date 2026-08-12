@@ -74,6 +74,54 @@ pass. `isSquatting` does not — that's a recipe.
 3. Unit test both
 4. Document in `guides/triggers.md`
 
+## Workflow
+
+```text
+main  (protected — no direct pushes)
+  │
+  └─ branch    feat/triggers-velocity-condition
+       │
+       ├─ commit    feat(triggers): add velocityY condition
+       ├─ verify    npm run check
+       ├─ PR title  feat(triggers): add velocityY condition
+       │
+       └─ squash merge → main → CHANGELOG entry
+```
+
+One naming convention runs through all three: **branch, commits, and PR title use the same
+type and scope.** If you know the commit type, you know the branch name.
+
+## Branches
+
+```text
+<type>/<scope>-<short-description>
+```
+
+| Example | For |
+| --- | --- |
+| `feat/triggers-velocity-condition` | new capability |
+| `fix/camera-switch-crash` | bug fix |
+| `perf/engine-lazy-angles` | performance |
+| `docs/guides-plank-recipe` | documentation |
+| `refactor/android-camera-source` | restructuring |
+| `build/deps-bump-typescript` | dependencies |
+
+Rules:
+
+- **Types and scopes are the same lists as [commits](#commits)** — nothing extra to memorize
+- Lowercase, hyphen-separated, exactly one `/`
+- Short: three or four words after the scope, not a sentence
+- Branch from an up-to-date `main`
+- Rebase on `main` rather than merging it in — keeps history linear for the changelog
+- Delete the branch after merge
+
+```bash
+git switch main && git pull
+git switch -c feat/triggers-velocity-condition
+```
+
+`main` is protected. Everything lands through a pull request, including your own.
+
 ## Commits
 
 Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/). This is

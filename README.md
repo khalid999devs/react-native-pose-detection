@@ -139,10 +139,25 @@ Contributions are welcome — especially device testing on hardware we don't hav
 
 **[🛠 Developer documentation →](./docs/README.md)**
 
-Start with [project structure](./docs/project-structure.md), then
-[architecture](./docs/architecture.md) and [contributing](./docs/contributing.md).
-Decisions that look surprising are usually recorded in [ADRs](./docs/adr/README.md) —
-read those before proposing a reversal.
+The flow, and the one naming convention that runs through all of it:
+
+```text
+branch      feat/triggers-velocity-condition
+commit      feat(triggers): add velocityY condition
+PR title    feat(triggers): add velocityY condition
+```
+
+Same type, same scope, everywhere — enforced by commitlint and CI.
+
+| | |
+|---|---|
+| [Branches & workflow](./docs/contributing.md#workflow) | naming, rebasing, protected `main` |
+| [Commit rules](./docs/contributing.md#commits) | types, scopes, breaking changes |
+| [Pull requests](./docs/contributing.md#pull-requests) | title format, checklists, what CI runs |
+| [Quality gates](./docs/quality-gates.md) | `npm run check` before you push |
+| [Project structure](./docs/project-structure.md) | where things go |
+| [Architecture](./docs/architecture.md) | the native pipeline |
+| [ADRs](./docs/adr/README.md) | why decisions were made — read before proposing a reversal |
 
 ## License
 
