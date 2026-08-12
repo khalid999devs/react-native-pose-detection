@@ -199,6 +199,8 @@ Zero jump-detection code present.
 - [ ] Issue + PR templates, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`
 - [ ] `npm publish --tag next` → verify install in a clean Expo app **and** a clean bare app
 - [ ] Publish `0.1.0`
+- [ ] Tag `v0.1.0` on the published commit and cut the GitHub release,
+      [release history in git](./release-process.md#release-history-in-git)
 - [ ] Announce: Expo Discord, r/reactnative, X
 
 **Exit:** `npm i react-native-pose-detection` in a fresh app, add the plugin, prebuild, run.

@@ -122,6 +122,11 @@ git switch main && git pull
 git switch -c feat/triggers-velocity-condition
 ```
 
+There is no branch per released version. A release is an annotated tag on `main`, which is what
+every tool in the publish path reads. Version-named branches exist only as `N.x` maintenance
+lines, created from a tag when an old major needs a backport. See
+[release process](./release-process.md#release-history-in-git).
+
 ### Branch protection on main
 
 `main` is protected. Direct pushes are rejected for everyone except the maintainer, and every
