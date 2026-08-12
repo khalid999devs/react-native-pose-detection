@@ -1,6 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
-  "ignoreBinaries": ["swiftlint", "swiftformat", "ktlint", "lychee"],
+  "ignoreBinaries": ["swiftlint", "ktlint", "lychee"],
   "ignoreDependencies": ["@types/react", "react"],
   "workspaces": {
     "packages/core": {

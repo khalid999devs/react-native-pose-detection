@@ -8,9 +8,17 @@ biggest performance decision you'll make.
 | Mode | Crossings/sec | Data loss | Fires |
 | --- | --- | --- | --- |
 | `off` *(default)* | **0** | n/a | nothing |
-| `batched` | **2** | none | `onPoseBatch` |
-| `throttled` | 10 | intermediate frames dropped | `onPose` |
-| `live` | 30 | none | `onPose` |
+| `batched` | **4** | none | `onPoseBatch` |
+| `throttled` | 20 | intermediate frames dropped | `onPose` |
+| `live` | 60 | none | `onPose` |
+
+Two crossings per emission, not one: native signals that frames are ready and the library answers
+by pulling them in a single zero-copy buffer. Events cannot carry an ArrayBuffer, function returns
+can, and the whole point of the wire format is that landmarks never get boxed. See
+[ADR 0008](../docs/adr/0008-frames-are-drained-not-pushed.md). The pull is handled for you.
+
+The ratio is what matters anyway: `batched` is 15 times cheaper than `live`, whichever way you
+count.
 
 Triggers are not a mode. They fire on their own schedule, roughly once per event, and they keep
 working at `mode: 'off'`. That combination, no frames crossing and triggers still firing, is the

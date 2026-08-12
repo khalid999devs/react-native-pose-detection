@@ -152,6 +152,11 @@ one, and the log channel writes to Logcat only.
 - [ ] Trigger evaluator: state machine per trigger, debounce, `minDurationMs`, snapshot capture
 - [ ] Condition evaluator: `angle`, `landmarkX/Y` (absolute + joint-relative), `velocityY`, `visibility`, `all`, `any`
 - [ ] Emission: `off` / `throttled` / `batched` (bounded buffer, drop-oldest + count) / `live`
+  - [x] **Delivery mechanism settled**, [ADR 0008](./adr/0008-frames-are-drained-not-pushed.md).
+        Events cannot carry an ArrayBuffer through Expo Modules, function returns can, so native
+        signals and JavaScript drains. Self-describing buffer, zero-copy `subarray` views
+  - [x] JS side: `<PoseCamera>`, the native binding, `decodeFrames`, the shared angle resolution
+  - [ ] Native side: the ring buffer, `drainFrames`, `snapshotFrame`
 - [ ] Calibration
   - [ ] Stage 1 static probe → tier, biased one step conservative
   - [ ] Stage 2 measured convergence, hysteresis + 3 s cooldown
@@ -171,6 +176,14 @@ one, and the log channel writes to Logcat only.
 **Exit:** squat recipe counts correctly on a physical device. Calibration settles within 3 s and
 is cached across launches. Zero steady-state allocations in the frame path (profiler-verified)
 with logging both `off` and at `error`.
+
+**Status: the JavaScript half is done, the Kotlin engine is not started.** `<PoseCamera>` exists
+and is wired to the native view, frames decode zero-copy, and the delivery question that blocked
+everything is answered. What remains is the engine itself: geometry beyond angles, the One-Euro
+filter, both evaluators, the ring buffer, calibration, the thermal ladder, and static input.
+
+`setProfile` and `getProfile` on the ref throw until calibration lands. They are the only two
+public methods that do.
 
 ---
 

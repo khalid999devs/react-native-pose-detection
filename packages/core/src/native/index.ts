@@ -1,7 +1,20 @@
-import type { NativePoseModule } from './contract';
-import { stubNativeModule } from './stub';
+import { requireNativeModule, requireNativeView } from 'expo';
+import type { ComponentType } from 'react';
 
-// Phase 3 replaces this binding with requireNativeModule('PoseDetection').
-export const nativeModule: NativePoseModule = stubNativeModule;
+import type { NativePoseCameraView, NativePoseModule } from './contract';
 
-export type { NativePoseModule };
+export const nativeModule = requireNativeModule<NativePoseModule>('PoseDetection');
+
+/**
+ * The view is resolved lazily. Requiring it at import time would make merely importing a type
+ * from this package throw in an app that has not rebuilt its native project yet, and the error
+ * that produces says nothing useful about the real problem.
+ */
+let cachedView: ComponentType<Record<string, unknown>> | null = null;
+
+export function getNativeView(): ComponentType<Record<string, unknown>> {
+  cachedView ??= requireNativeView<Record<string, unknown>>('PoseDetection');
+  return cachedView;
+}
+
+export type { NativePoseCameraView, NativePoseModule };

@@ -2,6 +2,8 @@
 
 export * from './types';
 
+export { PoseCamera } from './PoseCamera';
+
 export {
   createLandmark,
   hasLandmark,
@@ -19,4 +21,4 @@ export { assertValidTriggers, validateTriggers } from './validation';
 
 export { addLogListener, setLogLevel } from './logging';
 
-export type { NativePoseModule } from './native';
+export type { NativePoseCameraView, NativePoseModule } from './native';

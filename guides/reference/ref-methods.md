@@ -20,7 +20,7 @@ type PoseCameraRef = {
   getProfile(): ProfileState;
   getState(): CameraState;
 
-  snapshot(): PoseFrame | null;
+  snapshot(): Promise<PoseFrame | null>;
 };
 ```
 
@@ -38,7 +38,7 @@ type PoseCameraRef = {
 | --- | --- |
 | `startDetection()` / `stopDetection()` | Preview keeps running. `stopDetection()` **releases GPU resources**, not just a flag. |
 | `setOverlayEnabled(b)` | Drawing only. Inference continues: use when you draw your own UI. |
-| `snapshot()` | Current `PoseFrame` on demand, regardless of `data.mode`. Returns `null` if no pose is present. |
+| `snapshot()` | Current `PoseFrame` on demand, regardless of `data.mode`. Resolves to `null` if no pose is present. **Async**: the landmark buffer comes back over the same zero-copy path frames do, see [ADR 0008](../../docs/adr/0008-frames-are-drained-not-pushed.md). |
 
 ## Introspection
 

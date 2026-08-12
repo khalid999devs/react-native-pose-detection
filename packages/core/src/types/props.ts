@@ -78,6 +78,12 @@ export type PoseCameraRef = {
   getProfile(): ProfileState;
   getState(): CameraState;
 
-  /** The current frame regardless of `data.mode`. `null` when no pose is present. */
-  snapshot(): PoseFrame | null;
+  /**
+   * The current frame regardless of `data.mode`. `null` when no pose is present.
+   *
+   * Async because the landmark buffer comes back over the function-return path, which is the
+   * only one that carries an ArrayBuffer. See
+   * [ADR 0008](../../../docs/adr/0008-frames-are-drained-not-pushed.md).
+   */
+  snapshot(): Promise<PoseFrame | null>;
 };
