@@ -142,6 +142,7 @@ change lands through a pull request.
 | Conversations resolved | No merging over unanswered review comments |
 | Linear history | Squash merge only, so the changelog stays readable |
 | No force push, no deletion | main cannot be rewritten or removed |
+| Release tags locked | `v*` tags cannot be moved or deleted once pushed |
 
 Squash merge is the only method enabled, and head branches delete themselves after merge. The
 pull request title becomes the commit subject, which is why it has to follow

@@ -39,6 +39,10 @@ Every tool in the release path already keys off tags: `npm version` writes one, 
 attach to one, provenance attests to one, and semantic-release creates one. A branch named
 `package/1.0.9` is invisible to all of it.
 
+Tags matching `v*` are protected: they cannot be deleted or moved once pushed, so the release
+history is append-only. The maintainer can bypass this to correct a tag pushed by mistake, the
+same exception that applies on `main`.
+
 ### Maintenance branches
 
 There is one case where a version-named branch earns its keep: a fix has to ship for an older
