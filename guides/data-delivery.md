@@ -59,7 +59,7 @@ function handle(frame: PoseFrame) {
 ```
 
 `frame.landmarks` is a `Float32Array`, not an array of objects — see
-[types](.reference/types.md#wire-format).
+[types](./reference/types.md#wire-format).
 
 ## Batch consumers
 

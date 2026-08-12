@@ -1,8 +1,10 @@
 # Markdown link checking
-exclude_path = ["node_modules", "ideation", "**/build"]
+exclude_path = ["node_modules", "ideation", "build"]
 exclude = [
-  "^https://github\\.com/khalid999devs/react-native-pose-detection",  # not published yet
+  # repository is new; some links point at pages that do not exist yet
+  "^https://github\\.com/khalid999devs/react-native-pose-detection",
 ]
 accept = [200, 206, 429]
 max_retries = 2
 timeout = 20
+max_concurrency = 8

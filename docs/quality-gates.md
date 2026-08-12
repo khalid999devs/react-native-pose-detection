@@ -26,7 +26,7 @@ Documentation is a first-class artifact here, so it gets the same treatment as c
 |---|---|---|
 | markdownlint | `npm run lint:md` | inconsistent structure, broken tables |
 | cspell | `npm run spell` | typos in user-facing docs |
-| lychee (CI) | — | dead links, internal and external |
+| lychee | `npm run lint:links` | dead links, internal and external |
 
 Project vocabulary lives in `.cspell-project.txt`. Add terms there rather than adding inline
 ignores.
@@ -46,8 +46,8 @@ live, and an unexpected nil there takes the app down mid-session.
 
 | Gate | Command | Protects against |
 |---|---|---|
-| publint | `npm run check:package` | malformed `exports`, wrong `main`/`types` |
-| Are The Types Wrong | `npm run check:package` | type resolution failures for consumers |
+| publint | `npm run check:package` | malformed `exports`, wrong `main`/`types`, ESM/CJS mismatch |
+| Are The Types Wrong | `npm run check:package` | type resolution failures across node10, node16, bundler |
 | Tarball guard (CI) | — | **model files leaking into the tarball**; tarball over 2 MB |
 
 The tarball guard is the important one. [ADR 0002](./adr/0002-models-fetched-not-bundled.md) is
@@ -99,6 +99,18 @@ in a pre-commit hook.
 
 Not part of `npm run check` — they need hardware. See [testing](./testing.md). Phase 6 adds
 them on a schedule, plus the build matrix: platform × install method × architecture.
+
+## Running links locally
+
+`lint:links` needs the `lychee` binary:
+
+```bash
+brew install lychee        # macOS
+```
+
+It is not part of `npm run check` for that reason, but it runs on every PR. Run it before
+pushing documentation changes — a hand-rolled grep will miss malformed links like
+`](.reference/file.md)`, which resolve to nothing but look plausible.
 
 ## Adding a gate
 

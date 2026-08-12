@@ -1,6 +1,7 @@
 {
   "name": "react-native-pose-detection",
   "version": "0.0.0",
+  "type": "commonjs",
   "description": "Real-time pose detection for React Native and Expo. 33 landmarks, iOS and Android, powered by MediaPipe.",
   "main": "build/index.js",
   "types": "build/index.d.ts",

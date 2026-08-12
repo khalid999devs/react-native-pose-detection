@@ -50,7 +50,7 @@ video files — cheap to add rather than requiring a fork. See [ADR 0001](./adr/
 
 | Adding | Goes in |
 |---|---|
-| A new prop | `src/types/`, both native modules, [`guides/reference/pose-camera.md`](./../guides/reference/pose-camera.md) |
+| A new prop | `src/types/`, both native modules, [`guides/reference/pose-camera.md`](../guides/reference/pose-camera.md) |
 | A new trigger condition | `src/types/`, **both** evaluators, both test suites, `guides/reference/trigger-schema.md` |
 | A new derived value (angle, ratio) | `PoseEngine` on both platforms, `PoseFrame` type |
 | Sport-specific logic | **Nowhere.** It's a recipe — `guides/recipes/` |

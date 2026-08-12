@@ -1,6 +1,6 @@
 # Trigger schema
 
-Conceptual guide: [guides/triggers.md](./../triggers.md).
+Conceptual guide: [guides/triggers.md](../triggers.md).
 
 ## `Trigger`
 

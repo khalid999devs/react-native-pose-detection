@@ -36,7 +36,7 @@ npx expo prebuild
 npx expo run:ios       # or run:android
 ```
 
-Full plugin options: [config plugin reference](.reference/config-plugin.md).
+Full plugin options: [config plugin reference](./reference/config-plugin.md).
 
 ## Bare React Native
 

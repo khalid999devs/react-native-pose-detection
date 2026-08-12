@@ -13,7 +13,7 @@ Tune every threshold against your own users and camera placement.
 | [mobility.md](./mobility.md) | Arm raise, seated posture |
 | [tuning.md](./tuning.md) | Fixing triggers that misfire |
 
-New to triggers? Read [guides/triggers.md](./../triggers.md) first.
+New to triggers? Read [guides/triggers.md](../triggers.md) first.
 
 ## Contributing a recipe
 

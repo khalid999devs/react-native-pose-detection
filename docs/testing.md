@@ -31,7 +31,7 @@ detection state preserved.
 
 ### Memory budget
 
-10-minute run per profile against the table in [performance](./../guides/performance.md).
+10-minute run per profile against the table in [performance](../guides/performance.md).
 
 ### Calibration convergence
 

@@ -107,6 +107,6 @@ Prefer triggers. See [triggers.md](./triggers.md) and [recipes.md](./recipes/REA
 
 ## Next
 
-- [api-reference.md](.reference/pose-camera.md) — every prop and event
+- [api-reference.md](./reference/pose-camera.md) — every prop and event
 - [performance.md](./performance.md) — profiles, calibration, app size
 - [troubleshooting.md](./troubleshooting.md) — when something doesn't work

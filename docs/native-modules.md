@@ -46,7 +46,7 @@ This is rule 1 and it is not negotiable — see [architecture](./architecture.md
 1. Add to `src/types/` and the `PoseCameraProps` type
 2. Declare `Prop(...)` in **both** module definitions
 3. Implement in both native views
-4. Document in [`guides/reference/pose-camera.md`](./../guides/reference/pose-camera.md)
+4. Document in [`guides/reference/pose-camera.md`](../guides/reference/pose-camera.md)
 5. Exercise it in `example/`
 
 A prop implemented on one platform only must be documented as such, or not merged.
@@ -56,7 +56,7 @@ A prop implemented on one platform only must be documented as such, or not merge
 1. Add the payload type to `src/types/`
 2. Declare in `Events(...)` on both platforms
 3. Emit from the same logical point on both — not "whenever convenient"
-4. Document in [`guides/reference/events.md`](./../guides/reference/events.md)
+4. Document in [`guides/reference/events.md`](../guides/reference/events.md)
 
 Events crossing per frame need a strong justification. Default to emitting on state change.
 

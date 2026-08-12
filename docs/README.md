@@ -2,7 +2,7 @@
 
 For people working **on** `react-native-pose-detection`.
 
-Using the library in an app? See [guides/](./../guides/README.md).
+Using the library in an app? See [guides/](../guides/README.md).
 
 ## Start here
 

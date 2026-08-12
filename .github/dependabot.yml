@@ -2,17 +2,38 @@ version: 2
 updates:
   - package-ecosystem: npm
     directory: /
-    schedule: { interval: weekly }
+    schedule:
+      interval: weekly
     open-pull-requests-limit: 5
+    commit-message:
+      prefix: 'chore(deps)'
+      prefix-development: 'chore(deps-dev)'
     groups:
       dev-tooling:
         patterns:
-          ['eslint*', 'prettier', 'typescript*', '@commitlint/*', 'markdownlint*', 'cspell', 'knip']
+          - 'eslint*'
+          - 'prettier'
+          - 'typescript*'
+          - '@commitlint/*'
+          - 'markdownlint*'
+          - 'cspell'
+          - 'knip'
+          - 'publint'
+          - '@arethetypeswrong/*'
     ignore:
-      # Pinned deliberately — see docs/adr/0003
+      # Pinned deliberately — see docs/adr/0003-pin-mediapipe-0-10-21.md
       - dependency-name: 'com.google.mediapipe:tasks-vision'
       - dependency-name: 'MediaPipeTasksVision'
+      # Peer-satisfying devDependencies. These must match a combination we have
+      # actually tested on device; bumping them blind breaks the example app.
+      - dependency-name: 'expo'
+      - dependency-name: 'expo-module-scripts'
+      - dependency-name: 'react'
+      - dependency-name: 'react-native'
 
   - package-ecosystem: github-actions
     directory: /
-    schedule: { interval: monthly }
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: 'chore(ci)'

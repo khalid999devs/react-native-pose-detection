@@ -10,7 +10,7 @@ import { PoseCamera, type PoseCameraRef } from 'react-native-pose-detection';
 
 | Prop | Type | Default | Notes |
 |---|---|---|---|
-| `profile` | `'auto' \| 'efficient' \| 'balanced' \| 'quality' \| 'unrestricted'` | `'auto'` | [performance](./../performance.md) |
+| `profile` | `'auto' \| 'efficient' \| 'balanced' \| 'quality' \| 'unrestricted'` | `'auto'` | [performance](../performance.md) |
 | `facing` | `'auto' \| 'front' \| 'back'` | `'auto'` | auto → front, falls back to back |
 | `delegate` | `'auto' \| 'gpu' \| 'cpu'` | `'auto'` | auto verifies GPU, falls back to CPU |
 | `targetFps` | `'auto' \| number` | `'auto'` | |
@@ -69,7 +69,7 @@ type AngleOverlay = {
 Drawn natively — nothing crosses to JavaScript. Declaring a joint here also marks its angle
 as needed, so it is computed by the lazy geometry pass whether or not a trigger references it.
 
-See [camera control](./../camera-control.md) for how the three combine.
+See [camera control](../camera-control.md) for how the three combine.
 
 ## Data
 
@@ -85,7 +85,7 @@ data?: {
 };
 ```
 
-See [data delivery](./../data-delivery.md).
+See [data delivery](../data-delivery.md).
 
 ## Triggers
 
