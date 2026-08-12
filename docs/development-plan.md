@@ -91,7 +91,11 @@ hits the cache and makes no network call.
 
 **Goal:** live camera, live detection, native overlay. The highest-risk phase.
 
-- [ ] `build.gradle`: `tasks-vision:0.10.21` pinned, `minSdk 24`
+- [ ] `build.gradle`: `tasks-vision` pinned, `minSdk 24`
+- [ ] **Resolve the MediaPipe version on a real x86_64 emulator.** 0.10.21 ships no
+      `x86_64` library, [ABI coverage by version](./native-modules.md#abi-coverage-by-version).
+      If it fails there, 0.10.35 is the candidate, and iOS has to be rebuilt against it too
+      before the pin moves
 - [ ] `CameraSource`, CameraX `ImageAnalysis`
   - [ ] `OUTPUT_IMAGE_FORMAT_RGBA_8888` (hardware YUV→RGB)
   - [ ] `STRATEGY_KEEP_ONLY_LATEST`

@@ -76,6 +76,35 @@ booleans across queues were the root cause of the legacy package's camera-switch
 ## MediaPipe notes
 
 - **Pinned to `0.10.21`**: [ADR 0003](./adr/0003-pin-mediapipe-0-10-21.md). Do not bump casually.
+
+### ABI coverage by version
+
+Measured from the published AARs, not from release notes. The ABI set moved around a lot in
+the 0.10.2x line, and native code moved from `tasks-vision` to `tasks-core` at 0.10.33.
+
+| Version | ABIs | Native AAR total | On CocoaPods |
+| --- | --- | --- | --- |
+| 0.10.21 | arm64-v8a, armeabi-v7a, x86 | 18.3 MB | yes |
+| 0.10.26 | arm64-v8a | 6.7 MB | no |
+| 0.10.26.1 | arm64-v8a, armeabi-v7a | 10.8 MB | no |
+| 0.10.28 | all four | 73.2 MB | no |
+| 0.10.29 | all four | 18.8 MB | no |
+| 0.10.32 | all four | 19.9 MB | no |
+| 0.10.33 | all four | 20.9 MB | yes |
+| 0.10.35 | all four | 20.6 MB | yes |
+
+Two things to know before touching the pin:
+
+- **0.10.21 has no `x86_64`.** A React Native app ships `x86_64`, so the package manager picks
+  `x86_64` as the primary ABI and never extracts MediaPipe's `x86` library, which surfaces as
+  `UnsatisfiedLinkError` at landmarker construction. Android Studio stopped shipping 32-bit
+  `x86` system images after API 30, so every current emulator on an Intel host hits this.
+  Contributors on Apple Silicon use `arm64-v8a` images and never see it. Verify on a real
+  x86_64 emulator in Phase 3 before assuming either way.
+- The one-ABI regression was 0.10.26 and 0.10.26.1 only. It was reverted by 0.10.28.
+
+Google does not publish every version to CocoaPods, so iOS choices are narrower than Android's.
+
 - `LIVE_STREAM` mode rejects non-increasing timestamps. Clamp, never trust the source.
 - Landmarker construction is expensive, first inference can stall for seconds. It is created
   once per process and pre-warmed during camera setup.
