@@ -61,8 +61,8 @@ npx react-native-pose-detection fetch-model full
 cd ios && pod install
 ```
 
-Then add camera permissions manually, `NSCameraUsageDescription` in `Info.plist`,
-`android.permission.CAMERA` in `AndroidManifest.xml`.
+Then add `NSCameraUsageDescription` to `Info.plist`. Android needs nothing: this package
+declares `android.permission.CAMERA` in its own manifest and the merger adds it to your app.
 
 ## Choosing a model
 
@@ -76,21 +76,29 @@ Changing it is one word in `app.json` plus `npx expo prebuild`.
 
 ## First camera
 
+Declaring the permission is not the same as being granted it. One hook asks and reports:
+
 ```tsx
-import { PoseCamera } from 'react-native-pose-detection';
+import { PoseCamera, useCameraPermission } from 'react-native-pose-detection';
 
 export default function App() {
-  return <PoseCamera style={{ flex: 1 }} />;
+  const { granted } = useCameraPermission();
+  return granted ? <PoseCamera style={{ flex: 1 }} /> : null;
 }
 ```
 
 That gives you a live camera with a skeleton overlay drawn natively, and **zero data crossing to
 JavaScript**.
 
+`useCameraPermission()` prompts on mount. Pass `{ ask: false }` to read the status without
+prompting and call `request()` at a moment you choose. It also tells you when a refusal is
+permanent, which is the case an "allow" button cannot fix: see
+[camera permission](./reference/permissions.md).
+
 ## Getting data out
 
-*Not built yet: the native engine that evaluates triggers and fills the frame buffer is the
-next thing being built. The props and callbacks below are final, nothing fires from them.*
+*Android delivers frames today. Triggers are the next piece of the engine and do not fire yet,
+on either platform. iOS has no module at all.*
 
 Nothing crosses the bridge until you ask. Three ways, cheapest first:
 

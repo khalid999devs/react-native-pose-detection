@@ -80,6 +80,16 @@ A batch whose joint count or angle count disagrees with what JavaScript currentl
 **dropped**, not relabelled. Attaching the wrong joint names to a buffer silently returns another
 joint's numbers, and dropping one drain is self-healing.
 
+The ring buffer is bounded at 64 frames and drops the oldest, counting what it dropped so the
+next drain's header reports it. Its storage is allocated once per layout and reused, so the frame
+path copies and never allocates; a drain allocates exactly one direct buffer, in **native byte
+order** rather than Java's big-endian default, because JavaScript reads that memory through typed
+arrays in the same process and cannot be told to read it any other way.
+
+The latest frame is recorded whatever `data.mode` says, because `snapshotFrame()` is documented to
+answer at `mode: 'off'`. The mode decides two things only: whether a frame is also buffered, and
+whether to tick.
+
 The capture delegate is registered **on the inference queue**, so buffers never hop threads.
 This is rule 1 and it is not negotiable, see [architecture](./architecture.md#camera-switching).
 
@@ -89,7 +99,7 @@ This is rule 1 and it is not negotiable, see [architecture](./architecture.md#ca
 2. Declare `Prop(...)` in **both** module definitions
 3. Implement in both native views
 4. Document in [`guides/reference/pose-camera.md`](../guides/reference/pose-camera.md)
-5. Exercise it in the example app, once Phase 6 builds one
+5. Exercise it in the example app
 
 A prop implemented on one platform only must be documented as such, or not merged.
 

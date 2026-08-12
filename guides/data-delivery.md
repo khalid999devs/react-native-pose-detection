@@ -1,8 +1,7 @@
 # Data delivery
 
-*Not built yet: the JavaScript half of this is finished, the props, the decoding and the
-callbacks, but the native ring buffer that fills the frames is the next thing being built.
-Everything below is the settled contract, not something that fires today.*
+*Android only. The ring buffer, the wire encoder and all four modes are built and running there.
+iOS has no module yet, so nothing on this page fires on iOS.*
 
 Nothing crosses to JavaScript until you ask for it. Choosing *how* it crosses is the single
 biggest performance decision you'll make.

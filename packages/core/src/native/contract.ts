@@ -1,9 +1,18 @@
 import type { LogLevelConfig } from '../types/logging';
 import type { TriggerEvent } from '../types/triggers';
 
+/** Exactly what Android reports. The four-state public status is derived from these two. */
+export type NativeCameraPermission = {
+  readonly status: 'granted' | 'denied' | 'undetermined';
+  readonly canAskAgain: boolean;
+};
+
 /** Module-level surface. View props, ref methods and events are declared on the view. */
 export type NativePoseModule = {
   setLogLevel(config: LogLevelConfig): void;
+  getCameraPermission(): Promise<NativeCameraPermission>;
+  /** Prompts when the system still will, and resolves with the outcome either way. */
+  requestCameraPermission(): Promise<NativeCameraPermission>;
   /** Called when the first JS listener attaches, so the native ring buffer stays idle until then. */
   startLogStream(): void;
   /** Called when the last listener detaches. */

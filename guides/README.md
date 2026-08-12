@@ -41,6 +41,7 @@ not started. Every guide below marks the parts you cannot call yet.
 | [Ref methods](./reference/ref-methods.md) | `switchCamera`, `snapshot`, `getState`, … |
 | [Events](./reference/events.md) | Every callback, payload, and error code |
 | [Types](./reference/types.md) | `PoseFrame`, `JointName`, wire format |
+| [Camera permission](./reference/permissions.md) | `useCameraPermission`, and why blocked is not denied |
 | [Trigger schema](./reference/trigger-schema.md) | Conditions, emit modes, validation |
 | [Config plugin](./reference/config-plugin.md) | `app.json` options |
 | [CLI](./reference/cli.md) | `fetch-model`, `doctor` |

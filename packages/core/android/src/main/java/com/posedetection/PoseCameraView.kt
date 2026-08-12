@@ -37,6 +37,9 @@ class PoseCameraView(
     private val onError by EventDispatcher<Map<String, Any?>>()
     private val onCameraChange by EventDispatcher<Map<String, Any?>>()
 
+    /** Carries nothing. JavaScript answers it with `drainFrames()`, see ADR 0008. */
+    private val onFrames by EventDispatcher<Map<String, Any?>>()
+
     private val previewView =
         PreviewView(context).apply {
             implementationMode = PreviewView.ImplementationMode.PERFORMANCE
@@ -103,6 +106,31 @@ class PoseCameraView(
     private val staleBefore = AtomicLong(0)
 
     private val landmarkBuffer = FloatArray(Skeleton.LANDMARK_COUNT * Skeleton.LANDMARK_STRIDE)
+    private val worldBuffer = FloatArray(Skeleton.LANDMARK_COUNT * Skeleton.LANDMARK_STRIDE)
+
+    private val frames = FrameRingBuffer()
+
+    /**
+     * Reassigned on the main thread when the layout changes, read on the inference thread. Volatile
+     * so the new array's contents are published with the reference rather than after it.
+     */
+    @Volatile
+    private var frameLayout: FrameShape? = null
+
+    /** Written on the inference thread only, then copied into the ring buffer under its lock. */
+    @Volatile
+    private var frameScratch = FloatArray(0)
+
+    /** Velocity is a difference, so it needs the frame before this one. Inference thread only. */
+    private var previousComX = Float.NaN
+    private var previousComY = Float.NaN
+    private var previousFrameMs = 0.0
+
+    /** Last emission, so `throttled` and `batched` can decide whether this frame is due. */
+    private val lastEmitMs = AtomicLong(0)
+
+    /** Allocation-free because it captures nothing: the tick is per emission, not per frame. */
+    private val emitFramesTick = Runnable { onFrames(EMPTY_PAYLOAD) }
 
     // Props. Applied together in onPropsUpdated rather than one at a time, so a render that changes
     // three of them rebinds the session once.
@@ -115,6 +143,13 @@ class PoseCameraView(
     private var propAnalysis: String = "auto"
     private var overlayEnabled: Boolean = true
     private var pendingOverlayConfig: OverlayConfig = OverlayConfig()
+    private var propMode: DataMode = DataMode.OFF
+    private var propThrottleMs: Long = DEFAULT_THROTTLE_MS
+    private var propFlushMs: Long = DEFAULT_FLUSH_MS
+    private var propLandmarks: Boolean = true
+    private var propWorldLandmarks: Boolean = false
+    private var propAngleJoints: Array<String> = EMPTY_NAMES
+    private var propSelection: IntArray? = null
 
     private var started = false
     private var readySent = false
@@ -180,10 +215,29 @@ class PoseCameraView(
         pendingOverlayConfig = config
     }
 
+    internal fun setData(config: DataSettings) {
+        propMode = config.mode
+        propThrottleMs = config.throttleMs
+        propFlushMs = config.flushMs
+        propLandmarks = config.landmarks
+        propWorldLandmarks = config.worldLandmarks
+    }
+
+    /** Already resolved and ordered by JavaScript. Reproducing that rule here would be a way to disagree with it. */
+    internal fun setAngleJoints(joints: Array<String>) {
+        propAngleJoints = joints
+    }
+
+    internal fun setSelection(indices: IntArray?) {
+        propSelection = indices
+    }
+
     /** Runs once per prop batch. Only a resolution change takes the rebind path. */
     fun onPropsUpdated() {
         overlayView.config = pendingOverlayConfig
         overlayView.visibility = if (overlayEnabled) VISIBLE else GONE
+
+        applyFrameLayout()
 
         val preview = CameraSource.previewSizeFor(propPreview)
         val analysis = CameraSource.analysisSizeFor(propAnalysis)
@@ -463,6 +517,10 @@ class PoseCameraView(
         val poses = result.landmarks()
         if (poses.isEmpty()) {
             overlayView.clearPose()
+            // A frame is only current while a pose is in it, and velocity across the gap where
+            // someone left and came back is not a speed anybody moved at.
+            frames.clearLatest()
+            resetVelocity()
             return
         }
 
@@ -483,12 +541,152 @@ class PoseCameraView(
         // sensor buffer, so the overlay is handed the display-upright size. The mirror flag comes
         // from the session, which is main-thread state, and is pushed in from there.
         val rotation = frameRotationDegrees
-        if (rotation % 180 == 0) {
-            overlayView.setSourceSize(image.width, image.height)
-        } else {
-            overlayView.setSourceSize(image.height, image.width)
-        }
+        val frameWidth = if (rotation % 180 == 0) image.width else image.height
+        val frameHeight = if (rotation % 180 == 0) image.height else image.width
+
+        overlayView.setSourceSize(frameWidth, frameHeight)
         overlayView.submit(landmarkBuffer)
+
+        buildFrame(result, pose.size, frameWidth, frameHeight)
+    }
+
+    private fun resetVelocity() {
+        previousComX = Float.NaN
+        previousComY = Float.NaN
+        previousFrameMs = 0.0
+    }
+
+    /**
+     * Encodes one frame into the wire layout and hands it to the ring buffer. Runs on MediaPipe's
+     * callback thread. The latest frame is recorded whatever the mode is, because `snapshotFrame()`
+     * is documented to answer at `mode: 'off'`; only buffering and the tick are the mode's business.
+     */
+    private fun buildFrame(
+        result: PoseLandmarkerResult,
+        poseSize: Int,
+        frameWidth: Int,
+        frameHeight: Int,
+    ) {
+        val layout = frameLayout ?: return
+        val scratch = frameScratch
+        if (scratch.size < layout.floatsPerFrame) return
+
+        val indices = layout.jointIndices
+        var cursor = 0
+
+        for (position in indices.indices) {
+            val base = indices[position] * Skeleton.LANDMARK_STRIDE
+            scratch[cursor] = landmarkBuffer[base]
+            scratch[cursor + 1] = landmarkBuffer[base + 1]
+            scratch[cursor + 2] = landmarkBuffer[base + 2]
+            scratch[cursor + 3] = landmarkBuffer[base + 3]
+            cursor += Skeleton.LANDMARK_STRIDE
+        }
+
+        if (layout.worldLandmarks) {
+            fillWorldBuffer(result, poseSize)
+            for (position in indices.indices) {
+                val base = indices[position] * Skeleton.LANDMARK_STRIDE
+                scratch[cursor] = worldBuffer[base]
+                scratch[cursor + 1] = worldBuffer[base + 1]
+                scratch[cursor + 2] = worldBuffer[base + 2]
+                scratch[cursor + 3] = worldBuffer[base + 3]
+                cursor += Skeleton.LANDMARK_STRIDE
+            }
+        }
+
+        val triples = layout.angleTriples
+        for (position in triples.indices) {
+            val triple = triples[position]
+            scratch[cursor] =
+                Geometry.angleDegrees(landmarkBuffer, triple[0], triple[1], triple[2], frameWidth, frameHeight)
+            cursor += 1
+        }
+
+        // Same monotonic clock the log channel stamps entries with, so a log line maps to the frame
+        // that caused it. It is when the pose became known, not when the sensor exposed it.
+        val timestampMs = SystemClock.elapsedRealtime().toDouble()
+
+        Geometry.centerOfMass(landmarkBuffer, scratch, cursor)
+        val comX = scratch[cursor]
+        val comY = scratch[cursor + 1]
+        cursor += 2
+
+        val elapsedSeconds = (timestampMs - previousFrameMs) / MILLIS_PER_SECOND
+        if (previousFrameMs > 0.0 && elapsedSeconds > 0.0) {
+            scratch[cursor] = ((comX - previousComX) / elapsedSeconds).toFloat()
+            scratch[cursor + 1] = ((comY - previousComY) / elapsedSeconds).toFloat()
+        } else {
+            // Unknown, not zero: the first frame of a pose has nothing to differ from, and zero
+            // would read as a body that was measured and found to be still.
+            scratch[cursor] = Float.NaN
+            scratch[cursor + 1] = Float.NaN
+        }
+        cursor += 2
+
+        scratch[cursor] = Geometry.bodySpan(landmarkBuffer)
+
+        previousComX = comX
+        previousComY = comY
+        previousFrameMs = timestampMs
+
+        val dispatchNanos = detector?.dispatchNanosFor(result.timestampMs()) ?: 0L
+        val processingMs =
+            if (dispatchNanos == 0L) 0.0 else (System.nanoTime() - dispatchNanos) / NANOS_PER_MILLI
+
+        deliver(layout, scratch, timestampMs, processingMs)
+    }
+
+    /** The delivery mode decides only two things: whether this frame is kept, and whether to tick. */
+    private fun deliver(
+        layout: FrameShape,
+        scratch: FloatArray,
+        timestampMs: Double,
+        processingMs: Double,
+    ) {
+        val mode = propMode
+        val now = SystemClock.elapsedRealtime()
+        val sinceEmit = now - lastEmitMs.get()
+
+        val due =
+            when (mode) {
+                DataMode.OFF -> false
+                DataMode.LIVE -> true
+                DataMode.THROTTLED -> sinceEmit >= propThrottleMs
+                DataMode.BATCHED -> sinceEmit >= propFlushMs
+            }
+
+        // `throttled` drops the frames between emissions rather than buffering them, which is what
+        // the mode means. `batched` buffers everything and flushes on the interval.
+        val buffered = mode == DataMode.LIVE || mode == DataMode.BATCHED || (mode == DataMode.THROTTLED && due)
+
+        frames.submit(scratch, timestampMs, processingMs, buffered)
+
+        if (!due || mode == DataMode.OFF) return
+        lastEmitMs.set(now)
+        post(emitFramesTick)
+    }
+
+    private fun fillWorldBuffer(
+        result: PoseLandmarkerResult,
+        poseSize: Int,
+    ) {
+        val world = result.worldLandmarks()
+        val points = if (world.isEmpty()) null else world[0]
+
+        if (points == null || points.size < poseSize) {
+            java.util.Arrays.fill(worldBuffer, 0f)
+            return
+        }
+
+        for (index in 0 until Skeleton.LANDMARK_COUNT) {
+            val landmark = points[index]
+            val base = index * Skeleton.LANDMARK_STRIDE
+            worldBuffer[base + Skeleton.OFFSET_X] = landmark.x()
+            worldBuffer[base + Skeleton.OFFSET_Y] = landmark.y()
+            worldBuffer[base + Skeleton.OFFSET_Z] = landmark.z()
+            worldBuffer[base + Skeleton.OFFSET_VISIBILITY] = landmark.visibility().orElse(0f)
+        }
     }
 
     /** On MediaPipe's callback thread. Rate limited: a dead delegate fails every frame. */
@@ -588,6 +786,37 @@ class PoseCameraView(
         overlayEnabled = enabled
         overlayView.visibility = if (enabled) VISIBLE else GONE
     }
+
+    /**
+     * The layout is rebuilt on every props batch but only adopted when it differs: a re-render that
+     * changes nothing about `data` would otherwise clear frames that were waiting to be flushed.
+     */
+    private fun applyFrameLayout() {
+        val indices =
+            when {
+                !propLandmarks -> EMPTY_INDICES
+                else -> propSelection ?: FrameShape.ALL_JOINTS
+            }
+        val next = FrameShape(indices, propWorldLandmarks, propAngleJoints)
+
+        val current = frameLayout
+        if (current != null && current.sameAs(next)) return
+
+        frameLayout = next
+        frames.setLayout(next)
+        if (frameScratch.size != next.floatsPerFrame) frameScratch = FloatArray(next.floatsPerFrame)
+    }
+
+    fun drainFrames() = frames.drain()
+
+    fun snapshotFrame() = frames.snapshot()
+
+    /**
+     * Always empty until the trigger evaluator exists to mint a ticket. The contract already says
+     * an unknown or spent one returns an empty buffer, so this is that case and not a stub.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    fun takeTriggerSnapshot(snapshotId: Int) = frames.empty()
 
     fun currentState(): Map<String, Any?> =
         mapOf(
@@ -772,6 +1001,13 @@ class PoseCameraView(
 
     private companion object {
         const val MIN_CONFIDENCE = 0.6f
+        const val DEFAULT_THROTTLE_MS = 100L
+        const val DEFAULT_FLUSH_MS = 500L
+        const val MILLIS_PER_SECOND = 1_000.0
+        const val NANOS_PER_MILLI = 1_000_000.0
+        val EMPTY_PAYLOAD = emptyMap<String, Any?>()
+        val EMPTY_NAMES = emptyArray<String>()
+        val EMPTY_INDICES = IntArray(0)
         const val TRIM_MEMORY_COMPLETE_LEVEL = 80
         const val DETECTION_ERROR_INTERVAL_MS = 1_000L
         const val SWITCH_FRAME_TIMEOUT_MS = 1_500L

@@ -22,7 +22,7 @@ New contributor, in order:
 | --- | --- |
 | [Native modules](./native-modules.md) | How the iOS and Android layers are built, and how to extend them |
 | [Logging](./logging.md) | The zero-overhead diagnostic channel and its contract |
-| [Example apps](../example/README.md) | The reference implementation and manual QA harness, specified but not built yet |
+| [Example apps](../example/README.md) | The reference implementation and manual QA harness. Both apps build for Android |
 | [Development plan](./development-plan.md) | The 7 phases to v0.1.0, with exit criteria |
 | [Release process](./release-process.md) | Versioning, publishing, what gets checked |
 | [ADRs](./adr/README.md) | Why decisions were made: read before proposing a reversal |

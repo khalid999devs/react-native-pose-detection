@@ -158,9 +158,11 @@ one, and the log channel writes to Logcat only.
 
 **Goal:** everything between "landmarks arrived" and "something was emitted". Platform-shared logic.
 
-- [ ] Geometry: joint angles, center of mass (hip 0.5 / ankle 0.3 / knee 0.2×vis), velocity, body span
-  - [ ] Angles corrected for the frame's aspect ratio. Normalizing x by width and y by height
+- [x] Geometry: joint angles, center of mass (hip 0.5 / ankle 0.3 / knee 0.2×vis), velocity, body span
+  - [x] Angles corrected for the frame's aspect ratio. Normalizing x by width and y by height
         makes the space anisotropic, so an uncorrected angle is wrong on every non-square frame
+  - [x] `NaN` where a value is unknown rather than 0, which would read as a measurement: a folded
+        joint, a body at the origin, a body standing still
 - [x] **Lazy computation**, only the angles an `angle` condition, `overlay.angles` or `data.angles`
       asks for, resolved during render and sent to native as a prop. Naming a joint in
       `data.select`, or as a comparison bound, is a position and does not turn its angle on
@@ -179,7 +181,10 @@ one, and the log channel writes to Logcat only.
   - [x] **Trigger snapshots claimed, not carried**,
         [ADR 0009](./adr/0009-trigger-snapshots-are-claimed.md). A frame cannot ride an event
         either, so native sends a ticket and `<PoseCamera>` redeems it before calling `onTrigger`
-  - [ ] Native side: the ring buffer, `drainFrames`, `snapshotFrame`, `takeTriggerSnapshot`
+  - [x] Native side (Android): the ring buffer, `drainFrames`, `snapshotFrame`. Bounded at 64
+        frames, drop-oldest with a count, storage allocated per layout and reused, one direct
+        buffer per drain in native byte order. `takeTriggerSnapshot` returns empty until there is
+        an evaluator to mint a ticket, which is the contract's unknown-ticket case
 - [ ] Calibration
   - [ ] Stage 1 static probe → tier, biased one step conservative
   - [ ] Stage 2 measured convergence, hysteresis + 3 s cooldown
@@ -190,6 +195,8 @@ one, and the log channel writes to Logcat only.
 - [ ] Profiles + precedence chain
 - [ ] `maxPoses` 1–5; primary-pose selection for triggers
 - [ ] `detectOnImage` / `detectOnVideo`
+- [x] **Camera permission**, `useCameraPermission()` plus the imperative pair. Four states, so an
+      app can tell a refusal it may ask about again from one the system will never prompt for
 - [ ] **Logging channel**, see [logging](./logging.md)
   - [ ] Atomic level mask, 3 bits × 6 runtime categories, 18 bits; one compare per call site.
         `plugin` is build-time output from Node and is not one of them
@@ -201,17 +208,16 @@ one, and the log channel writes to Logcat only.
 is cached across launches. Zero steady-state allocations in the frame path (profiler-verified)
 with logging both `off` and at `error`.
 
-**Status: the JavaScript half is done and tested, the Kotlin engine is not started.**
+**Status: frames flow on Android.**
 `<PoseCamera>` exists and is wired to the native view, frames decode zero-copy, the angle set is
 resolved from props during render, triggers are validated before native sees them, and the
 delivery question that blocked everything is answered twice over, once for frames and once for
 trigger snapshots. `npm test` covers the wire format, the accessors under a narrowed buffer, and
 every rejection path in the validator.
 
-What remains is the engine itself: geometry, the One-Euro filter, both evaluators, the ring
-buffer and the three functions that drain it, calibration, the thermal ladder, and static input.
-Until then nothing calls back: no trigger fires, `data.mode` delivers nothing, and
-`detectOnImage` / `detectOnVideo` do not exist.
+What remains is the One-Euro filter, both evaluators, calibration, the thermal ladder, static
+input, and the log channel. Until those land no trigger fires and `detectOnImage` /
+`detectOnVideo` do not exist. `onPose` and `onPoseBatch` do fire, on Android.
 
 `setProfile` and `getProfile` on the ref throw until calibration lands. They are the only two
 public methods that do. Everything else that reaches native returns a promise that resolves

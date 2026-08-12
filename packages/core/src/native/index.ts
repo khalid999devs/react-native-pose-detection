@@ -18,4 +18,9 @@ export function getNativeView(): ComponentType<Record<string, unknown>> {
   return cachedView;
 }
 
-export type { NativePoseCameraView, NativePoseModule, NativeTriggerEvent } from './contract';
+export type {
+  NativeCameraPermission,
+  NativePoseCameraView,
+  NativePoseModule,
+  NativeTriggerEvent,
+} from './contract';

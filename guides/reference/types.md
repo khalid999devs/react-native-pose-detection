@@ -20,10 +20,8 @@ type PoseFrame = {
 };
 ```
 
-Nothing produces a `PoseFrame` yet. The decoder, the accessors and the type are done; the native
-ring buffer that fills the wire format is not, so `onPose`, `onPoseBatch` and `snapshot()` deliver
-nothing on either platform today. Everything below describes the format they will deliver, and it
-is the format the decoder already enforces.
+**Android produces these. iOS does not yet**, because there is no iOS module at all. `onPose` and
+`onPoseBatch` fire on Android as soon as `data.mode` is anything but `off`.
 
 Every field is `readonly` in the real declaration, dropped above for readability. The same is true
 of the event types in [events](./events.md).
@@ -34,7 +32,15 @@ in `overlay.angles`, and `data.angles`. Nothing else does. Naming a joint as a c
 (`below: 'leftShoulder'`) or in `data.select` asks for its position, not its angle.
 
 `timestamp` is milliseconds on a monotonic clock, not wall clock. It is the same clock
-`LogEntry.timestamp` uses, so a log line can be matched to the frame that produced it.
+`LogEntry.timestamp` uses, so a log line can be matched to the frame that produced it. It marks
+when the pose became known, not when the sensor exposed the frame.
+
+**`NaN` means unknown, and it is never a substitute for a real value.** An angle whose three
+points are collinear, a `centerOfMass` with nothing visible enough to weigh, and `velocity` on the
+first frame of a pose are all `NaN`, because `0` would read as a measurement: a folded joint, a
+body at the origin, a body standing still. Comparisons against `NaN` are false, so a trigger built
+on one simply does not fire, which is the behavior you want from a value nobody measured. Guard
+with `Number.isNaN` if you display it.
 
 ### Wire format
 

@@ -8,7 +8,7 @@ import type {
   ReadyEvent,
 } from 'react-native-pose-detection';
 
-import { Panel, Row, Toggle } from '../components';
+import { CameraGate, Panel, Row, Toggle } from '../components';
 import { theme } from '../theme';
 
 export function BasicScreen() {
@@ -30,7 +30,7 @@ export function BasicScreen() {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.preview}>
+      <CameraGate>
         <PoseCamera
           ref={camera}
           style={StyleSheet.absoluteFill}
@@ -41,7 +41,7 @@ export function BasicScreen() {
           onError={setError}
           onCameraChange={onCameraChange}
         />
-      </View>
+      </CameraGate>
 
       <View style={styles.controls}>
         <Toggle label="Detection" on={detection} onPress={() => setDetection((on) => !on)} />
@@ -87,12 +87,6 @@ const styles = StyleSheet.create({
   controls: { flexDirection: 'row', gap: 10 },
   error: { color: theme.danger, fontSize: 14, fontWeight: '700' },
   errorMessage: { color: theme.text, fontSize: 13 },
-  preview: {
-    backgroundColor: '#000',
-    borderRadius: 16,
-    flex: 1,
-    overflow: 'hidden',
-  },
   screen: { flex: 1, gap: 12 },
   waiting: { color: theme.muted, fontSize: 13 },
 });

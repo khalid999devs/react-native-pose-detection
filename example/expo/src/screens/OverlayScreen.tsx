@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { PoseCamera } from 'react-native-pose-detection';
 import type { AngleJointName, JointName, OverlayConfig } from 'react-native-pose-detection';
 
-import { Panel, Toggle } from '../components';
+import { CameraGate, Panel, Toggle } from '../components';
 import { theme } from '../theme';
 
 const UPPER_BODY: readonly JointName[] = [
@@ -43,9 +43,9 @@ export function OverlayScreen() {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.preview}>
+      <CameraGate>
         <PoseCamera style={StyleSheet.absoluteFill} overlay={overlay} />
-      </View>
+      </CameraGate>
 
       <ScrollView
         horizontal
@@ -70,7 +70,6 @@ export function OverlayScreen() {
 
 const styles = StyleSheet.create({
   note: { color: theme.muted, fontSize: 13, lineHeight: 19 },
-  preview: { backgroundColor: '#000', borderRadius: 16, flex: 1, overflow: 'hidden' },
   row: { gap: 10, paddingRight: 10 },
   screen: { flex: 1, gap: 12 },
 });

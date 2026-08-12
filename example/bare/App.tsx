@@ -1,7 +1,6 @@
 import * as React from 'react';
 import {
-  PermissionsAndroid,
-  Platform,
+  Linking,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -10,34 +9,11 @@ import {
   Text,
   View,
 } from 'react-native';
-import { PoseCamera } from 'react-native-pose-detection';
+import { PoseCamera, useCameraPermission } from 'react-native-pose-detection';
 import type { ErrorEvent, ReadyEvent } from 'react-native-pose-detection';
 
-type Permission = 'pending' | 'granted' | 'denied';
-
-/**
- * Nothing here requests it for you. The native view reports PERMISSION_DENIED and stops, which is
- * the primitive; asking is the app's decision, and this is what asking looks like.
- */
-function useCameraPermission(): [Permission, () => void] {
-  const [status, setStatus] = React.useState<Permission>('pending');
-
-  const request = React.useCallback(() => {
-    if (Platform.OS !== 'android') {
-      setStatus('granted');
-      return;
-    }
-    PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA)
-      .then((result) => setStatus(result === 'granted' ? 'granted' : 'denied'))
-      .catch(() => setStatus('denied'));
-  }, []);
-
-  React.useEffect(request, [request]);
-  return [status, request];
-}
-
 export default function App() {
-  const [permission, requestPermission] = useCameraPermission();
+  const camera = useCameraPermission();
   const [detection, setDetection] = React.useState(true);
   const [overlay, setOverlay] = React.useState(true);
   const [facing, setFacing] = React.useState<'front' | 'back'>('front');
@@ -59,7 +35,7 @@ export default function App() {
       </View>
 
       <View style={styles.preview}>
-        {permission === 'granted' ? (
+        {camera.granted ? (
           <PoseCamera
             style={StyleSheet.absoluteFill}
             facing={facing}
@@ -71,11 +47,16 @@ export default function App() {
         ) : (
           <View style={styles.gate}>
             <Text style={styles.gateText}>
-              {permission === 'pending' ? 'Asking for the camera.' : 'Camera permission denied.'}
+              {camera.error ? camera.error.message : `Camera permission: ${camera.status}`}
             </Text>
-            {permission === 'denied' ? (
-              <Pressable style={styles.gateButton} onPress={requestPermission}>
-                <Text style={styles.gateButtonText}>Ask again</Text>
+            {!camera.pending && !camera.error ? (
+              <Pressable
+                style={styles.gateButton}
+                onPress={camera.canAskAgain ? camera.request : () => void Linking.openSettings()}
+              >
+                <Text style={styles.gateButtonText}>
+                  {camera.canAskAgain ? 'Ask again' : 'Open settings'}
+                </Text>
               </Pressable>
             ) : null}
           </View>
@@ -124,6 +105,15 @@ export default function App() {
           ) : (
             <Text style={styles.body}>Waiting for the camera to report ready.</Text>
           )}
+        </Panel>
+
+        <Panel title="Camera permission">
+          <Row label="Status" value={camera.status} />
+          <Row label="Can ask again" value={String(camera.canAskAgain)} />
+          <Text style={styles.muted}>
+            One call to useCameraPermission() from the package. It asks on mount, reports blocked
+            separately from denied, and works the same on both platforms.
+          </Text>
         </Panel>
 
         <Panel title="How the model got here">

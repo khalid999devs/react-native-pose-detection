@@ -29,6 +29,31 @@ internal class PoseDetector private constructor(
     var lastTimestampMs = 0L
         private set
 
+    /**
+     * When each in-flight timestamp was handed to MediaPipe, so a result can report what it cost.
+     * `detectAsync` returns before the result arrives, so more than one frame is in flight and a
+     * single "last dispatch" field would time the wrong one.
+     */
+    private val dispatchTimestamps = LongArray(DISPATCH_SLOTS)
+    private val dispatchNanos = LongArray(DISPATCH_SLOTS)
+
+    @Volatile
+    private var dispatchCursor = 0
+
+    /**
+     * Nanoseconds at dispatch for [timestampMs], or 0 when it has already been overwritten.
+     * Written on the analysis thread, read on MediaPipe's callback thread: reading the volatile
+     * cursor first is what makes the array writes that preceded it visible here.
+     */
+    fun dispatchNanosFor(timestampMs: Long): Long {
+        @Suppress("UNUSED_VARIABLE")
+        val fence = dispatchCursor
+        for (slot in 0 until DISPATCH_SLOTS) {
+            if (dispatchTimestamps[slot] == timestampMs) return dispatchNanos[slot]
+        }
+        return 0
+    }
+
     fun detect(
         image: MPImage,
         rotationDegrees: Int,
@@ -36,6 +61,11 @@ internal class PoseDetector private constructor(
     ): Long {
         val timestamp = maxOf(cameraTimestampMs, lastTimestampMs + 1)
         lastTimestampMs = timestamp
+
+        val slot = dispatchCursor and (DISPATCH_SLOTS - 1)
+        dispatchTimestamps[slot] = timestamp
+        dispatchNanos[slot] = System.nanoTime()
+        dispatchCursor = slot + 1
 
         val options =
             ImageProcessingOptions
@@ -179,5 +209,8 @@ internal class PoseDetector private constructor(
         }
 
         private const val PROBE_SIZE = 256
+
+        /** A power of two so the cursor masks rather than divides. */
+        private const val DISPATCH_SLOTS = 8
     }
 }

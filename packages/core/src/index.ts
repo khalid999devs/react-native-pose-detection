@@ -21,4 +21,9 @@ export { assertValidTriggers, validateTriggers } from './validation';
 
 export { addLogListener, setLogLevel } from './logging';
 
+export { getCameraPermission, requestCameraPermission } from './permissions';
+export type { CameraPermission, CameraPermissionStatus } from './permissions';
+export { useCameraPermission } from './useCameraPermission';
+export type { UseCameraPermission } from './useCameraPermission';
+
 export type { NativePoseCameraView, NativePoseModule } from './native';

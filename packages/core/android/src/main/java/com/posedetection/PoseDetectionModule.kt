@@ -1,11 +1,22 @@
 package com.posedetection
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.graphics.Color
+import androidx.core.content.ContextCompat
+import expo.modules.interfaces.permissions.PermissionsResponse
+import expo.modules.interfaces.permissions.PermissionsStatus
 import expo.modules.kotlin.functions.Queues
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 
 class PoseDetectionModule : Module() {
+    private fun hasCameraPermission(): Boolean {
+        val context = appContext.reactContext ?: return false
+        return ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+            PackageManager.PERMISSION_GRANTED
+    }
+
     override fun definition() =
         ModuleDefinition {
             Name("PoseDetection")
@@ -32,13 +43,48 @@ class PoseDetectionModule : Module() {
                 }
             }
 
-            // The ring buffer and the batched flush to JavaScript arrive in Phase 4. Until then entries
-            // go to Logcat, and these exist so the JS contract is already satisfied.
+            // The ring buffer and the batched flush to JavaScript arrive with the log channel.
+            // Until then entries go to Logcat, and these exist so the JS contract is satisfied.
             Function("startLogStream") {}
             Function("stopLogStream") {}
 
+            AsyncFunction("getCameraPermission") { promise: expo.modules.kotlin.Promise ->
+                val permissions = appContext.permissions
+                if (permissions == null) {
+                    // Readable without a manager, which is what makes this the useful fallback:
+                    // an app can still find out where it stands, it just cannot ask from here.
+                    // Without the manager only "granted or not" is knowable, and reporting a
+                    // refusal as UNDETERMINED is the honest half of that: it says "ask to find out".
+                    val status =
+                        if (hasCameraPermission()) PermissionsStatus.GRANTED else PermissionsStatus.UNDETERMINED
+                    promise.resolve(permissionResult(status, canAskAgain = true))
+                    return@AsyncFunction
+                }
+                permissions.getPermissions(
+                    { result -> promise.resolve(toPermissionResult(result)) },
+                    Manifest.permission.CAMERA,
+                )
+            }
+
+            AsyncFunction("requestCameraPermission") { promise: expo.modules.kotlin.Promise ->
+                val permissions = appContext.permissions
+                if (permissions == null) {
+                    promise.reject(
+                        "PERMISSIONS_UNAVAILABLE",
+                        "No permissions manager is registered. Expo modules are not fully installed " +
+                            "in this app, see the installation guide.",
+                        null,
+                    )
+                    return@AsyncFunction
+                }
+                permissions.askForPermissions(
+                    { result -> promise.resolve(toPermissionResult(result)) },
+                    Manifest.permission.CAMERA,
+                )
+            }
+
             View(PoseCameraView::class) {
-                Events("onReady", "onError", "onCameraChange")
+                Events("onReady", "onError", "onCameraChange", "onFrames")
 
                 Prop("facing") { view: PoseCameraView, value: String? ->
                     view.setFacing(value ?: "auto")
@@ -60,6 +106,17 @@ class PoseDetectionModule : Module() {
                 }
                 Prop("analysisResolution") { view: PoseCameraView, value: String? ->
                     view.setAnalysisResolution(value ?: "auto")
+                }
+                Prop("data") { view: PoseCameraView, value: Map<*, *>? ->
+                    view.setData(parseData(value))
+                }
+                // Resolved by JavaScript, in ANGLE_JOINT_NAMES order. Re-deriving the set here
+                // would be a second implementation of one rule, and a way for them to disagree.
+                Prop("angleJoints") { view: PoseCameraView, value: List<String>? ->
+                    view.setAngleJoints(value?.toTypedArray() ?: emptyArray())
+                }
+                Prop("selection") { view: PoseCameraView, value: List<String>? ->
+                    view.setSelection(value?.let(::parseSelection))
                 }
                 Prop("overlay") { view: PoseCameraView, value: Any? ->
                     when (value) {
@@ -116,8 +173,50 @@ class PoseDetectionModule : Module() {
                 AsyncFunction("getState") { view: PoseCameraView ->
                     view.currentState()
                 }.runOnQueue(Queues.MAIN)
+
+                // Deliberately not on the main queue. These copy out of a lock the inference thread
+                // also takes, and the whole point of draining is that it does not block the UI.
+                AsyncFunction("drainFrames") { view: PoseCameraView -> view.drainFrames() }
+                AsyncFunction("snapshotFrame") { view: PoseCameraView -> view.snapshotFrame() }
+                AsyncFunction("takeTriggerSnapshot") { view: PoseCameraView, snapshotId: Int ->
+                    view.takeTriggerSnapshot(snapshotId)
+                }
             }
         }
+}
+
+private const val DEFAULT_THROTTLE_MS = 100L
+private const val DEFAULT_FLUSH_MS = 500L
+
+/** `data.angles` and `data.select` are not read here: they arrive resolved, as their own props. */
+private fun parseData(raw: Map<*, *>?): DataSettings {
+    if (raw == null) {
+        return DataSettings(DataMode.OFF, DEFAULT_THROTTLE_MS, DEFAULT_FLUSH_MS, true, false)
+    }
+    return DataSettings(
+        mode = DataMode.from(raw["mode"] as? String),
+        // A zero or negative interval would emit on every frame under a name that promises not to.
+        throttleMs = (raw["throttleMs"] as? Number)?.toLong()?.coerceAtLeast(1L) ?: DEFAULT_THROTTLE_MS,
+        flushMs = (raw["flushMs"] as? Number)?.toLong()?.coerceAtLeast(1L) ?: DEFAULT_FLUSH_MS,
+        landmarks = raw["landmarks"] as? Boolean ?: true,
+        worldLandmarks = raw["worldLandmarks"] as? Boolean ?: false,
+    )
+}
+
+/** In the order named, which is the order `PoseFrame.selection` promises. Unknown names drop out. */
+private fun parseSelection(names: List<String>): IntArray {
+    val indices = IntArray(names.size)
+    var count = 0
+    for (name in names) {
+        val index = Skeleton.indexOf(name)
+        if (index >= 0) {
+            indices[count] = index
+            count += 1
+        } else {
+            PoseLog.warn(LogCategory.DETECTOR) { "data.select named $name, which is not a joint" }
+        }
+    }
+    return if (count == names.size) indices else indices.copyOf(count)
 }
 
 private fun parseOverlay(raw: Map<*, *>): OverlayConfig {
@@ -181,6 +280,24 @@ private fun Number.clamped(
 ): Float {
     val value = toFloat()
     return if (value.isNaN()) fallback else value.coerceIn(min, max)
+}
+
+/**
+ * `canAskAgain` is the field that matters. Without it an app cannot tell a refusal it may ask
+ * about again from one the system will never prompt for, and it shows a button that does nothing.
+ */
+private fun permissionResult(
+    status: PermissionsStatus,
+    canAskAgain: Boolean,
+): Map<String, Any?> =
+    mapOf(
+        "status" to status.status,
+        "canAskAgain" to canAskAgain,
+    )
+
+private fun toPermissionResult(result: Map<String, PermissionsResponse>): Map<String, Any?> {
+    val response = result[Manifest.permission.CAMERA] ?: return permissionResult(PermissionsStatus.UNDETERMINED, true)
+    return permissionResult(response.status, response.canAskAgain)
 }
 
 private fun parseColor(value: Any?): Int? {
