@@ -18,8 +18,21 @@ final class OneEuroFilter {
   /// x, y, z. Visibility is index 3 and is deliberately not one of these.
   private static let axes = 3
 
+  /// The cutoff a body that is not moving is smoothed at. Low, because that is where jitter lives.
   static let defaultMinCutoff: Float = 1.0
-  static let defaultBeta: Float = 0.0
+
+  /**
+   How hard the cutoff rises with speed, and the reason this filter is worth having.
+
+   `cutoff = minCutoff + beta * speed`, so a beta of zero leaves the cutoff pinned at `minCutoff`
+   and turns the whole thing into a fixed 1 Hz low-pass: heavy lag whatever the body is doing. That
+   is what the filter exists to avoid, and shipping zero here meant every default install smoothed
+   a fast movement as hard as a still one. Landmarks are normalized, so a brisk arm crosses roughly
+   two units a second, and 4 lifts the cutoff to about 9 Hz there while leaving a resting hand near
+   1 Hz. Tune it per app: raise it until a fast movement keeps up, lower it until a still one stops
+   shimmering.
+   */
+  static let defaultBeta: Float = 4.0
 
   /// The derivative's own cutoff. 1 Hz is the value the paper uses and rarely needs changing.
   private static let derivativeCutoff: Float = 1.0
