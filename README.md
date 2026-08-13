@@ -230,26 +230,26 @@ rest stay automatic.
 />
 ```
 
-| Prop | Default | Controls |
-| --- | --- | --- |
-| `style` | none | Ordinary view style; `{ flex: 1 }` is the usual answer |
-| `facing` | `'auto'` | Lens; auto prefers front, falls back on the first bind |
-| `active` | `true` | Camera session on/off; tie it to screen focus |
-| `detection` | `true` | Inference on/off; `false` keeps the preview and frees GPU memory |
-| `overlay` | `true` | The skeleton; also takes the config object above |
-| `smoothing` | `true` | One-Euro filter over x, y, z; also takes `{ minCutoff, beta }` |
-| `maxPoses` | `1` | Detection ceiling, 1 to 5; pair above 1 with `minConfidence` |
-| `minConfidence` | from `maxPoses` | How sure the model must be before something is a body |
-| `profile` | `'auto'` | The performance envelope; auto measures and converges |
-| `targetFps` | `'auto'` | Inference rate; a number stops the governor moving it |
-| `resolution` | `'auto'` | Preview resolution |
-| `analysisResolution` | `'auto'` | What the model sees; the preview stays sharp regardless |
-| `delegate` | `'auto'` | GPU with a verification probe, CPU fallback |
-| `thermalPolicy` | `'adaptive'` | Heat response; `'off'` stops the response, never the reporting |
-| `data` | `{ mode: 'off' }` | What crosses to JavaScript, and how often |
-| `triggers` | `[]` | Native conditions, validated at render |
-| `logLevel` | `'off'` | The diagnostic channel, scoped to this camera |
-| `onReady` … `onLog` | none | Lifecycle, errors, performance, triggers, frames, logs |
+| Prop | Default | Values | What it does |
+| --- | --- | --- | --- |
+| `style` | none | view style | Layout; `{ flex: 1 }` is the usual answer |
+| `facing` | `'auto'` | `'auto'` `'front'` `'back'` | Which lens; auto prefers front |
+| `active` | `true` | `boolean` | Camera session on/off |
+| `detection` | `true` | `boolean` | Inference on/off; `false` frees GPU memory |
+| `overlay` | `true` | `boolean` or config | The skeleton drawing |
+| `smoothing` | `true` | `boolean` or `{ minCutoff, beta }` | One-Euro filter over x, y, z |
+| `maxPoses` | `1` | `1` to `5` | Detection ceiling |
+| `minConfidence` | from `maxPoses` | `0.1` to `1` | What counts as a body |
+| `profile` | `'auto'` | `'auto'` `'efficient'` `'balanced'` `'quality'` `'unrestricted'` | Performance envelope |
+| `targetFps` | `'auto'` | `'auto'` or a number | Inference rate; a number pins it |
+| `resolution` | `'auto'` | `'auto'` `'480p'` `'720p'` `'1080p'` | Preview resolution |
+| `analysisResolution` | `'auto'` | `'auto'` `'360p'` `'480p'` `'720p'` | What the model sees |
+| `delegate` | `'auto'` | `'auto'` `'gpu'` `'cpu'` | Inference engine; auto probes GPU |
+| `thermalPolicy` | `'adaptive'` | `'adaptive'` `'critical-only'` `'off'` | Heat response |
+| `data` | `{ mode: 'off' }` | mode `'off'` `'throttled'` `'batched'` `'live'` | What crosses to JavaScript |
+| `triggers` | `[]` | `Trigger[]` | Native conditions |
+| `logLevel` | `'off'` | `'off'` `'error'` `'warn'` `'info'` `'debug'` `'trace'` | Diagnostics channel |
+| `onReady` … `onLog` | none | callbacks | Lifecycle, errors, performance, triggers, frames, logs |
 
 Exact types, clamping rules and edge behavior: [`<PoseCamera>` reference](./guides/reference/pose-camera.md).
 
