@@ -112,12 +112,19 @@ extension PoseCameraView {
     return NativeArrayBuffer.wrap(dataWithoutCopy: frames.takeSnapshot(snapshotId))
   }
 
+  /// Zero once results stop: the last live value would read as a session that is still running.
+  func currentMeasuredFps() -> Int {
+    let last = lastResultMs.value
+    guard last != 0, Monotonic.nowMs() - last <= PoseCameraView.fpsStaleAfterMs else { return 0 }
+    return measuredFps.value
+  }
+
   func currentState() -> [String: Any] {
     return [
       "facing": camera.facing.nameForJs,
       "active": camera.isBound,
       "detecting": detector.value != nil || detectorPending,
-      "fps": measuredFps.value,
+      "fps": currentMeasuredFps(),
       "delegate": resolvedDelegate ?? "CPU",
       "deviceTier": calibrator.tier.rawValue
     ]
@@ -137,7 +144,8 @@ extension PoseCameraView {
         "preview": current.preview,
         "analysis": current.analysis
       ],
-      "p50InferenceMs": calibrator.p50InferenceMs
+      "p50InferenceMs": calibrator.p50InferenceMs,
+      "measuredFps": currentMeasuredFps()
     ]
   }
 
@@ -176,7 +184,7 @@ extension PoseCameraView {
       "analysisResolution": CameraSource
         .analysisSize(for: current.analysis, preview: CameraSource.previewSize(for: current.preview))
         .forJs,
-      "actualFps": measuredFps.value
+      "actualFps": currentMeasuredFps()
     ])
   }
 

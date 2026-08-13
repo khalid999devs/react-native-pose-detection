@@ -37,7 +37,13 @@ public class PoseCameraView: ExpoView {
   /// No pose for this long drops the analyzer to `PerformanceResolver.idleFps`.
   static let idleAfterMs: Int64 = 2_000
   static let fpsWindowMs: Int64 = 1_000
-  static let pacingTolerance = 0.9
+
+  /// No result for this long means `getState().fps` reports zero rather than the last live value.
+  static let fpsStaleAfterMs: Int64 = 2_000
+
+  /// A sensor frame this close to its due time counts as on time. Sensor clocks jitter by a few
+  /// milliseconds, and a strict compare would drop a frame that is early by one.
+  static let pacingJitterMs = 5.0
 
   /// Two boxes within this much area are the same size, and the centre breaks the tie.
   static let areaTieEpsilon: Float = 1e-4
@@ -138,16 +144,21 @@ public class PoseCameraView: ExpoView {
   let thermalState = Guarded<ThermalState>(.nominal)
   var lastThermalSampleMs: Int64 = 0
 
-  /// Frame pacing. Analysis queue only, unlike `lastPoseMs`.
-  var lastDetectMs: Int64 = 0
+  /// Frame pacing: when the next inference is due. Analysis queue only, unlike `lastPoseMs`.
+  var nextDetectDueMs = 0.0
 
   /// Written on the callback queue, read on the analysis queue to decide idle-search.
   let lastPoseMs = Guarded<Int64>(0)
 
-  /// Measured from the capture callback, so `getState().fps` is what ran rather than what was asked.
+  /**
+   Measured on the result callback, so `getState().fps` is what the model completed rather than
+   what it was handed. The two differ exactly when the device cannot keep up, which is the moment
+   the number matters. The window fields belong to the callback queue; the totals are shared.
+   */
   var framesInWindow = 0
   var fpsWindowStartMs: Int64 = 0
   let measuredFps = Guarded<Int>(0)
+  let lastResultMs = Guarded<Int64>(0)
 
   /// Reused across frames: this is the inference path, and an allocation here is one everywhere.
   let frameContext = FrameContext()

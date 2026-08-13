@@ -49,6 +49,10 @@ final class OverlayView: UIView {
     isOpaque = false
     isUserInteractionEnabled = false
     contentMode = .redraw
+    // The draw commands are recorded on main but rasterized on a background queue. This layer is
+    // redrawn at inference rate over the whole screen, which is the workload the flag exists for;
+    // without it every skeleton is a full-screen CoreGraphics pass on the main thread.
+    layer.drawsAsynchronously = true
   }
 
   @available(*, unavailable)

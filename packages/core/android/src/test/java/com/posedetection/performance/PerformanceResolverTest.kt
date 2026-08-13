@@ -11,18 +11,41 @@ class PerformanceResolverTest {
     private fun resolve(
         profile: Profile = Profile.AUTO,
         tier: DeviceTier = DeviceTier.MEDIUM,
+        autoFps: Int? = null,
         fps: Int? = null,
         preview: String = "auto",
         analysis: String = "auto",
         thermal: ThermalState = ThermalState.NOMINAL,
         policy: ThermalPolicy = ThermalPolicy.ADAPTIVE,
-    ) = PerformanceResolver.resolve(profile, tier, fps, preview, analysis, thermal, policy)
+    ) = PerformanceResolver.resolve(profile, tier, autoFps, fps, preview, analysis, thermal, policy)
 
     @Test
-    fun `auto takes whatever tier calibration settled on`() {
+    fun `auto takes the tier rate until the governor has measured one`() {
         assertEquals(15, resolve(tier = DeviceTier.LOW).targetFps)
-        assertEquals(30, resolve(tier = DeviceTier.MEDIUM).targetFps)
-        assertEquals(60, resolve(tier = DeviceTier.HIGH).targetFps)
+        assertEquals(24, resolve(tier = DeviceTier.MEDIUM).targetFps)
+        assertEquals(30, resolve(tier = DeviceTier.HIGH).targetFps)
+    }
+
+    @Test
+    fun `auto rides the measured rate once there is one`() {
+        assertEquals(34, resolve(tier = DeviceTier.HIGH, autoFps = 34).targetFps)
+        assertEquals(34, resolve(profile = Profile.UNRESTRICTED, autoFps = 34).targetFps)
+    }
+
+    @Test
+    fun `a named profile ignores the measured rate`() {
+        assertEquals(15, resolve(profile = Profile.EFFICIENT, autoFps = 34).targetFps)
+        assertEquals(30, resolve(profile = Profile.QUALITY, autoFps = 12).targetFps)
+    }
+
+    @Test
+    fun `an explicit fps outranks the measured rate`() {
+        assertEquals(24, resolve(autoFps = 34, fps = 24).targetFps)
+    }
+
+    @Test
+    fun `heat scales the measured rate like any other`() {
+        assertEquals(24, resolve(autoFps = 33, thermal = ThermalState.FAIR).targetFps)
     }
 
     @Test
@@ -33,7 +56,7 @@ class PerformanceResolverTest {
         assertEquals("360p", efficient.analysis)
 
         val quality = resolve(profile = Profile.QUALITY, tier = DeviceTier.LOW)
-        assertEquals(60, quality.targetFps)
+        assertEquals(30, quality.targetFps)
         assertEquals("1080p", quality.preview)
     }
 
@@ -55,7 +78,7 @@ class PerformanceResolverTest {
 
         val serious = resolve(profile = Profile.QUALITY, fps = 40, thermal = ThermalState.SERIOUS)
         assertEquals(20, serious.targetFps)
-        assertEquals("one step down the analysis ladder", "480p", serious.analysis)
+        assertEquals("one step down the analysis ladder", "360p", serious.analysis)
 
         assertTrue(resolve(thermal = ThermalState.CRITICAL).detectionPaused)
     }
@@ -64,14 +87,14 @@ class PerformanceResolverTest {
     fun `thermalPolicy off stops the response, and reporting is not this object's job`() {
         val resolved = resolve(thermal = ThermalState.SERIOUS, policy = ThermalPolicy.OFF)
 
-        assertEquals(30, resolved.targetFps)
+        assertEquals(24, resolved.targetFps)
         assertFalse(resolve(thermal = ThermalState.CRITICAL, policy = ThermalPolicy.OFF).detectionPaused)
     }
 
     @Test
     fun `critical-only ignores everything below critical`() {
         assertEquals(
-            30,
+            24,
             resolve(thermal = ThermalState.SERIOUS, policy = ThermalPolicy.CRITICAL_ONLY).targetFps,
         )
         assertTrue(
@@ -83,7 +106,7 @@ class PerformanceResolverTest {
     fun `unrestricted opts out of the ladder, but not out of critical`() {
         assertEquals(
             "a device about to shut down is not a preference anyone can hold",
-            30,
+            24,
             resolve(profile = Profile.UNRESTRICTED, thermal = ThermalState.SERIOUS).targetFps,
         )
         assertTrue(

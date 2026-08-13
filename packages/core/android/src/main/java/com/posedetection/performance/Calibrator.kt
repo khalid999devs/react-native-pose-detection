@@ -39,6 +39,10 @@ internal class Calibrator(
     var source = Source.STATIC
         private set
 
+    /** The governor's rate. Zero until something has been measured or a cache supplied one. */
+    var autoFps = 0
+        private set
+
     private val samples = FloatArray(WINDOW)
     private val scratch = FloatArray(WINDOW)
     private var sampleCount = 0
@@ -58,10 +62,13 @@ internal class Calibrator(
 
         val cached = readCache(modelFileName)
         if (cached != null) {
-            tier = cached
+            tier = cached.first
+            autoFps = cached.second
             source = Source.CACHE
             phase = Phase.CACHED
-            PoseLog.info(LogCategory.CALIBRATION) { "starting from the cached tier ${tier.nameForJs()}" }
+            PoseLog.info(LogCategory.CALIBRATION) {
+                "starting from the cached tier ${tier.nameForJs()} at $autoFps fps"
+            }
             return
         }
 
@@ -76,69 +83,70 @@ internal class Calibrator(
         cursor = 0
         lastChangeMs = 0L
         p50InferenceMs = 0f
+        autoFps = 0
     }
 
     /**
-     * One frame's cost. Returns true when the tier moved, which is what the caller reports as an
-     * `onPerformanceChange` with reason `calibration`.
+     * One frame's cost, dispatch to result. That span breathes with load: a rate the device
+     * cannot hold shows up as queue wait long before it shows up as heat, which is what closes
+     * the loop. Too fast reads slow, the governor backs off, the wait drains. Returns true when
+     * the tier or the rate moved, which the caller reports as an `onPerformanceChange` with
+     * reason `calibration`.
      */
     fun record(
         inferenceMs: Float,
-        targetFps: Int,
         nowMs: Long,
     ): Boolean {
-        if (inferenceMs <= 0f || targetFps <= 0) return false
+        if (inferenceMs <= 0f) return false
 
         samples[cursor] = inferenceMs
         cursor = (cursor + 1) % WINDOW
         if (sampleCount < WINDOW) sampleCount += 1
         if (sampleCount < WINDOW) return false
+        if (cursor % MEDIAN_STRIDE != 0 && p50InferenceMs != 0f) return false
 
         p50InferenceMs = median()
 
-        // Hysteresis: a tier that just moved is given time to show what it costs before it moves
-        // again, or a device sitting between two tiers oscillates between them forever.
+        // Hysteresis: a rate that just moved is given time to show what it costs before it moves
+        // again, or a device sitting between two answers oscillates between them forever. The
+        // window itself is kept: inference cost does not become untrue because the rate changed.
         if (lastChangeMs != 0L && nowMs - lastChangeMs < COOLDOWN_MS) return false
 
-        val budgetMs = MILLIS_PER_SECOND / targetFps
-        val next =
-            when {
-                p50InferenceMs > budgetMs * STEP_DOWN_RATIO -> tier.stepDown()
-                p50InferenceMs < budgetMs * STEP_UP_RATIO -> tier.stepUp()
-                else -> tier
-            }
+        val nextTier = AutoTuner.tier(p50InferenceMs)
+        val nextFps = AutoTuner.targetFps(p50InferenceMs)
+        val tierMoved = nextTier != tier
+        val fpsMoved = autoFps == 0 || kotlin.math.abs(nextFps - autoFps) > AutoTuner.DEADBAND_FPS
 
-        if (next == tier) {
-            // Inside the band for a whole window with nowhere to move is what settled means.
+        if (!tierMoved && !fpsMoved) {
+            // Inside the deadband for a whole window with nowhere to move is what settled means.
             if (phase != Phase.SETTLED) {
                 phase = Phase.SETTLED
                 source = Source.MEASURED
                 PoseLog.info(LogCategory.CALIBRATION) {
-                    "settled at ${tier.nameForJs()}, p50 ${p50InferenceMs}ms against a ${budgetMs}ms budget"
+                    "settled at ${tier.nameForJs()}, $autoFps fps from a p50 of ${p50InferenceMs}ms"
                 }
                 return true
             }
             return false
         }
 
+        if (tierMoved) tier = nextTier
+        if (fpsMoved) autoFps = nextFps
         PoseLog.info(LogCategory.CALIBRATION) {
-            "p50 ${p50InferenceMs}ms against a ${budgetMs}ms budget, moving to ${next.nameForJs()}"
+            "p50 ${p50InferenceMs}ms, moving to ${tier.nameForJs()} at $autoFps fps"
         }
-        tier = next
         source = Source.MEASURED
         phase = Phase.CALIBRATING
         lastChangeMs = nowMs
-        sampleCount = 0
-        cursor = 0
         return true
     }
 
-    /** Only a settled, measured tier is worth persisting. A guess is not worth a second launch. */
+    /** Only a settled, measured answer is worth persisting. A guess is not worth a second launch. */
     fun persist(modelFileName: String) {
         if (phase != Phase.SETTLED || source != Source.MEASURED) return
         preferences()
             .edit()
-            .putString(cacheKey(modelFileName), tier.name)
+            .putString(cacheKey(modelFileName), "${tier.name}|$autoFps")
             .apply()
     }
 
@@ -172,9 +180,13 @@ internal class Calibrator(
         return scratch[WINDOW / 2]
     }
 
-    private fun readCache(modelFileName: String): DeviceTier? {
+    /** `TIER|fps`, tolerating the tier-only form an earlier version wrote. */
+    private fun readCache(modelFileName: String): Pair<DeviceTier, Int>? {
         val stored = preferences().getString(cacheKey(modelFileName), null) ?: return null
-        return DeviceTier.entries.firstOrNull { it.name == stored }
+        val parts = stored.split('|')
+        val tier = DeviceTier.entries.firstOrNull { it.name == parts[0] } ?: return null
+        val fps = parts.getOrNull(1)?.toIntOrNull() ?: 0
+        return tier to fps
     }
 
     /**
@@ -191,10 +203,14 @@ internal class Calibrator(
         /** Two seconds at 30 fps, which is long enough for a p50 to mean something. */
         const val WINDOW = 60
 
+        /**
+         * The median is a copy and a sort, so it is refreshed every quarter window rather than
+         * every frame. Inference cost does not change in fifteen frames; recomputing inside that
+         * span is work on the hot path for a number that comes out the same.
+         */
+        const val MEDIAN_STRIDE = 15
+
         const val COOLDOWN_MS = 3_000L
-        const val STEP_UP_RATIO = 0.6f
-        const val STEP_DOWN_RATIO = 1.2f
-        const val MILLIS_PER_SECOND = 1_000f
 
         const val HIGH_CORES = 8
         const val HIGH_MEMORY_GB = 6f

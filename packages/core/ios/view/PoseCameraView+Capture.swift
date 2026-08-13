@@ -43,7 +43,6 @@ extension PoseCameraView: AVCaptureVideoDataOutputSampleBufferDelegate {
         // Always `.up`: the capture connection has already rotated the buffer, see CaptureRotation.
         let image = try MPImage(sampleBuffer: sampleBuffer, orientation: .up)
         try detector.detect(image: image, cameraTimestampMs: presentationMilliseconds(sampleBuffer))
-        countFrame(now)
       } catch {
         PoseLog.warn(.detector, "frame dropped: \(error.localizedDescription)")
       }
@@ -61,6 +60,12 @@ extension PoseCameraView: AVCaptureVideoDataOutputSampleBufferDelegate {
    The pacing gate. It serves `targetFps` and idle-search with one mechanism, because they are the
    same thing: a rate the analyzer is allowed to run at. AVFoundation keeps delivering at sensor
    rate either way, and a frame that is not due is dropped without ever reaching the model.
+
+   It schedules against when the last frame was *due*, not when it ran. Measuring from the accepted
+   frame quantizes the rate to whole divisors of the sensor clock — a 24 fps target under a 30 Hz
+   sensor can only drop to 15, because 33 milliseconds is never 41 — and that is how three of the
+   ladder's rates were unreachable on most cameras. Carrying the due time forward lets accepted
+   frames alternate between sensor slots and land the asked-for rate on average.
    */
   private func frameIsDue(_ nowMs: Int64) -> Bool {
     let lastPose = lastPoseMs.value
@@ -68,24 +73,14 @@ extension PoseCameraView: AVCaptureVideoDataOutputSampleBufferDelegate {
     let fps = idle ? PerformanceResolver.idleFps : resolved.value.targetFps
     guard fps > 0 else { return false }
 
-    // Slightly under the exact interval: a strict compare against a jittery sensor clock drops
-    // every other frame and halves the rate it was asked to hold.
-    let minIntervalMs = Int64(PoseCameraView.millisPerSecond / Double(fps) * PoseCameraView.pacingTolerance)
-    if nowMs - lastDetectMs < minIntervalMs { return false }
+    let now = Double(nowMs)
+    guard now + PoseCameraView.pacingJitterMs >= nextDetectDueMs else { return false }
 
-    lastDetectMs = nowMs
+    // From the schedule while it is being kept, from now once it has stalled: after an idle spell
+    // or a rate change the next due time is one interval out rather than a backlog of them.
+    let intervalMs = PoseCameraView.millisPerSecond / Double(fps)
+    nextDetectDueMs = max(nextDetectDueMs + intervalMs, now)
     return true
-  }
-
-  private func countFrame(_ nowMs: Int64) {
-    framesInWindow += 1
-    if fpsWindowStartMs == 0 { fpsWindowStartMs = nowMs }
-    let elapsed = nowMs - fpsWindowStartMs
-    guard elapsed >= PoseCameraView.fpsWindowMs else { return }
-
-    measuredFps.value = Int((Int64(framesInWindow) * PoseCameraView.fpsWindowMs) / elapsed)
-    framesInWindow = 0
-    fpsWindowStartMs = nowMs
   }
 
   /// Sampled rather than subscribed, to match Android, where the callback needs API 29.

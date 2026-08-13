@@ -134,6 +134,7 @@ extension PoseCameraView {
     let next = PerformanceResolver.resolve(PerformanceRequest(
       profile: propProfile,
       tier: calibrator.tier,
+      autoFps: calibrator.autoFps > 0 ? calibrator.autoFps : nil,
       requestedFps: propTargetFps,
       requestedPreview: propPreview,
       requestedAnalysis: propAnalysis,

@@ -23,6 +23,16 @@ extension PoseCameraView {
     }
     modelPath = model
 
+    // Before the bind, so a tier and rate remembered from the last launch shape the geometry the
+    // session opens with. Started from the detector's adoption instead, the first session of every
+    // launch ran at the default tier's sizes whatever the cache knew.
+    calibrator.start(modelFileName: PoseDetector.fileName(from: model))
+    applyPerformance(reason: nil)
+    let current = resolved.value
+    let preview = CameraSource.previewSize(for: current.preview)
+    camera.previewSize = preview
+    camera.analysisSize = CameraSource.analysisSize(for: current.analysis, preview: preview)
+
     started = true
     camera.setAnalyzerEnabled(true)
     camera.start(
@@ -142,9 +152,6 @@ extension PoseCameraView {
     created.observer = self
     detector.value = created
     resolvedDelegate = created.delegateKind == .GPU ? "GPU" : "CPU"
-
-    calibrator.start(modelFileName: created.modelFileName)
-    applyPerformance(reason: nil)
     preWarm(created)
 
     // The one path that actually downgrades is 'auto'. An explicit 'gpu' is pinned and never falls

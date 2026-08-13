@@ -32,12 +32,23 @@ export type ProfileState = {
     readonly analysis: AnalysisResolutionPreset;
   };
   readonly p50InferenceMs: number;
+  /**
+   * Completed inferences per second, measured over the last second and zero once results stop.
+   * This is the live counterpart of `resolved.targetFps`: the two disagree exactly when the
+   * device cannot hold the rate it was asked for.
+   */
+  readonly measuredFps: number;
 };
 
 export type CameraState = {
   readonly facing: Facing;
   readonly active: boolean;
   readonly detecting: boolean;
+  /**
+   * As of the last `onPerformanceChange`, because this object is mirrored from events rather
+   * than read across the bridge. For a reading that follows the measurement rather than the
+   * configuration, poll `getProfile().measuredFps`.
+   */
   readonly fps: number;
   readonly delegate: Delegate;
   readonly deviceTier: DeviceTier;

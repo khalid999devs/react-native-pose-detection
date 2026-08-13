@@ -21,11 +21,26 @@ struct FrameTiming {
 /// The result path. Everything here runs on MediaPipe's callback queue unless it says otherwise.
 extension PoseCameraView: PoseDetectorObserver {
   func poseDetector(_ detector: PoseDetector, didDetect result: PoseLandmarkerResult, timestampMs: Int) {
+    // An empty result still counts: the model ran. Empty frames are what an honest rate is made
+    // of while the camera points at a room, and skipping them would freeze the number instead.
+    countResult(Monotonic.nowMs())
     if timestampMs < staleBefore.value {
       PoseLog.trace(.camera, "dropped a frame from the previous camera")
       return
     }
     accept(result)
+  }
+
+  private func countResult(_ nowMs: Int64) {
+    lastResultMs.value = nowMs
+    framesInWindow += 1
+    if fpsWindowStartMs == 0 { fpsWindowStartMs = nowMs }
+    let elapsed = nowMs - fpsWindowStartMs
+    guard elapsed >= PoseCameraView.fpsWindowMs else { return }
+
+    measuredFps.value = Int((Int64(framesInWindow) * PoseCameraView.fpsWindowMs) / elapsed)
+    framesInWindow = 0
+    fpsWindowStartMs = nowMs
   }
 
   /**
@@ -200,11 +215,7 @@ extension PoseCameraView: PoseDetectorObserver {
 
     // Only `auto` is calibrated. A named profile is somebody saying they have already decided.
     if propProfile == .auto && processingMs > 0 {
-      let moved = calibrator.record(
-        inferenceMs: Float(processingMs),
-        targetFps: resolved.value.targetFps,
-        nowMs: nowMs
-      )
+      let moved = calibrator.record(inferenceMs: Float(processingMs), nowMs: nowMs)
       if moved {
         DispatchQueue.main.async { [weak self] in self?.onCalibrationMoved() }
       }

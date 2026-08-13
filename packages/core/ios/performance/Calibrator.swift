@@ -26,10 +26,14 @@ final class Calibrator {
   /// Two seconds at 30 fps, which is long enough for a p50 to mean something.
   private static let window = 60
 
+  /**
+   The median is a copy and a sort, so it is refreshed every quarter window rather than every
+   frame. Inference cost does not change in fifteen frames; recomputing inside that span is work
+   on the hot path for a number that comes out the same.
+   */
+  private static let medianStride = 15
+
   private static let cooldownMs: Int64 = 3_000
-  private static let stepUpRatio: Float = 0.6
-  private static let stepDownRatio: Float = 1.2
-  private static let millisPerSecond: Float = 1_000
 
   /**
    Memory only, unlike Android, which also reads the core count. Apple has shipped the same 6-core
@@ -46,6 +50,9 @@ final class Calibrator {
   private(set) var phase: Phase = .calibrating
   private(set) var source: Source = .staticProbe
   private(set) var p50InferenceMs: Float = 0
+
+  /// The governor's rate. Zero until something has been measured or a cache supplied one.
+  private(set) var autoFps = 0
 
   private var samples = [Float](repeating: 0, count: Calibrator.window)
   private var scratch = [Float](repeating: 0, count: Calibrator.window)
@@ -68,10 +75,11 @@ final class Calibrator {
     reset()
 
     if let cached = readCache(modelFileName) {
-      tier = cached
+      tier = cached.tier
+      autoFps = cached.fps
       source = .cache
       phase = .cached
-      PoseLog.info(.calibration, "starting from the cached tier \(tier.rawValue)")
+      PoseLog.info(.calibration, "starting from the cached tier \(tier.rawValue) at \(autoFps) fps")
       return
     }
 
@@ -86,65 +94,58 @@ final class Calibrator {
     cursor = 0
     lastChangeMs = 0
     p50InferenceMs = 0
+    autoFps = 0
   }
 
   /**
-   One frame's cost. Returns true when the tier moved, which is what the caller reports as an
-   `onPerformanceChange` with reason `calibration`.
+   One frame's cost, dispatch to result. That span breathes with load — a rate the device cannot
+   hold shows up as queue wait long before it shows up as heat — which is what closes the loop:
+   too fast reads slow, the governor backs off, the wait drains. Returns true when the tier or the
+   rate moved, which the caller reports as an `onPerformanceChange` with reason `calibration`.
    */
-  func record(inferenceMs: Float, targetFps: Int, nowMs: Int64) -> Bool {
-    guard inferenceMs > 0, targetFps > 0 else { return false }
+  func record(inferenceMs: Float, nowMs: Int64) -> Bool {
+    guard inferenceMs > 0 else { return false }
 
     samples[cursor] = inferenceMs
     cursor = (cursor + 1) % Calibrator.window
     if sampleCount < Calibrator.window { sampleCount += 1 }
     guard sampleCount >= Calibrator.window else { return false }
+    guard cursor % Calibrator.medianStride == 0 || p50InferenceMs == 0 else { return false }
 
     p50InferenceMs = median()
 
-    // Hysteresis: a tier that just moved is given time to show what it costs before it moves
-    // again, or a device sitting between two tiers oscillates between them forever.
+    // Hysteresis: a rate that just moved is given time to show what it costs before it moves
+    // again, or a device sitting between two answers oscillates between them forever. The window
+    // itself is kept: inference cost does not become untrue because the rate changed.
     if lastChangeMs != 0 && nowMs - lastChangeMs < Calibrator.cooldownMs { return false }
 
-    let budgetMs = Calibrator.millisPerSecond / Float(targetFps)
-    let next: DeviceTier
-    if p50InferenceMs > budgetMs * Calibrator.stepDownRatio {
-      next = tier.stepDown()
-    } else if p50InferenceMs < budgetMs * Calibrator.stepUpRatio {
-      next = tier.stepUp()
-    } else {
-      next = tier
-    }
+    let nextTier = AutoTuner.tier(p50Ms: p50InferenceMs)
+    let nextFps = AutoTuner.targetFps(p50Ms: p50InferenceMs)
+    let tierMoved = nextTier != tier
+    let fpsMoved = autoFps == 0 || abs(nextFps - autoFps) > AutoTuner.deadbandFps
 
-    if next == tier {
-      // Inside the band for a whole window with nowhere to move is what settled means.
+    if !tierMoved && !fpsMoved {
+      // Inside the deadband for a whole window with nowhere to move is what settled means.
       guard phase != .settled else { return false }
       phase = .settled
       source = .measured
-      PoseLog.info(
-        .calibration,
-        "settled at \(tier.rawValue), p50 \(p50InferenceMs)ms against a \(budgetMs)ms budget"
-      )
+      PoseLog.info(.calibration, "settled at \(tier.rawValue), \(autoFps) fps from a p50 of \(p50InferenceMs)ms")
       return true
     }
 
-    PoseLog.info(
-      .calibration,
-      "p50 \(p50InferenceMs)ms against a \(budgetMs)ms budget, moving to \(next.rawValue)"
-    )
-    tier = next
+    if tierMoved { tier = nextTier }
+    if fpsMoved { autoFps = nextFps }
+    PoseLog.info(.calibration, "p50 \(p50InferenceMs)ms, moving to \(tier.rawValue) at \(autoFps) fps")
     source = .measured
     phase = .calibrating
     lastChangeMs = nowMs
-    sampleCount = 0
-    cursor = 0
     return true
   }
 
-  /// Only a settled, measured tier is worth persisting. A guess is not worth a second launch.
+  /// Only a settled, measured answer is worth persisting. A guess is not worth a second launch.
   func persist(modelFileName: String) {
     guard phase == .settled, source == .measured else { return }
-    defaults.set(tier.rawValue, forKey: Calibrator.cacheKey(modelFileName))
+    defaults.set("\(tier.rawValue)|\(autoFps)", forKey: Calibrator.cacheKey(modelFileName))
   }
 
   /**
@@ -166,14 +167,22 @@ final class Calibrator {
   }
 
   private func median() -> Float {
-    scratch = samples
+    // Element-wise: `scratch = samples` would share storage and make the sort copy-on-write a
+    // fresh buffer every call, which is an allocation on the frame path.
+    for index in 0..<Calibrator.window {
+      scratch[index] = samples[index]
+    }
     scratch.sort()
     return scratch[Calibrator.window / 2]
   }
 
-  private func readCache(_ modelFileName: String) -> DeviceTier? {
+  /// `tier|fps`, tolerating the tier-only form an earlier version wrote.
+  private func readCache(_ modelFileName: String) -> (tier: DeviceTier, fps: Int)? {
     guard let stored = defaults.string(forKey: Calibrator.cacheKey(modelFileName)) else { return nil }
-    return DeviceTier(rawValue: stored)
+    let parts = stored.split(separator: "|")
+    guard let first = parts.first, let tier = DeviceTier(rawValue: String(first)) else { return nil }
+    let fps = parts.count > 1 ? Int(parts[1]) ?? 0 : 0
+    return (tier, fps)
   }
 
   /**

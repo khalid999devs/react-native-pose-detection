@@ -167,8 +167,8 @@ class PoseCameraView(
     private var thermalState = ThermalState.NOMINAL
     private var lastThermalSampleMs = 0L
 
-    /** Frame pacing. Analysis thread only, unlike [lastPoseMs]. */
-    private var lastDetectMs = 0L
+    /** Frame pacing: when the next inference is due. Analysis thread only, unlike [lastPoseMs]. */
+    private var nextDetectDueMs = 0.0
 
     /**
      * Written on the inference thread, read on the analysis thread to decide idle-search. Volatile
@@ -178,12 +178,20 @@ class PoseCameraView(
     @Volatile
     private var lastPoseMs = 0L
 
-    /** Measured from the analyzer, so `getState().fps` is what ran rather than what was asked for. */
+    /**
+     * Measured on the result callback, so `getState().fps` is what the model completed rather
+     * than what it was handed. The two differ exactly when the device cannot keep up, which is
+     * the moment the number matters. The window fields belong to the callback thread; the totals
+     * are shared.
+     */
     private var framesInWindow = 0
     private var fpsWindowStartMs = 0L
 
     @Volatile
     private var measuredFps = 0
+
+    @Volatile
+    private var lastResultMs = 0L
 
     /** Reused across frames: this is the inference path, and a per-frame allocation here is one everywhere. */
     private val frameContext = FrameContext()
@@ -498,6 +506,14 @@ class PoseCameraView(
         }
         modelFileName = model
 
+        // Before the bind, so a tier and rate remembered from the last launch shape the geometry
+        // the session opens with. Started from the detector's adoption instead, the first session
+        // of every launch ran at the default tier's sizes whatever the cache knew.
+        calibrator.start(model)
+        applyPerformance(reason = null)
+        camera.previewSize = CameraSource.previewSizeFor(resolved.preview)
+        camera.analysisSize = CameraSource.analysisSizeFor(resolved.analysis)
+
         started = true
         camera.setAnalyzer(analyzer)
         camera.start(
@@ -614,9 +630,6 @@ class PoseCameraView(
         detectorPending = false
         detector = created
         resolvedDelegate = created.delegate.name
-
-        calibrator.start(created.modelFileName)
-        applyPerformance(reason = null)
         preWarm(created)
 
         // The one path that actually downgrades is 'auto'. An explicit 'gpu' is pinned and never
@@ -680,6 +693,7 @@ class PoseCameraView(
                     "analysis" to current.analysis,
                 ),
             "p50InferenceMs" to calibrator.p50InferenceMs,
+            "measuredFps" to currentMeasuredFps(),
         )
     }
 
@@ -771,7 +785,6 @@ class PoseCameraView(
                 val bitmap = converter.convert(proxy)
                 val image = BitmapImageBuilder(bitmap).build()
                 detector.detect(image, rotation, proxy.imageInfo.timestamp / 1_000_000)
-                countFrame(now)
             } catch (error: Throwable) {
                 PoseLog.warn(LogCategory.DETECTOR) { "frame dropped: ${error.message}" }
             } finally {
@@ -783,22 +796,32 @@ class PoseCameraView(
      * The pacing gate. It serves `targetFps` and idle-search with one mechanism, because they are
      * the same thing: a rate the analyzer is allowed to run at. CameraX keeps delivering at sensor
      * rate either way, and a frame that is not due is closed without ever reaching the model.
+     *
+     * It schedules against when the last frame was *due*, not when it ran. Measuring from the
+     * accepted frame quantizes the rate to whole divisors of the sensor clock: a 24 fps target
+     * under a 30 Hz sensor can only drop to 15, because 33 milliseconds is never 41, and that is
+     * how three of the ladder's rates were unreachable on most cameras. Carrying the due time
+     * forward lets accepted frames alternate between sensor slots and land the asked-for rate on
+     * average.
      */
     private fun frameIsDue(nowMs: Long): Boolean {
         val idle = lastPoseMs != 0L && nowMs - lastPoseMs > IDLE_AFTER_MS
         val fps = if (idle) PerformanceResolver.IDLE_FPS else resolved.targetFps
         if (fps <= 0) return false
 
-        // Slightly under the exact interval: a strict compare against a jittery sensor clock drops
-        // every other frame and halves the rate it was asked to hold.
-        val minIntervalMs = (MILLIS_PER_SECOND / fps * PACING_TOLERANCE).toLong()
-        if (nowMs - lastDetectMs < minIntervalMs) return false
+        val now = nowMs.toDouble()
+        if (now + PACING_JITTER_MS < nextDetectDueMs) return false
 
-        lastDetectMs = nowMs
+        // From the schedule while it is being kept, from now once it has stalled: after an idle
+        // spell or a rate change the next due time is one interval out rather than a backlog.
+        val intervalMs = MILLIS_PER_SECOND / fps
+        nextDetectDueMs = maxOf(nextDetectDueMs + intervalMs, now)
         return true
     }
 
-    private fun countFrame(nowMs: Long) {
+    /** On the result thread. An empty result still counts: the model ran. */
+    private fun countResult(nowMs: Long) {
+        lastResultMs = nowMs
         framesInWindow += 1
         if (fpsWindowStartMs == 0L) fpsWindowStartMs = nowMs
         val elapsed = nowMs - fpsWindowStartMs
@@ -807,6 +830,13 @@ class PoseCameraView(
         measuredFps = ((framesInWindow * MILLIS_PER_SECOND) / elapsed).toInt()
         framesInWindow = 0
         fpsWindowStartMs = nowMs
+    }
+
+    /** Zero once results stop: the last live value would read as a session that is still running. */
+    private fun currentMeasuredFps(): Int {
+        val last = lastResultMs
+        if (last == 0L || SystemClock.elapsedRealtime() - last > FPS_STALE_AFTER_MS) return 0
+        return measuredFps
     }
 
     /** Sampled rather than subscribed: the listener API is 29+ and heat does not change quickly. */
@@ -827,6 +857,9 @@ class PoseCameraView(
         result: PoseLandmarkerResult,
         image: com.google.mediapipe.framework.image.MPImage,
     ) {
+        // Empty frames are what an honest rate is made of while the camera points at a room, and
+        // skipping them would freeze the number instead.
+        countResult(SystemClock.elapsedRealtime())
         if (result.timestampMs() < staleBefore.get()) {
             PoseLog.trace(LogCategory.CAMERA) { "dropped a frame from the previous camera" }
             return
@@ -1036,7 +1069,7 @@ class PoseCameraView(
 
         // Only `auto` is calibrated. A named profile is somebody saying they have already decided.
         if (propProfile == Profile.AUTO && processingMs > 0.0) {
-            val moved = calibrator.record(processingMs.toFloat(), resolved.targetFps, nowMs)
+            val moved = calibrator.record(processingMs.toFloat(), nowMs)
             if (moved) post { onCalibrationMoved() }
         }
 
@@ -1283,6 +1316,7 @@ class PoseCameraView(
             PerformanceResolver.resolve(
                 profile = propProfile,
                 tier = calibrator.tier,
+                autoFps = calibrator.autoFps.takeIf { it > 0 },
                 requestedFps = propTargetFps,
                 requestedPreview = propPreview,
                 requestedAnalysis = propAnalysis,
@@ -1305,7 +1339,7 @@ class PoseCameraView(
                 "delegate" to (resolvedDelegate ?: "CPU"),
                 "targetFps" to current.targetFps,
                 "analysisResolution" to CameraSource.analysisSizeFor(current.analysis).toMap(),
-                "actualFps" to measuredFps,
+                "actualFps" to currentMeasuredFps(),
             ),
         )
     }
@@ -1342,7 +1376,7 @@ class PoseCameraView(
             "facing" to camera.facing.nameForJs(),
             "active" to camera.isBound,
             "detecting" to (detector != null || detectorPending),
-            "fps" to measuredFps,
+            "fps" to currentMeasuredFps(),
             "delegate" to (resolvedDelegate ?: "CPU"),
             "deviceTier" to calibrator.tier.nameForJs(),
         )
@@ -1564,7 +1598,15 @@ class PoseCameraView(
         const val IDLE_AFTER_MS = 2_000L
 
         const val FPS_WINDOW_MS = 1_000L
-        const val PACING_TOLERANCE = 0.9
+
+        /** No result for this long means `getState().fps` reports zero rather than the last live value. */
+        const val FPS_STALE_AFTER_MS = 2_000L
+
+        /**
+         * A sensor frame this close to its due time counts as on time. Sensor clocks jitter by a
+         * few milliseconds, and a strict compare would drop a frame that is early by one.
+         */
+        const val PACING_JITTER_MS = 5.0
 
         /** Two boxes within this much area are the same size, and the centre breaks the tie. */
         const val AREA_TIE_EPSILON = 1e-4f
