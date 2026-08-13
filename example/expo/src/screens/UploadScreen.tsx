@@ -16,7 +16,6 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { exportPose, type ExportResult } from 'react-native-pose-detection';
 
-import { Choice } from '../components/Controls';
 import { Card } from '../components/Glass';
 import { NAV_CLEARANCE } from '../components/NavBar';
 import { theme } from '../theme';
@@ -54,6 +53,7 @@ export function UploadScreen() {
   const [entries, setEntries] = React.useState<Entry[]>([]);
   const [viewing, setViewing] = React.useState<Entry | null>(null);
   const [people, setPeople] = React.useState<(typeof PEOPLE)[number]>('1');
+  const [pickingPeople, setPickingPeople] = React.useState(false);
   const task = React.useRef<{ cancel: () => void } | null>(null);
 
   const refresh = React.useCallback(() => {
@@ -152,9 +152,53 @@ export function UploadScreen() {
         </Text>
       </Pressable>
 
-      <Card style={styles.people}>
-        <Choice title="People to look for" options={PEOPLE} value={people} onChange={setPeople} />
-      </Card>
+      <Pressable
+        onPress={() => setPickingPeople(true)}
+        accessibilityRole="button"
+        accessibilityLabel={`People to look for, currently ${people}`}
+        style={({ pressed }) => [styles.select, pressed && styles.pressed]}
+      >
+        <Ionicons name="people-outline" size={17} color={theme.color.faint} />
+        <Text style={styles.selectLabel}>People to look for</Text>
+        <Text style={styles.selectValue}>{people}</Text>
+        <Ionicons name="chevron-down" size={15} color={theme.color.faint} />
+      </Pressable>
+
+      <Modal
+        visible={pickingPeople}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPickingPeople(false)}
+      >
+        <Pressable style={styles.scrim} onPress={() => setPickingPeople(false)}>
+          <View style={styles.menu}>
+            <Text style={styles.menuTitle}>People to look for</Text>
+            {PEOPLE.map((option, index) => (
+              <Pressable
+                key={option}
+                onPress={() => {
+                  setPeople(option);
+                  setPickingPeople(false);
+                }}
+                accessibilityRole="button"
+                accessibilityState={{ selected: option === people }}
+                style={({ pressed }) => [
+                  styles.menuRow,
+                  index > 0 && styles.menuRowDivided,
+                  pressed && styles.rowPressed,
+                ]}
+              >
+                <Text style={[styles.menuText, option === people && styles.menuTextOn]}>
+                  {option}
+                </Text>
+                {option === people ? (
+                  <Ionicons name="checkmark" size={17} color={theme.color.accent} />
+                ) : null}
+              </Pressable>
+            ))}
+          </View>
+        </Pressable>
+      </Modal>
 
       {busy ? (
         <View style={styles.track}>
@@ -406,7 +450,7 @@ const styles = StyleSheet.create({
     fontSize: theme.font.body,
     fontWeight: '600',
   },
-  // The pill turns pale while it works, so the label has to stop being the colour of the pill it
+  // The pill turns pale while it works, so the label has to stop being the color of the pill it
   // was sitting on.
   dropLabelBusy: {
     color: theme.color.text,
@@ -414,8 +458,68 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.6,
   },
-  people: {
-    paddingVertical: theme.space(3),
+  select: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.space(3),
+    paddingVertical: theme.space(3.5),
+    paddingHorizontal: theme.space(4.5),
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.color.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.color.border,
+  },
+  selectLabel: {
+    flex: 1,
+    color: theme.color.muted,
+    fontSize: theme.font.label,
+  },
+  selectValue: {
+    color: theme.color.text,
+    fontSize: theme.font.label,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  scrim: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: theme.space(8),
+    backgroundColor: 'rgba(11,18,32,0.35)',
+  },
+  menu: {
+    width: '100%',
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.color.surface,
+    overflow: 'hidden',
+  },
+  menuTitle: {
+    color: theme.color.faint,
+    fontSize: theme.font.tiny,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    paddingHorizontal: theme.space(4.5),
+    paddingTop: theme.space(4),
+    paddingBottom: theme.space(2),
+  },
+  menuRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: theme.space(3.5),
+    paddingHorizontal: theme.space(4.5),
+  },
+  menuRowDivided: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: theme.color.border,
+  },
+  menuText: {
+    color: theme.color.text,
+    fontSize: theme.font.body,
+  },
+  menuTextOn: {
+    color: theme.color.accent,
+    fontWeight: '700',
   },
   track: {
     flexDirection: 'row',

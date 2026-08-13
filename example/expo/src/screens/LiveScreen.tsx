@@ -42,6 +42,11 @@ const MAX_POSES = ['1', '2', '3', '4', '5'] as const;
 // single subject, 0.3 above that. The numbers override it, and 0.3 is the floor worth offering
 // because below it the model returns the same body twice rather than finding a second one.
 const CONFIDENCE = ['auto', '0.3', '0.4', '0.5', '0.6', '0.7'] as const;
+// The One Euro filter is `cutoff = minCutoff + beta * speed`. minCutoff sets how hard a still body
+// is smoothed, beta how quickly that relaxes once it moves, so a low beta is what makes a skeleton
+// trail behind fast movement. Both are on the panel because the right pair is a matter of feel.
+const MIN_CUTOFF = ['0.5', '1', '2', '4'] as const;
+const BETA = ['0', '1', '4', '8', '16'] as const;
 
 /**
  * What the angle toggle draws when it is on.
@@ -91,6 +96,8 @@ export function LiveScreen({ onClose }: { onClose: () => void }) {
   const [maxPoses, setMaxPoses] = React.useState<(typeof MAX_POSES)[number]>('1');
   const [confidence, setConfidence] = React.useState<(typeof CONFIDENCE)[number]>('auto');
   const [smoothing, setSmoothing] = React.useState(true);
+  const [minCutoff, setMinCutoff] = React.useState<(typeof MIN_CUTOFF)[number]>('1');
+  const [beta, setBeta] = React.useState<(typeof BETA)[number]>('4');
   const [poseCount, setPoseCount] = React.useState(0);
   const [snapshot, setSnapshot] = React.useState<string | null>(null);
 
@@ -101,7 +108,24 @@ export function LiveScreen({ onClose }: { onClose: () => void }) {
 
   const [ready, setReady] = React.useState<ReadyEvent | null>(null);
   const [performance, setPerformance] = React.useState<PerformanceEvent | null>(null);
+  const [fpsLive, setFpsLive] = React.useState(0);
   const [notice, setNotice] = React.useState<{ message: string; fatal: boolean } | null>(null);
+
+  /**
+   * The measured rate changes every second and no event carries it: performance events fire when
+   * the configuration moves, not when the measurement does. Polled, and only while the readout is
+   * on screen, so a hidden stat bar costs nothing.
+   */
+  React.useEffect(() => {
+    if (!showStats || !ready) return;
+    const poll = setInterval(() => {
+      void camera.current
+        ?.getProfile()
+        .then((profile) => setFpsLive(profile.measuredFps))
+        .catch(() => undefined);
+    }, FPS_POLL_MS);
+    return () => clearInterval(poll);
+  }, [showStats, ready]);
 
   const onReady = React.useCallback((event: ReadyEvent) => {
     setReady(event);
@@ -179,7 +203,7 @@ export function LiveScreen({ onClose }: { onClose: () => void }) {
     );
   }
 
-  const fps = Math.round(performance?.actualFps ?? 0);
+  const fps = fpsLive;
   // Everything at the bottom stacks off one base, so a panel can never land under the rail.
   const railBottom = insets.bottom + theme.space(4);
   const panelBottom = railBottom + RAIL_HEIGHT + theme.space(3);
@@ -198,7 +222,7 @@ export function LiveScreen({ onClose }: { onClose: () => void }) {
         thermalPolicy={thermalPolicy}
         maxPoses={Number(maxPoses)}
         minConfidence={confidence === 'auto' ? undefined : Number(confidence)}
-        smoothing={smoothing}
+        smoothing={smoothing ? { minCutoff: Number(minCutoff), beta: Number(beta) } : false}
         data={{ mode: dataMode }}
         onPose={dataMode === 'off' ? undefined : () => setPoseCount((value) => value + 1)}
         resolution={resolution}
@@ -347,6 +371,17 @@ export function LiveScreen({ onClose }: { onClose: () => void }) {
                 <ToggleRow title="Bones" value={connections} onChange={setConnections} />
                 <ToggleRow title="Angles" value={angles} onChange={setAngles} />
                 <ToggleRow title="Smoothing" value={smoothing} onChange={setSmoothing} />
+                {smoothing ? (
+                  <>
+                    <Choice
+                      title="Rest cutoff"
+                      options={MIN_CUTOFF}
+                      value={minCutoff}
+                      onChange={setMinCutoff}
+                    />
+                    <Choice title="Speed response" options={BETA} value={beta} onChange={setBeta} />
+                  </>
+                ) : null}
                 <Rule />
                 <Choice
                   title="Delegate"
@@ -439,6 +474,8 @@ export function LiveScreen({ onClose }: { onClose: () => void }) {
 const LOG_LIMIT = 40;
 /** The rail's own height, so the panel above it can be placed without measuring. */
 const RAIL_HEIGHT = 58;
+/** The native side refreshes its measurement once a second, so asking faster reads the same number. */
+const FPS_POLL_MS = 1000;
 
 /** `Resolution` is a width and a height, not the preset name that was asked for. */
 function shortSize(size?: { width: number; height: number }) {
