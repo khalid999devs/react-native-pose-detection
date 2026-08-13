@@ -1971,7 +1971,7 @@ PODS:
     - React-utils (= 0.86.2)
     - ReactNativeDependencies
   - ReactNativeDependencies (0.86.2)
-  - ReactNativePoseDetection (0.0.0):
+  - ReactNativePoseDetection (0.1.0):
     - ExpoModulesCore
     - MediaPipeTasksVision (= 0.10.35)
   - Yoga (0.0.0)
@@ -2352,7 +2352,7 @@ SPEC CHECKSUMS:
   ReactCodegen: 01cbf7a08c30e8b71ad71489bb56b5bed195fa5e
   ReactCommon: 9002f006f571256348994183f7d4387aa7cf84e8
   ReactNativeDependencies: 2bd6854ade79bf1b60586d1ab7813a389df1b6bf
-  ReactNativePoseDetection: 1515e0348417648517df58e7ed6e39c47064d05d
+  ReactNativePoseDetection: 0e21bff00f081fd56a399e05dd3ae85fe7d18f5e
   Yoga: 9891cfb1c680f64de9c41b09e7453dea33454d2b
 
 PODFILE CHECKSUM: b3726e163b38b0b443a3712b4969f94b59939b04
