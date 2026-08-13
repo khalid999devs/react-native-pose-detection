@@ -1,3 +1,4 @@
+BGRA
 CERT
 CISA
 CoreML

@@ -8,8 +8,8 @@ import { PoseCamera, type PoseCameraRef } from 'react-native-pose-detection';
 
 ## What runs today
 
-**Every prop on this page is implemented on both platforms.** None of it has run on a physical
-device yet, so treat the numbers as targets rather than measurements.
+**Every prop on this page is implemented on both platforms**, and the reference-parity test
+fails the build if one of them goes missing from this page.
 
 ## Layout
 

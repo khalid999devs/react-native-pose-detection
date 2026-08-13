@@ -1,7 +1,7 @@
 # react-native-pose-detection
 
-Real-time pose detection for React Native and Expo. 33 body landmarks, iOS and Android,
-powered by MediaPipe.
+Real-time human pose detection for React Native and Expo. 33 body landmarks per frame, detected
+and drawn entirely in the native layer, powered by MediaPipe.
 
 [![CI](https://github.com/khalid999devs/react-native-pose-detection/actions/workflows/ci.yml/badge.svg)](https://github.com/khalid999devs/react-native-pose-detection/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/react-native-pose-detection)](https://www.npmjs.com/package/react-native-pose-detection)
@@ -16,69 +16,236 @@ powered by MediaPipe.
   <img alt="Studio screen painting an uploaded photo" src="./ss/studio-photo.png" width="30%" />
 </p>
 
-> **Pre-release, not yet published.** Both platforms are complete: the camera, the detector, the
-> native overlay, the trigger engine, the geometry and the self-tuning performance governor, on
-> Android and iOS. iOS runs on physical hardware; the Android device pass and the sustained-run
-> matrix are what remain before `0.1.0`. Progress: [development plan](./docs/development-plan.md).
+One component opens the camera, finds the body, draws the skeleton, and tunes itself to the
+phone it is running on. Landmarks, events and painted files are there when you ask; nothing
+crosses the bridge until you do.
+
+## Contents
+
+- [Features](#features)
+- [How it works](#how-it-works)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Quick start](#quick-start)
+- [The live camera](#the-live-camera)
+- [Landmarks in JavaScript](#landmarks-in-javascript)
+- [Native triggers](#native-triggers)
+- [Photos and video files](#photos-and-video-files)
+- [Ref methods](#ref-methods)
+- [Events](#events)
+- [Performance and self-tuning](#performance-and-self-tuning)
+- [App size](#app-size)
+- [Example app](#example-app)
+- [Documentation](#documentation)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Features
+
+- **One component, working defaults.** `<PoseCamera />` is a live camera with a tracked
+  skeleton. Every default can be overridden per axis; none has to be.
+- **Zero bridge traffic by default.** Detection, smoothing, drawing and trigger evaluation all
+  happen natively. Data crosses to JavaScript only when you opt in, as one zero-copy binary
+  buffer when you do.
+- **Self-tuning performance.** The frame rate is not a preset: the package measures what
+  inference costs on the device, converges on the fastest sustainable rate, steps down with
+  heat, and caches the answer so the next launch starts already tuned.
+- **Native triggers.** Declare conditions like "left knee bent past 90 degrees for 300 ms" and
+  receive one event when they fire, instead of streaming coordinates to poll yourself.
+- **Files, not just cameras.** Landmarks from a photo or video on disk, or a full-quality copy
+  with the skeleton painted in, produced without slowing a live camera down.
+- **Crash-safe camera switching.** A switch resolves when the new lens delivers a frame, rolls
+  back on failure, and preserves detection state and trigger counters.
+- **Zero runtime dependencies.** The peers are `expo`, `react` and `react-native`. No
+  VisionCamera, no Reanimated, no worklets.
+- **No model files to hunt down.** The config plugin downloads the model you pick, verifies its
+  SHA-256, and installs it into both native projects at prebuild. A checksum mismatch fails the
+  build, never warns.
+
+## How it works
+
+The pipeline is native end to end. Camera frames go from the sensor to MediaPipe Tasks Vision
+(0.10.35, pinned on both platforms) on a dedicated analysis thread: CameraX feeding hardware
+RGBA buffers on Android, AVFoundation feeding scaled BGRA buffers on iOS. Inference runs on the
+GPU where a probe proves it works, CPU otherwise. Results flow through One-Euro smoothing, the
+trigger evaluator and the overlay renderer without ever leaving native code, and the skeleton is
+drawn directly over the preview.
+
+JavaScript sees exactly what you subscribe to: events for lifecycle and triggers, and frames as
+typed arrays decoded from a single shared buffer when a data mode is on. A performance governor
+watches the measured cost of every inference and continuously resolves the target frame rate,
+resolutions and thermal response, with every axis overridable by props.
+
+## Requirements
+
+| | Minimum |
+| --- | --- |
+| React Native | 0.74 |
+| Expo SDK | 51 (SDK 57 raises the iOS deployment target to 16.4) |
+| iOS | 15.1 |
+| Android | API 24 |
+
+**Expo Go is not supported.** This package contains native code and needs a development build.
+
+## Installation
+
+### Expo
+
+Install the package:
+
+```bash
+npx expo install react-native-pose-detection
+```
+
+In **`app.json`** (or `app.config.js`), add the config plugin, pick a model, and set the camera
+permission text:
+
+```json
+{
+  "expo": {
+    "plugins": [
+      [
+        "react-native-pose-detection",
+        {
+          "model": "full",
+          "cameraPermissionText": "We use the camera to analyze your movement."
+        }
+      ]
+    ]
+  }
+}
+```
+
+`model` is `lite`, `full` or `heavy`; exactly one ships in the app. Then generate the native
+projects:
+
+```bash
+npx expo prebuild
+```
+
+The plugin downloads the model, verifies its checksum, installs it into
+`android/app/src/main/assets/` and `ios/<YourApp>/Resources/`, and writes the camera permission
+into `Info.plist` and `AndroidManifest.xml`. Nothing is fetched at runtime.
+
+### Bare React Native
 
 ```bash
 npm i react-native-pose-detection
+npx react-native-pose-detection fetch-model full
 ```
 
-```json
-{ "plugins": [["react-native-pose-detection", { "model": "full" }]] }
+The CLI installs the model into both native projects. Two things it cannot write for you:
+
+In **`ios/<YourApp>/Info.plist`**, add the camera permission text:
+
+```xml
+<key>NSCameraUsageDescription</key>
+<string>We use the camera to analyze your movement.</string>
 ```
+
+In **`android/app/src/main/AndroidManifest.xml`**, add the permission:
+
+```xml
+<uses-permission android:name="android.permission.CAMERA" />
+```
+
+`npx react-native-pose-detection doctor` checks the whole install and names anything missing.
+
+## Quick start
+
+In **`App.tsx`**:
 
 ```tsx
-import { PoseCamera } from 'react-native-pose-detection';
+import { PoseCamera, useCameraPermission } from 'react-native-pose-detection';
 
 export default function App() {
+  const permission = useCameraPermission();
+  if (!permission.granted) return null;
+
   return <PoseCamera style={{ flex: 1 }} />;
 }
 ```
 
-That's a live camera with a skeleton drawn natively, tuned to the device it's running on,
-with **zero data crossing to JavaScript**.
+That is a live camera with a skeleton drawn natively, tuned to the device, with nothing crossing
+the bridge. `useCameraPermission` asks on first mount and re-checks on foreground;
+`getCameraPermission()` and `requestCameraPermission()` are there for apps that manage the flow
+themselves.
 
----
+## The live camera
 
-## Why this one
+Every prop is optional. Any explicit value pins that axis; the rest stay automatic.
 
-| | |
-| --- | --- |
-| **No model files to hunt down** | The config plugin fetches, verifies, and installs the model. Other libraries make you download a `.task` by hand and place it in two native folders. |
-| **Zero runtime dependencies** | Nothing is installed alongside it. The peers are `expo`, `react` and `react-native`, which you already have: no VisionCamera, no Reanimated. |
-| **Zero bridge cost by default** | Landmarks stay native. Data crossing to JS is something you opt into. |
-| **Logic runs natively** | Declare thresholds; the state machine runs on the camera thread and calls you ~once per event, not 30× per second. |
-| **Tunes itself** | Measures the device, settles on the fastest configuration it can sustain, and remembers it. Backs off when the phone gets hot. |
-| **Honest numbers** | The Android app-size figures come from an assembled build. Anything still estimated says so where it is printed. |
+| Prop | Default | What it controls |
+| --- | --- | --- |
+| `facing` | `'auto'` | `'front'` or `'back'`; auto prefers front and falls back on the first bind |
+| `active` | `true` | The whole camera session. Set it to `isFocused` so leaving the screen releases the camera |
+| `detection` | `true` | Inference only. `false` keeps the preview and releases the model's GPU memory |
+| `overlay` | `true` | The skeleton. Also takes a config object, below |
+| `smoothing` | `true` | One-Euro filter over x, y and z. Also takes `{ minCutoff, beta }` |
+| `maxPoses` | `1` | 1 to 5. A ceiling, not a promise; pair it with `minConfidence` |
+| `minConfidence` | from `maxPoses` | How sure the model must be before something counts as a body |
+| `profile` | `'auto'` | The performance envelope, see [performance](#performance-and-self-tuning) |
+| `targetFps` | `'auto'` | Pinning a number stops the governor moving it |
+| `resolution` | `'auto'` | Preview: `'480p'` `'720p'` `'1080p'` |
+| `analysisResolution` | `'auto'` | What the model sees: `'360p'` `'480p'` `'720p'` |
+| `delegate` | `'auto'` | `'gpu'` or `'cpu'`; auto probes the GPU and falls back |
+| `thermalPolicy` | `'adaptive'` | `'critical-only'` or `'off'`; off stops the response, never the reporting |
 
-## Requirements
-
-| | |
-| --- | --- |
-| React Native | 0.74+ |
-| Expo SDK | 51+ (development build or EAS) |
-| iOS | 15.1+, and 16.4+ on Expo SDK 57, which is what `ExpoModulesCore` requires |
-| Android | API 24+ |
-
-**Expo Go is not supported**. This package contains native code. Use a
-[development build](https://docs.expo.dev/develop/development-builds/introduction/).
-
-Full setup, including bare React Native: [installation guide](./guides/installation.md).
-
-## Counting reps in 20 lines
-
-Logic is declared, evaluated natively, and reported once per rep:
+The overlay is configurable down to individual joints, in the same shape `exportPose` takes:
 
 ```tsx
 <PoseCamera
-  style={{ flex: 1 }}
+  overlay={{
+    color: '#00E5FF',
+    lineWidth: 3,
+    pointRadius: 4,
+    minVisibility: 0.5,
+    angles: [{ joint: 'leftKnee' }, { joint: 'rightKnee' }],
+  }}
+/>
+```
+
+Full tables, including layout behavior and the overlay schema: [`<PoseCamera>`
+reference](./guides/reference/pose-camera.md).
+
+## Landmarks in JavaScript
+
+Nothing crosses until you choose a mode:
+
+```tsx
+<PoseCamera
+  data={{ mode: 'throttled', throttleMs: 100, select: ['leftKnee', 'rightKnee'] }}
+  onPose={(frame) => {
+    // frame.landmarks: Float32Array of [x, y, z, visibility] per selected joint
+    // frame.angles, frame.centerOfMass, frame.velocity, frame.bodySpan ride along
+  }}
+/>
+```
+
+| `data.mode` | Crossings/sec | Loses frames? |
+| --- | --- | --- |
+| `'off'` *(default)* | 0 | n/a |
+| `'batched'` | ~4 (`flushMs`, default 500) | none |
+| `'throttled'` | ~10 (`throttleMs`, default 100) | intermediate ones |
+| `'live'` | every frame | none |
+
+Frames arrive as typed arrays decoded from one shared buffer, not object trees, and `select`
+narrows the payload to the joints you name. The wire format and the retention rules are in
+[data delivery](./guides/data-delivery.md).
+
+## Native triggers
+
+Conditions are evaluated on the camera thread, once per frame; JavaScript hears about it when
+something fires:
+
+```tsx
+<PoseCamera
   triggers={[
     {
       id: 'squat',
       enter: { angle: 'leftKnee', below: 90 },
-      exit:  { angle: 'leftKnee', above: 160 },
+      exit: { angle: 'leftKnee', above: 160 },
       emit: 'cycle',
       debounceMs: 300,
     },
@@ -87,37 +254,108 @@ Logic is declared, evaluated natively, and reported once per rep:
 />
 ```
 
-Thirty reps means thirty bridge crossings, not nine hundred. A trigger that asks for
-`snapshot: true` pays one more crossing to fetch the frame, and arrives a microtask later than a
-plain one, because a landmark buffer cannot ride an event
-([ADR 0009](./docs/adr/0009-trigger-snapshots-are-claimed.md)).
-More: [triggers](./guides/triggers.md) · [what you can build](./guides/recipes.md).
+Thirty reps is thirty bridge crossings, not nine hundred. Conditions read angles, positions,
+velocities and visibility, compose with `all`/`any`, and a trigger can claim the exact frame it
+fired on with `snapshot: true`. The grammar is in the
+[trigger schema](./guides/reference/trigger-schema.md), and
+[what you can build](./guides/recipes.md) maps the feasibility, from rep counters to
+posture checks.
 
-## Reading landmarks directly
+## Photos and video files
 
-Nothing crosses until you ask. Pick the cheapest mode that does the job:
+The same detector, no camera. Numbers out of a file:
 
-```tsx
-<PoseCamera data={{ mode: 'batched', flushMs: 500 }} onPoseBatch={handle} />
+```ts
+import { detectOnImage, detectOnVideo } from 'react-native-pose-detection';
+
+const poses = await detectOnImage(photoUri, { maxPoses: 1 });
+
+const job = detectOnVideo(videoUri, { fps: 10, onProgress: setProgress });
+const frames = await job.frames; // cancellable with job.cancel()
 ```
 
-| Mode | Crossings/sec | Data loss |
-| --- | --- | --- |
-| `off` *(default)* | 0 | n/a |
-| `batched` | 4 | none |
-| `throttled` | 20 | intermediate frames |
-| `live` | 60 | none |
+Or a painted copy, written into your app's sandbox at full quality:
 
-Two crossings per emission rather than one: an event cannot carry an ArrayBuffer, so native
-signals that frames are ready and the library pulls them in a single zero-copy buffer
-([ADR 0008](./docs/adr/0008-frames-are-drained-not-pushed.md)). The pull is handled for you, and
-the ratio is what drives the choice: `batched` is 15 times cheaper than `live`.
+```ts
+import { exportPose } from 'react-native-pose-detection';
 
-[Data delivery guide](./guides/data-delivery.md).
+const task = exportPose(videoUri, {
+  overlay: { color: '#00E5FF', lineWidth: 3 },
+  directory: 'documents',
+  onProgress: setProgress,
+});
+const { uri, posesFound } = await task.result;
+```
 
-## Choosing a model
+Exports run on their own detector, on CPU, below the camera's priority, so a live preview keeps
+its frame rate while one runs. The file is staged and renamed on completion, so nothing that
+dies mid-write leaves behind something that looks finished. Options, costs and multi-person
+behavior: [photos and video files](./guides/files.md).
 
-One model ships, whichever you select.
+## Ref methods
+
+```tsx
+const cam = useRef<PoseCameraRef>(null);
+<PoseCamera ref={cam} />;
+```
+
+| Method | What it does |
+| --- | --- |
+| `switchCamera()` / `setFacing(f)` | Switches lens; resolves when the new camera delivers a frame |
+| `pause()` / `resume()` | Stops and restarts the capture session |
+| `startDetection()` / `stopDetection()` | Inference on/off; stopping releases GPU memory |
+| `setOverlayEnabled(on)` | Shows or hides the skeleton |
+| `snapshot()` | The current frame on demand, `null` when nobody is there |
+| `getState()` | Facing, active, detecting, fps, delegate, tier, synchronously |
+| `getProfile()` | Where calibration stands, with the live measured rate |
+| `setProfile(p)` | Switches the performance profile now, not at the next render |
+
+Details and failure modes: [ref methods](./guides/reference/ref-methods.md).
+
+## Events
+
+| Event | Fires |
+| --- | --- |
+| `onReady` | Once the camera and model are up, with the resolved delegate, rate and resolutions |
+| `onError` | Every failure, with a stable `code` and a `fatal` flag |
+| `onCameraChange` | After a lens switch lands |
+| `onPerformanceChange` | Every governor or thermal adjustment, with the reason |
+| `onTrigger` | Once per trigger firing, with id, phase, count and duration |
+| `onPose` / `onPoseBatch` | Frames, per the `data` mode |
+| `onLog` | Batched log entries, when the log channel is on |
+
+Payloads and error codes: [events reference](./guides/reference/events.md).
+
+## Performance and self-tuning
+
+The default profile measures the device instead of trusting a spec sheet. Every inference
+reports its cost; the rolling median sets the target rate at 55% utilization, clamped to 10 to
+40 fps, and classifies the device tier that drives the resolutions. Heat steps the whole thing
+down, and the settled answer is cached so the next launch opens already tuned.
+
+| `profile` | Behavior |
+| --- | --- |
+| `'auto'` *(default)* | Measure, converge on the device's own rate, cache it |
+| `'efficient'` | Pinned 15 fps, 480p preview, 360p analysis |
+| `'balanced'` | Pinned 24 fps, 720p, 480p |
+| `'quality'` | Pinned 30 fps, 1080p, 480p |
+| `'unrestricted'` | Calibrated like auto, no thermal ladder except `critical` |
+
+```ts
+await cam.current.getProfile();
+// { profile: 'auto', phase: 'settled', source: 'measured', tier: 'high',
+//   resolved: { delegate: 'GPU', targetFps: 34, preview: '1080p', analysis: '480p' },
+//   p50InferenceMs: 16.2, measuredFps: 33 }
+```
+
+The ladder, the precedence rules and the honest resource budgets are in
+[the performance guide](./guides/performance.md).
+
+## App size
+
+MediaPipe's native libraries are 10.1 MB for `arm64-v8a`; the model adds 5.5 MB (`lite`), 9 MB
+(`full`) or 29.2 MB (`heavy`); the JavaScript is 62.5 KB with zero runtime dependencies behind
+it. Ship Android as an AAB so devices download one ABI instead of four.
 
 | Model | Android installed | Best for |
 | --- | --- | --- |
@@ -125,62 +363,52 @@ One model ships, whichever you select.
 | `full` *(default)* | ~23.2 MB | most apps |
 | `heavy` | ~43.4 MB | accuracy-critical, flagships |
 
-Changing it is one word in `app.json` plus `npx expo prebuild`.
-[Full size breakdown](./guides/performance.md#app-size).
+Changing it is one word in **`app.json`** plus `npx expo prebuild`. Measured numbers and
+methodology: [app size](./guides/performance.md#app-size).
+
+## Example app
+
+The repository ships a full example in [`example/`](./example): a live camera screen
+with every prop on a panel, a studio that paints picked photos and clips, and a diagnostics
+screen with stress scenarios. It exists twice, once through the Expo config plugin and once
+through the bare CLI path, so both install routes stay proven end to end.
 
 ## Documentation
 
-**[📘 Guides →](./guides/README.md)**, everything for using the library
-
-| | |
+| Guide | What it covers |
 | --- | --- |
-| [Getting started](./guides/getting-started.md) | Install → live skeleton |
+| [Getting started](./guides/getting-started.md) | Install, first camera, first data |
 | [Installation](./guides/installation.md) | Expo, bare RN, EAS, release builds |
-| [Camera control](./guides/camera-control.md) | Switching, pausing, the three toggles |
-| [Data delivery](./guides/data-delivery.md) | Getting landmarks out efficiently |
-| [Triggers](./guides/triggers.md) | Native business logic |
-| [Performance](./guides/performance.md) | Profiles, the governor, app size, memory |
-| [Photos and video files](./guides/files.md) | Landmarks from a file, and painted copies of one |
+| [Camera control](./guides/camera-control.md) | Lenses, switching, pausing, lifecycle |
+| [Data delivery](./guides/data-delivery.md) | Modes, the wire format, retention |
+| [Triggers](./guides/triggers.md) | Conditions, phases, snapshots |
+| [Photos and video files](./guides/files.md) | Landmarks from a file, painted copies |
+| [Performance](./guides/performance.md) | Profiles, the governor, thermal ladder, size |
 | [What you can build](./guides/recipes.md) | Trigger syntax, feasibility, honest limits |
-| [Troubleshooting](./guides/troubleshooting.md) | When something breaks, and the log channel |
-| [API reference](./guides/README.md#api-reference) | Props, methods, events, types |
+| [API reference](./guides/reference) | Every prop, method, event, type and error code |
+| [Troubleshooting](./guides/troubleshooting.md) | Problems people hit, and the log channel |
 
-## Getting the best performance
+## Troubleshooting
 
-Four decisions are yours; the rest is automatic.
+The quick hits:
 
-1. **Keep `data.mode: 'off'` and use triggers**, the single biggest lever
-2. **Pick `lite` if you target budget Android**, 3.5 MB smaller installed and noticeably faster
-3. **Use `select`** so only the joints you name cross to JavaScript
-4. **Set `active={isFocused}`** so the camera stops when the screen isn't visible
+- **Blank screen or "native module not found" in Expo Go**: Expo Go cannot run native code.
+  Build a development build: `npx expo prebuild && npx expo run:ios` (or `run:android`).
+- **`MODEL_NOT_FOUND`**: the plugin did not run. `npx expo prebuild --clean`, or on bare RN
+  `npx react-native-pose-detection fetch-model full`.
+- **`GPU_UNAVAILABLE`**: not a bug; that device's GPU delegate failed and it fell back to CPU.
+- **Lower frame rate than expected**: `await cam.current.getProfile()` shows the measured
+  inference cost the rate was derived from; a low rate means expensive inference, not a stuck
+  setting.
 
-Details in the [performance guide](./guides/performance.md).
+The full list, including build failures and their exact error strings:
+[troubleshooting](./guides/troubleshooting.md).
 
 ## Contributing
 
-Contributions are welcome, especially device testing on hardware we don't have.
-
-**[🛠 Developer documentation →](./docs/README.md)**
-
-The flow, and the one naming convention that runs through all of it:
-
-```text
-branch      feat/triggers-velocity-condition
-commit      feat(triggers): add velocityY condition
-PR title    feat(triggers): add velocityY condition
-```
-
-Same type, same scope, everywhere, enforced by commitlint and CI.
-
-| | |
-| --- | --- |
-| [Branches & workflow](./docs/contributing.md#workflow) | naming, rebasing, protected `main` |
-| [Commit rules](./docs/contributing.md#commits) | types, scopes, breaking changes |
-| [Pull requests](./docs/contributing.md#pull-requests) | title format, checklists, what CI runs |
-| [Quality gates](./docs/quality-gates.md) | `npm run check` before you push |
-| [Project structure](./docs/project-structure.md) | where things go |
-| [Architecture](./docs/architecture.md) | the native pipeline |
-| [ADRs](./docs/adr/README.md) | why decisions were made: read before proposing a reversal |
+Issues and pull requests are welcome, especially device reports from hardware we have not
+measured. Start with [contributing](./docs/contributing.md); the architecture, testing
+and release docs live beside it.
 
 ## License
 
