@@ -297,8 +297,6 @@ export const PoseCamera = React.forwardRef<PoseCameraRef, PoseCameraProps>(funct
   return (
     <NativeView
       style={props.style}
-      source={props.source}
-      paused={props.paused}
       profile={props.profile}
       facing={props.facing}
       delegate={props.delegate}

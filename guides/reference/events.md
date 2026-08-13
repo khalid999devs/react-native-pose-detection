@@ -65,6 +65,11 @@ exhaustive and a new failure mode has to be added here rather than appearing as 
 | `CAMERA_SWITCH_FAILED` | ❌ | Rolled back to the previous camera |
 | `GPU_UNAVAILABLE` | ❌ | Fell back to CPU: expect lower frame rates |
 | `DETECTION_FAILED` | ❌ | One frame, or one drained batch, failed; the pipeline continues |
+| `EXPORT_FAILED` | ❌ | `exportPose` could not read, paint or write the file |
+| `EXPORT_CANCELLED` | ❌ | `exportPose` was cancelled; the partial file was deleted |
+
+The last two never arrive on `onError`. They are the codes `exportPose` rejects with, and they
+are in the same set so that one exhaustive switch covers every failure this package reports.
 
 `fatal: false` is normal operation, not a bug. Only `fatal: true` means the camera stopped.
 

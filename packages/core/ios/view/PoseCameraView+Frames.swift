@@ -32,7 +32,7 @@ extension PoseCameraView: PoseDetectorObserver {
    Everything a pose goes through once it exists, whatever produced it.
 
    The camera reaches this through the detector callback above; a picked image or video reaches it
-   from `MediaPlayback`. Keeping one path is the point: smoothing, geometry, the trigger evaluator,
+   from anywhere else. Keeping one path is the point: smoothing, geometry, the trigger evaluator,
    the ring buffer and the overlay all behave identically on a file and on the camera, so there is
    no second implementation to keep in step.
    */

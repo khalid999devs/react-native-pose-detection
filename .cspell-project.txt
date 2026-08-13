@@ -91,6 +91,7 @@ tarballs
 tflite
 thermalservice
 toolkits
+transcoders
 Ultralytics
 unbuilt
 unmount

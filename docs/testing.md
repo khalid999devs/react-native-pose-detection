@@ -99,7 +99,7 @@ delegate behaves differently on them.
 ## Two evaluators, one behavior
 
 The condition evaluator and the geometry exist twice, Swift and Kotlin, and **both
-implementations must produce identical output for identical input.** 65 JUnit tests and 69
+implementations must produce identical output for identical input.** 65 JUnit tests and 81
 XCTests assert the same behavior on each side, and the wire parity test reads all three languages'
 constant tables and fails when they disagree. That last one is the only part CI enforces
 mechanically; the rest is two suites written against one specification.

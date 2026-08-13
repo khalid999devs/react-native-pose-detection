@@ -20,13 +20,14 @@ let package = Package(
       path: ".",
       exclude: [
         "Tests",
-        // `view` is listed file by file rather than as a directory so that OverlayProjection can
-        // be compiled in: the alignment between the picture and the skeleton is exactly the kind
-        // of arithmetic that deserves tests, and the rest of `view` needs UIKit.
+        // `view` and `export` are listed file by file rather than as directories so that
+        // OverlayProjection and ExportCanvas can be compiled in: where the picture lands and how
+        // big the output is are exactly the kind of arithmetic that deserves tests, and the rest
+        // of both directories needs UIKit, AVFoundation or MediaPipe.
         "view/OverlayParsing.swift",
-        "view/MediaPlayback.swift",
         "view/OverlayView.swift",
-        "view/OverlayView+Angles.swift",
+        "view/OverlayRenderer.swift",
+        "view/OverlayRenderer+Angles.swift",
         "view/PoseCameraView.swift",
         "view/PoseCameraView+Capture.swift",
         "view/PoseCameraView+Delivery.swift",
@@ -37,19 +38,26 @@ let package = Package(
         "view/PoseCameraView+Session.swift",
         "camera",
         "detector",
+        "export/ExportOptions.swift",
+        "export/PoseExport.swift",
+        "export/VideoExporter.swift",
+        "export/VideoExporter+Encode.swift",
         "PoseDetectionModule.swift",
         "Permissions.swift",
         "ReactNativePoseDetection.podspec"
       ],
       sources: [
         "Monotonic.swift",
+        "CancelRegistry.swift",
+        "Guarded.swift",
         "ErrorCode.swift",
         "Skeleton.swift",
         "PoseLog.swift",
         "JSCoercion.swift",
         "engine",
         "performance",
-        "view/OverlayProjection.swift"
+        "view/OverlayProjection.swift",
+        "export/ExportCanvas.swift"
       ]
     ),
     .testTarget(

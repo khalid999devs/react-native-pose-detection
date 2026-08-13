@@ -14,11 +14,14 @@ enum ErrorCode: String {
   case cameraSwitchFailed = "CAMERA_SWITCH_FAILED"
   case gpuUnavailable = "GPU_UNAVAILABLE"
   case detectionFailed = "DETECTION_FAILED"
+  case exportFailed = "EXPORT_FAILED"
+  case exportCancelled = "EXPORT_CANCELLED"
 
-  /// Only the first nine stop the camera. The rest are reported and recovered from.
+  /// Only the first nine stop the camera. The rest are reported and recovered from, and the two
+  /// export codes never reach a camera at all: they reject `exportPose`'s promise.
   var fatal: Bool {
     switch self {
-    case .cameraSwitchFailed, .gpuUnavailable, .detectionFailed:
+    case .cameraSwitchFailed, .gpuUnavailable, .detectionFailed, .exportFailed, .exportCancelled:
       return false
     default:
       return true

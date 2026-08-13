@@ -1,21 +1,18 @@
 import UIKit
 
 /**
- The angle arcs and their labels, split out of `OverlayView` so each file stays one concern: the
- other one is the skeleton and the frame handoff, this one is the only part that reads
- `config.angles`.
+ The angle arcs and their labels, split out of `OverlayRenderer` so each file stays one concern:
+ the other one is the skeleton, this one is the only part that reads `config.angles`.
 
  Same aspect correction as `Geometry`, and for the same reason: landmarks are normalized by
  dividing x by width and y by height, so one unit of x is not one unit of y on any non-square
  frame. An arc drawn without putting both axes back in a common unit sits off the joint it belongs
  to on every standard 4:3 or 16:9 frame.
- */
-extension OverlayView {
-  static let labelFontSize: CGFloat = 13
-  static let labelGap: CGFloat = 18
-  static let labelPadding: CGFloat = 5
-  static let degreesPerRadian = CGFloat(180.0 / Double.pi)
 
+ The label draws with `NSString.draw`, which needs a current UIKit context rather than a bare
+ `CGContext`. The view path has one already; the export path pushes one around the whole frame.
+ */
+extension OverlayRenderer {
   func drawAngles(_ context: CGContext) {
     context.setLineWidth(config.lineWidth * 0.75)
 
@@ -49,12 +46,12 @@ extension OverlayView {
       )
       if bisector.isNaN { continue }
 
-      let color = index < arcColors.count ? arcColors[index] : strokeColor
+      let color = index < palette.arcs.count ? palette.arcs[index] : palette.stroke
       context.setStrokeColor(color)
 
       // The sweep is the angle itself, centered on the bisector, so the arc sits inside the two limb
       // segments rather than crossing them.
-      let sweep = CGFloat(degrees) / OverlayView.degreesPerRadian
+      let sweep = CGFloat(degrees) / OverlayRenderer.degreesPerRadian
       let start = CGFloat(bisector) - sweep / 2
       context.addArc(
         center: center,
@@ -79,14 +76,14 @@ extension OverlayView {
     bisector: CGFloat,
     color: CGColor
   ) {
-    let labelRadius = spec.radius + OverlayView.labelGap
+    let labelRadius = spec.radius + OverlayRenderer.labelGap
     let anchor = CGPoint(x: center.x + cos(bisector) * labelRadius, y: center.y + sin(bisector) * labelRadius)
 
-    var attributes = labelAttributes
+    var attributes = palette.labelAttributes
     attributes[.foregroundColor] = UIColor(cgColor: color)
     let text = format(degrees: degrees, decimals: spec.decimals) as NSString
     let size = text.size(withAttributes: attributes)
-    let padding = OverlayView.labelPadding
+    let padding = OverlayRenderer.labelPadding
 
     let box = CGRect(
       x: anchor.x - size.width / 2 - padding,

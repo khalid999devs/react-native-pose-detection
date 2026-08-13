@@ -1,3 +1,4 @@
+import type { ExportResult } from '../exportPose';
 import type { LogLevelConfig } from '../types/logging';
 import type { TriggerEvent } from '../types/triggers';
 
@@ -18,7 +19,10 @@ export type NativePoseModule = {
     taskId: number,
   ): Promise<ArrayBuffer>;
   cancelDetectOnVideo(taskId: number): void;
-  /** Expo's module event subscription, used for video progress. */
+  /** Resolves with an `ExportResult`. Rejects with `EXPORT_CANCELLED` or `EXPORT_FAILED`. */
+  exportPose(uri: string, options: Record<string, unknown>, taskId: number): Promise<ExportResult>;
+  cancelExportPose(taskId: number): void;
+  /** Expo's module event subscription, used for video and export progress. */
   addListener(event: string, listener: (payload: never) => void): { remove(): void };
   /** Prompts when the system still will, and resolves with the outcome either way. */
   requestCameraPermission(): Promise<NativeCameraPermission>;

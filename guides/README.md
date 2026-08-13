@@ -30,7 +30,8 @@ target rather than a measurement, and that is the one caveat worth carrying into
 | | |
 | --- | --- |
 | [Performance](./performance.md) | Profiles, calibration, memory budgets, app size |
-| [Static input](./static-input.md) | Images and video files. Planned, not yet shipped |
+| [Static input](./static-input.md) | Landmarks out of an image or a video file |
+| [Export](./export.md) | Paint a picked file and write it into your app |
 | [Recipes](./recipes/README.md) | Squat, push-up, jump, plank: copy-paste configs |
 | [Debugging](./debugging.md) | Live log streaming, off by default |
 | [Troubleshooting](./troubleshooting.md) | When something doesn't work |

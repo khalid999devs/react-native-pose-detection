@@ -128,6 +128,7 @@ Changing it is one word in `app.json` plus `npx expo prebuild`.
 | [Triggers](./guides/triggers.md) | Native business logic |
 | [Performance](./guides/performance.md) | Profiles, calibration, app size, memory |
 | [Static input](./guides/static-input.md) | Images and video files |
+| [Export](./guides/export.md) | Paint a picked file and write it to your app |
 | [Recipes](./guides/recipes/README.md) | Squat, push-up, jump, plank |
 | [Debugging](./guides/debugging.md) | Live log streaming, off by default |
 | [Troubleshooting](./guides/troubleshooting.md) | When something breaks |

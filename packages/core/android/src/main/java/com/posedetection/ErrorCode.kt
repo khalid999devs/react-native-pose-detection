@@ -16,4 +16,6 @@ internal enum class ErrorCode(
     CAMERA_SWITCH_FAILED(false),
     GPU_UNAVAILABLE(false),
     DETECTION_FAILED(false),
+    EXPORT_FAILED(false),
+    EXPORT_CANCELLED(false),
 }

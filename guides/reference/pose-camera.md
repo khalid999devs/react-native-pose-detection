@@ -21,36 +21,6 @@ The preview's aspect ratio comes from the camera rather than from this style, so
 shape does not match it letterboxes rather than stretching the picture. Landmarks are normalized
 against the analysis frame either way, so nothing about the layout moves them.
 
-## Source
-
-| Prop | Type | Default | Notes |
-| --- | --- | --- | --- |
-| `source` | `{ uri: string }` | unset | Show this image or video instead of the camera, and detect on it |
-| `paused` | `boolean` | `false` | `source` video only. The camera has `active` instead |
-
-**iOS only so far.** On Android `source` is accepted and ignored, so the camera keeps running;
-the Kotlin half is the next piece of work.
-
-Only the frame producer changes. The engine, the trigger evaluator, the ring buffer, `overlay` and
-every event behave exactly as they do live, so a screen that works on the camera works on a file by
-passing one more prop:
-
-```tsx
-<PoseCamera overlay={{ color: '#4da3ff' }} />                    // camera
-<PoseCamera source={{ uri }} overlay={{ color: '#4da3ff' }} />   // picked file
-```
-
-A video is detected **once, up front**, at 10 samples a second, and the overlay then follows
-playback from the player's own clock rather than from a timer. Painting a video from a JavaScript
-timer is the documented way to end up with a skeleton that drifts away from the body, and it is
-why this is native rather than something an app is left to do.
-
-The picture is aspect-**fitted** rather than filled, because cropping a file the user picked would
-hide part of the thing they chose to look at. The camera preview still fills. Either way the media
-surface is positioned with the exact rectangle the landmarks are projected into, so the skeleton
-cannot sit off the body: see `OverlayProjection`, which both come from and which has tests of its
-own on each platform.
-
 ## Configuration
 
 | Prop | Type | Default | Notes |

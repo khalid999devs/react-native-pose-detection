@@ -19,33 +19,12 @@ import type { CameraChangeEvent, ErrorEvent, PerformanceEvent, ReadyEvent } from
 import type { LogEntry, LogLevelConfig } from './logging';
 import type { Trigger, TriggerEvent } from './triggers';
 
-/** A picked image or video. `file://`, `content://` and `ph://` all work. */
-export type MediaSource = {
-  uri: string;
-};
-
 /**
  * Every axis defaults to `'auto'`. Setting one pins it and calibration leaves it alone, the rest
  * keep adapting. See the precedence chain in guides/performance.md.
  */
 export type PoseCameraProps = {
   style?: StyleProp<ViewStyle>;
-
-  /**
-   * Show this image or video instead of the camera, and detect on it.
-   *
-   * Only the frame producer changes: the engine, triggers, the ring buffer, `overlay` and every
-   * event behave exactly as they do on the camera, so a screen that works live works here by
-   * passing one more prop. Unset means the camera.
-   *
-   * A video is detected once up front, logging progress on the `detector` category, and the
-   * overlay then follows playback frame by frame rather than off a timer, which is the difference
-   * between a skeleton that tracks the body and one that lags it.
-   */
-  source?: MediaSource;
-
-  /** `source` video only. Default false. Ignored by the camera, which has `active`. */
-  paused?: boolean;
 
   profile?: Profile;
   facing?: FacingRequest;

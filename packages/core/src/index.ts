@@ -24,6 +24,9 @@ export { addLogListener, setLogLevel } from './logging';
 export { detectOnImage, detectOnVideo } from './staticInput';
 export type { StaticOptions, VideoOptions, VideoTask } from './staticInput';
 
+export { exportPose } from './exportPose';
+export type { ExportOptions, ExportResult, ExportTask } from './exportPose';
+
 export { getCameraPermission, requestCameraPermission } from './permissions/permissions';
 export type { CameraPermission, CameraPermissionStatus } from './permissions/permissions';
 export { useCameraPermission } from './permissions/useCameraPermission';

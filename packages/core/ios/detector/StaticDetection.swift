@@ -69,35 +69,10 @@ enum StaticDetection {
   /// Sampling is even, so the filter is fed the interval it was actually sampled at.
   private static let sampleIntervalSeconds: Float = 0.1
 
-  /// Running job id to whether it has been cancelled. An entry only exists while the job runs, so
-  /// a cancel for a task nobody started is a no-op rather than a note kept for the process's life.
-  private static let cancelLock = NSLock()
-  private static var tasks = [Int: Bool]()
+  private static let running = CancelRegistry()
 
   static func cancel(taskId: Int) {
-    cancelLock.lock()
-    defer { cancelLock.unlock() }
-    if tasks[taskId] != nil {
-      tasks[taskId] = true
-    }
-  }
-
-  private static func beginTask(_ taskId: Int) {
-    cancelLock.lock()
-    defer { cancelLock.unlock() }
-    tasks[taskId] = false
-  }
-
-  private static func endTask(_ taskId: Int) {
-    cancelLock.lock()
-    defer { cancelLock.unlock() }
-    tasks.removeValue(forKey: taskId)
-  }
-
-  private static func isCancelled(_ taskId: Int) -> Bool {
-    cancelLock.lock()
-    defer { cancelLock.unlock() }
-    return tasks[taskId] == true
+    running.cancel(taskId)
   }
 
   /// One entry per detected pose, so a two-person photo decodes to two frames.
@@ -147,8 +122,8 @@ enum StaticDetection {
     taskId: Int,
     onProgress: (Float) -> Void
   ) throws -> Data {
-    beginTask(taskId)
-    defer { endTask(taskId) }
+    running.begin(taskId)
+    defer { running.end(taskId) }
 
     guard let url = URL(string: uri) ?? URL(string: "file://\(uri)") else {
       throw StaticDetectionError("could not read a video from \(uri)")
@@ -180,7 +155,7 @@ enum StaticDetection {
     var timestamps = [Double]()
     var positionMs = start
 
-    while positionMs <= end && !isCancelled(taskId) {
+    while positionMs <= end && !running.isCancelled(taskId) {
       let time = CMTime(value: CMTimeValue(positionMs), timescale: timescale)
       if let cgImage = copyFrame(from: generator, at: time) {
         let image = UIImage(cgImage: cgImage)

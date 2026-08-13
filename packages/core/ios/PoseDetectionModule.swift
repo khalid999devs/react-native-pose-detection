@@ -17,7 +17,7 @@ public class PoseDetectionModule: Module {
     Function("startLogStream") { PoseLog.startStream() }
     Function("stopLogStream") { PoseLog.stopStream() }
 
-    Events("onVideoProgress")
+    Events("onVideoProgress", "onExportProgress")
 
     AsyncFunction("detectOnImage") { (uri: String, options: [String: Any]?, promise: Promise) in
       do {
@@ -53,6 +53,29 @@ public class PoseDetectionModule: Module {
 
     Function("cancelDetectOnVideo") { (taskId: Int) in
       StaticDetection.cancel(taskId: taskId)
+    }
+
+    /**
+     Dispatched onto the export queue rather than run on Expo's, which is what keeps a long export
+     off any thread the camera cares about. See `PoseExport` for the other three rules.
+     */
+    AsyncFunction("exportPose") { (uri: String, options: [String: Any]?, taskId: Int, promise: Promise) in
+      PoseExport.queue.async { [weak self] in
+        do {
+          let summary = try PoseExport.run(uri: uri, raw: options, taskId: taskId) { progress in
+            self?.sendEvent("onExportProgress", ["taskId": taskId, "progress": progress])
+          }
+          promise.resolve(summary.payload)
+        } catch is ExportCancelled {
+          promise.reject(ErrorCode.exportCancelled.rawValue, "the export was cancelled")
+        } catch {
+          promise.reject(ErrorCode.exportFailed.rawValue, error.localizedDescription)
+        }
+      }
+    }
+
+    Function("cancelExportPose") { (taskId: Int) in
+      PoseExport.cancel(taskId: taskId)
     }
 
     AsyncFunction("getCameraPermission") { () -> [String: Any] in
@@ -98,8 +121,6 @@ extension PoseDetectionModule {
 
       // A picked image or video in place of the camera. Only the producer changes: every other
       // prop on this view, and every event off it, behaves the same either way.
-      Prop("source") { (view: PoseCameraView, value: [String: Any]?) in view.setSource(value) }
-      Prop("paused") { (view: PoseCameraView, value: Bool?) in view.setPaused(value ?? false) }
       Prop("detection") { (view: PoseCameraView, value: Bool?) in view.setDetection(value ?? true) }
       Prop("maxPoses") { (view: PoseCameraView, value: Int?) in view.setMaxPoses(value ?? 1) }
       Prop("resolution") { (view: PoseCameraView, value: String?) in view.setResolution(value ?? "auto") }
