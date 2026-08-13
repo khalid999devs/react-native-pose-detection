@@ -242,7 +242,7 @@ rest stay automatic.
 | `overlay` | `true` | The skeleton; boolean or a config object |
 | `smoothing` | `true` | One-Euro filter; boolean or `{ minCutoff, beta }` |
 | `maxPoses` | `1` | Detection ceiling, `1` to `5` |
-| `minConfidence` | from `maxPoses` | What counts as a body, `0.1` to `1` |
+| `minConfidence` | unset = auto | What counts as a body, `0.1` to `1`; unset follows `maxPoses`: 0.6 for one person, 0.3 above |
 | `profile` | `'auto'` | Performance envelope: `'efficient'` `'balanced'` `'quality'` `'unrestricted'` |
 | `targetFps` | `'auto'` | Inference rate; a number pins it |
 | `resolution` | `'auto'` | Preview: `'480p'` `'720p'` `'1080p'` |
