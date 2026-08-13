@@ -5,7 +5,8 @@
 **Real-time human pose detection for React Native and Expo.**
 
 33 body landmarks per frame, detected and drawn entirely in the native layer, powered by
-MediaPipe. Nothing crosses the bridge until you ask.
+MediaPipe. Works in Expo and bare React Native projects alike. Nothing crosses the bridge
+until you ask.
 
 [![CI](https://github.com/khalid999devs/react-native-pose-detection/actions/workflows/ci.yml/badge.svg)](https://github.com/khalid999devs/react-native-pose-detection/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/react-native-pose-detection)](https://www.npmjs.com/package/react-native-pose-detection)
@@ -22,28 +23,35 @@ MediaPipe. Nothing crosses the bridge until you ask.
 
 ## Why this one
 
-- 🎥 **One component.** `<PoseCamera />` opens the camera, finds the body, draws the skeleton.
+- **One component.** `<PoseCamera />` opens the camera, finds the body, draws the skeleton.
   Every default overridable, none required.
-- ⚡ **Zero bridge traffic by default.** Detection, smoothing, drawing and trigger logic run
+- **Both install paths, first class.** The Expo config plugin and a CLI for bare React Native
+  do the same job; both are built and tested in CI on every commit.
+- **Zero bridge traffic by default.** Detection, smoothing, drawing and trigger logic run
   natively. Landmarks cross to JavaScript only when you opt in, as one zero-copy buffer.
-- 🧠 **Tunes itself to the phone.** Measures inference cost, converges on the fastest
-  sustainable frame rate, backs off with heat, remembers the answer for the next launch.
-- 🎯 **Native triggers.** Declare "knee bent past 90° for 300 ms", get one event when it
+- **Tunes itself to the phone.** Measures inference cost, converges on the fastest sustainable
+  frame rate, backs off with heat, remembers the answer for the next launch.
+- **Native triggers.** Declare "knee bent past 90 degrees for 300 ms", get one event when it
   happens. Thirty reps is thirty bridge crossings, not nine hundred.
-- 🖼️ **Files too.** Landmarks from any photo or video on disk, or a full-quality painted copy,
+- **Files too.** Landmarks from any photo or video on disk, or a full-quality painted copy,
   without slowing the live camera.
-- 📦 **Zero runtime dependencies.** Peers are `expo`, `react`, `react-native`. No VisionCamera,
+- **Zero runtime dependencies.** Peers are `expo`, `react`, `react-native`. No VisionCamera,
   no Reanimated, no worklets.
-- 🔒 **Models handled for you.** Downloaded, checksum-verified and installed at prebuild. A
+- **Models handled for you.** Downloaded, checksum-verified and installed at build time. A
   mismatch fails the build, never warns.
 
 ## Installation
+
+One package, two setups. Both end in the same place: the model inside your native projects and
+the camera permission declared. Models are `lite`, `full` or `heavy`; exactly one ships.
+
+### Expo
 
 ```bash
 npx expo install react-native-pose-detection
 ```
 
-In **`app.json`**, add the plugin and pick a model (`lite` · `full` · `heavy`):
+In **`app.json`**, add the config plugin:
 
 ```json
 {
@@ -62,21 +70,20 @@ In **`app.json`**, add the plugin and pick a model (`lite` · `full` · `heavy`)
 npx expo prebuild
 ```
 
-Done: the model lands in both native projects and the camera permission is written for you.
+The plugin installs the model into both native projects and writes the camera permission into
+`Info.plist` and `AndroidManifest.xml` for you. Nothing downloads at runtime.
 
-> [!NOTE]
-> **Expo Go is not supported.** This package contains native code and needs a development
-> build.
+Expo Go is not supported: this package contains native code, so use a development build.
 
-<details>
-<summary><b>Bare React Native</b> (no Expo prebuild)</summary>
+### Bare React Native
 
 ```bash
 npm i react-native-pose-detection
 npx react-native-pose-detection fetch-model full
 ```
 
-Then add the camera permission yourself, in **`ios/<YourApp>/Info.plist`**:
+The CLI installs the model into both native projects. Declare the camera permission yourself,
+in **`ios/<YourApp>/Info.plist`**:
 
 ```xml
 <key>NSCameraUsageDescription</key>
@@ -89,9 +96,9 @@ and in **`android/app/src/main/AndroidManifest.xml`**:
 <uses-permission android:name="android.permission.CAMERA" />
 ```
 
-`npx react-native-pose-detection doctor` checks the install and names anything missing.
-
-</details>
+Either setup can be verified with `npx react-native-pose-detection doctor`, which checks the
+install and names anything missing. Full detail, including EAS and release builds:
+[installation guide](./guides/installation.md).
 
 ## Quick start
 
@@ -183,7 +190,8 @@ installed on Android; the JavaScript is 62.5 KB.
 | [Troubleshooting](./guides/troubleshooting.md) | Real problems, and the log channel |
 
 The [example app](./example) shows all of it running: a live camera with every prop on a
-panel, a studio that paints picked files, and a diagnostics screen with stress scenarios.
+panel, a studio that paints picked files, and a diagnostics screen with stress scenarios. It
+exists twice, once per install path, so both stay proven end to end.
 
 ## Contributing
 
