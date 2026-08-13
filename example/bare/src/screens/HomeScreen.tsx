@@ -12,7 +12,7 @@ import { theme } from '../theme';
 
 const SPECS: { icon: IconName; label: string; value: string }[] = [
   { icon: 'body-outline', label: 'Landmarks', value: '33' },
-  { icon: 'speedometer-outline', label: 'Target', value: '30 fps' },
+  { icon: 'speedometer-outline', label: 'Frame rate', value: 'Adaptive' },
   { icon: 'cube-outline', label: 'Dependencies', value: '0' },
   { icon: 'hardware-chip-outline', label: 'Inference', value: 'On device' },
 ];

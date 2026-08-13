@@ -222,7 +222,7 @@ export function LiveScreen({ onClose }: { onClose: () => void }) {
             <Live label="gpu" value={ready?.delegate ?? '–'} />
             <Divider />
             {dataMode === 'off' ? (
-              <Live label="in" value={String(ready?.analysisResolution ?? '–')} />
+              <Live label="in" value={shortSize(ready?.analysisResolution)} />
             ) : (
               <Live label="frames" value={String(poseCount)} />
             )}
@@ -230,8 +230,6 @@ export function LiveScreen({ onClose }: { onClose: () => void }) {
         ) : (
           <View style={styles.spacer} />
         )}
-
-        <IconButton icon="sync-outline" label="Switch camera" onPress={flip} size={42} />
       </View>
 
       {notice ? (
@@ -403,6 +401,11 @@ export function LiveScreen({ onClose }: { onClose: () => void }) {
             />
           ))}
         </Glass>
+        {/* Its own container, because switching lenses is not one of the three things the panels
+            configure: it acts immediately and belongs beside them rather than among them. */}
+        <Glass style={styles.railInner} radius={theme.radius.pill} intensity={60}>
+          <IconButton icon="sync-outline" label="Switch camera" onPress={flip} />
+        </Glass>
       </View>
     </View>
   );
@@ -411,6 +414,11 @@ export function LiveScreen({ onClose }: { onClose: () => void }) {
 const LOG_LIMIT = 40;
 /** The rail's own height, so the panel above it can be placed without measuring. */
 const RAIL_HEIGHT = 58;
+
+/** `Resolution` is a width and a height, not the preset name that was asked for. */
+function shortSize(size?: { width: number; height: number }) {
+  return size ? `${Math.min(size.width, size.height)}p` : '–';
+}
 
 function Live({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
@@ -535,7 +543,10 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
+    gap: theme.space(2.5),
   },
   railInner: {
     flexDirection: 'row',

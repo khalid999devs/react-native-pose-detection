@@ -141,9 +141,17 @@ with `decimals` above zero formats a string per label per draw.
 
 Exactly one model ships, whichever `model` your config selects.
 
-Two things are measured. The model files are 5.5 MB (`lite`), 9.0 MB (`full`) and 29.2 MB
-(`heavy`), and MediaPipe's native library is 10.5 MB for `arm64-v8a`, 7.4 MB for `armeabi-v7a`,
-15.0 MB for `x86` and 13.0 MB for `x86_64`, taken from an assembled APK on the pinned 0.10.35.
+Two things are measured, both read out of an assembled APK on the pinned 0.10.35. MediaPipe's
+native libraries come to **10.08 MB** for `arm64-v8a`, 7.09 MB for `armeabi-v7a`, 14.31 MB for
+`x86` and 12.48 MB for `x86_64`. The model files are 5.5 MB (`lite`), **8.96 MB** (`full`) and
+29.2 MB (`heavy`).
+
+The native libraries are already compressed and do not shrink again inside the APK, so what is on
+disk is what is downloaded. The model compresses by about a tenth, 8.96 MB down to 8.03 MB for
+`full`, because float16 weights are close to incompressible.
+
+The JavaScript is the part that rounds to nothing: **62.5 KB** of built output, and no runtime
+dependencies to pull in behind it.
 
 Everything else is an estimate:
 
