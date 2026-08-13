@@ -95,6 +95,11 @@ extension PoseDetectionModule {
       Prop("facing") { (view: PoseCameraView, value: String?) in view.setFacing(value ?? "auto") }
       Prop("delegate") { (view: PoseCameraView, value: String?) in view.setDelegate(value ?? "auto") }
       Prop("active") { (view: PoseCameraView, value: Bool?) in view.setActive(value ?? true) }
+
+      // A picked image or video in place of the camera. Only the producer changes: every other
+      // prop on this view, and every event off it, behaves the same either way.
+      Prop("source") { (view: PoseCameraView, value: [String: Any]?) in view.setSource(value) }
+      Prop("paused") { (view: PoseCameraView, value: Bool?) in view.setPaused(value ?? false) }
       Prop("detection") { (view: PoseCameraView, value: Bool?) in view.setDetection(value ?? true) }
       Prop("maxPoses") { (view: PoseCameraView, value: Int?) in view.setMaxPoses(value ?? 1) }
       Prop("resolution") { (view: PoseCameraView, value: String?) in view.setResolution(value ?? "auto") }

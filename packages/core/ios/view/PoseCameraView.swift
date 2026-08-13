@@ -65,6 +65,18 @@ public class PoseCameraView: ExpoView {
 
   /// Written on main, read on the analysis queue, so a teardown is seen on the next frame.
   let detector = Guarded<PoseDetector?>(nil)
+
+  /// Ten a second, the same default `detectOnVideo` uses: enough for the overlay to track a body
+  /// and a third of the work of decoding every frame of a 30 fps clip.
+  static let mediaSampleFps = 10
+
+  /// Decoding and inference for a picked file, off the main thread and off the camera's queue.
+  let mediaQueue = DispatchQueue(label: "com.posedetection.media", qos: .userInitiated)
+
+  /// Set only while a `source` is showing. Nil means the camera, which is the default.
+  var mediaPlayback: MediaPlayback?
+  var propSourceUri: String?
+  var propPaused = false
   var modelPath: String?
 
   /**
@@ -204,6 +216,9 @@ public class PoseCameraView: ExpoView {
     super.layoutSubviews()
     previewView.frame = bounds
     overlayView.frame = bounds
+    // The surface is given the rect the overlay projects into, never one of its own, so a rotation
+    // moves the picture and the skeleton together.
+    mediaPlayback?.setContentRect(overlayView.contentRect())
   }
 
   deinit {

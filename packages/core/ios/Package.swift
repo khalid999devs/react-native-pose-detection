@@ -24,6 +24,7 @@ let package = Package(
         // be compiled in: the alignment between the picture and the skeleton is exactly the kind
         // of arithmetic that deserves tests, and the rest of `view` needs UIKit.
         "view/OverlayParsing.swift",
+        "view/MediaPlayback.swift",
         "view/OverlayView.swift",
         "view/OverlayView+Angles.swift",
         "view/PoseCameraView.swift",

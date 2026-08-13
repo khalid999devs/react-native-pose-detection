@@ -217,17 +217,17 @@ enum StaticDetection {
    Marking these `@available(iOS, deprecated: 16.0)` would move the warning to their call sites
    rather than remove it, so the annotation is left off and the reason written down instead.
    */
-  private static func copyFrame(from generator: AVAssetImageGenerator, at time: CMTime) -> CGImage? {
+  static func copyFrame(from generator: AVAssetImageGenerator, at time: CMTime) -> CGImage? {
     return try? generator.copyCGImage(at: time, actualTime: nil)
   }
 
-  private static func durationMilliseconds(of asset: AVURLAsset) -> Int64 {
+  static func durationMilliseconds(of asset: AVURLAsset) -> Int64 {
     let seconds = CMTimeGetSeconds(asset.duration)
     guard seconds.isFinite, seconds > 0 else { return 0 }
     return Int64(seconds * Double(millisPerSecond))
   }
 
-  private static func loadImage(uri: String) -> UIImage? {
+  static func loadImage(uri: String) -> UIImage? {
     guard let url = URL(string: uri), url.scheme != nil else {
       return UIImage(contentsOfFile: uri)
     }
@@ -238,7 +238,7 @@ enum StaticDetection {
     return UIImage(data: data)
   }
 
-  private static func requireModel() throws -> String {
+  static func requireModel() throws -> String {
     guard let path = PoseDetector.findModelPath() else {
       throw StaticDetectionError("No pose model is bundled. Run the CLI or prebuild first.")
     }

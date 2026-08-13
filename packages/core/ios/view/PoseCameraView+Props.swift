@@ -6,6 +6,34 @@ extension PoseCameraView {
   func setFacing(_ value: String) { propFacing = value }
   func setDelegate(_ value: String) { propDelegate = value }
   func setActive(_ value: Bool) { propActive = value }
+
+  /**
+   A picked image or video in place of the camera.
+
+   Nil goes back to the camera. Everything downstream is unchanged: the overlay, the engine and
+   every event behave the same, because only the producer differs.
+   */
+  func setSource(_ raw: [String: Any]?) {
+    let uri = JS.string(raw?["uri"])
+    guard uri != propSourceUri else { return }
+    propSourceUri = uri
+
+    tearDownMedia()
+    guard let uri = uri else {
+      overlayView.contentFit = .fill
+      return
+    }
+
+    // Fit rather than fill: cropping a picked file to the view would hide part of the very thing
+    // the user chose to look at.
+    overlayView.contentFit = .fit
+    startMedia(uri: uri)
+  }
+
+  func setPaused(_ value: Bool) {
+    propPaused = value
+    mediaPlayback?.setPaused(value)
+  }
   func setDetection(_ value: Bool) { propDetection = value }
   func setMaxPoses(_ value: Int) { propMaxPoses = min(max(value, 1), 5) }
   func setResolution(_ value: String) { propPreview = value }
@@ -133,5 +161,62 @@ extension PoseCameraView {
     resolved.value = next
     guard let reason = reason, changed else { return }
     emitPerformanceChange(reason: reason)
+  }
+}
+
+/// Bringing a picked file up and taking it down again. Separated from the prop setters so that
+/// `setSource` reads as the decision and this reads as the work.
+extension PoseCameraView {
+  func startMedia(uri: String) {
+    guard let playback = MediaPlayback(uri: uri) else {
+      emitError(.invalidConfig, "could not read a source from \(uri)")
+      return
+    }
+
+    // The camera and a file are two producers for one pipeline, so the camera stops rather than
+    // competing with it.
+    stopSession()
+
+    playback.attach(to: self, below: overlayView)
+    // Progress goes to the log channel rather than to a new event: a video is detected once when
+    // it is picked, and inventing a public event for a one-off would widen the surface for it.
+    playback.onProgress = { progress in
+      PoseLog.debug(.detector, "source detection \(Int(progress * 100))%")
+    }
+    playback.onFailed = { [weak self] message in
+      self?.emitError(playback.kind == .video ? .videoDecodeFailed : .imageDecodeFailed, message)
+    }
+    playback.onPoseLost = { [weak self] in
+      self?.overlayView.clearPose()
+    }
+    playback.onPose = { [weak self] result, _ in
+      guard let self = self else { return }
+      // The size travels with the pose for the camera; for a file it is fixed, so the overlay is
+      // told once here and the projection has what it needs before the first draw.
+      self.frameSize.value = playback.size
+      self.overlayView.setSourceSize(width: playback.size.width, height: playback.size.height)
+      self.accept(result)
+    }
+
+    mediaPlayback = playback
+    setNeedsLayout()
+
+    guard let modelPath = try? StaticDetection.requireModel() else {
+      emitError(.modelNotFound, "no pose model is installed")
+      return
+    }
+    playback.load(
+      modelPath: modelPath,
+      maxPoses: propMaxPoses,
+      sampleFps: PoseCameraView.mediaSampleFps,
+      on: mediaQueue
+    )
+    playback.setPaused(propPaused)
+  }
+
+  func tearDownMedia() {
+    mediaPlayback?.tearDown()
+    mediaPlayback = nil
+    overlayView.clearPose()
   }
 }
