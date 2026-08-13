@@ -13,11 +13,13 @@ until you ask.
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 ![platforms](https://img.shields.io/badge/platforms-iOS%20%7C%20Android-black)
 
-[Installation](#installation) · [Quick start](#quick-start) · [Do more](#do-more) · [Full surface](#the-whole-surface-at-a-glance) · [Docs](#documentation)
+[Installation](#installation) · [Quick start](#quick-start) · [Do more](#do-more) · [Full surface](#the-whole-surface-at-a-glance) · [Example](./example) · [Docs](#documentation)
 
 ![A frame of an exported video with the skeleton painted in](./ss/export-frame.png)
 
 <img alt="Live camera with the skeleton tracking a person" src="./ss/live-camera.png" width="30%" /> <img alt="Studio screen painting an uploaded video" src="./ss/studio-video.png" width="30%" /> <img alt="Studio screen painting an uploaded photo" src="./ss/studio-photo.png" width="30%" />
+
+*Snaps from [the example app](./example)*
 
 </div>
 
