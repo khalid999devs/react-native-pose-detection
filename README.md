@@ -8,9 +8,11 @@ powered by MediaPipe.
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 ![platforms](https://img.shields.io/badge/platforms-iOS%20%7C%20Android-black)
 
-| Live camera | Paint a clip | The exported file |
+| Live camera | Painting a clip | Painting a photo |
 | --- | --- | --- |
-| ![Live camera with the skeleton tracking a person](./ss/live-camera.png) | ![Studio screen painting an uploaded video](./ss/studio-video.png) | ![A frame of the exported video with the skeleton painted](./ss/export-frame.png) |
+| ![Live camera with the skeleton tracking a person](./ss/live-camera.png) | ![Studio screen painting an uploaded video](./ss/studio-video.png) | ![Studio screen painting an uploaded photo](./ss/studio-photo.png) |
+
+![A frame of an exported video with the skeleton painted in](./ss/export-frame.png)
 
 > **Pre-release, not yet published.** Both platforms are complete: the camera, the detector, the
 > native overlay, the trigger engine, the geometry and the self-tuning performance governor, on

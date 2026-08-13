@@ -8,9 +8,11 @@ and drawn entirely in the native layer, powered by MediaPipe.
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/khalid999devs/react-native-pose-detection/blob/main/LICENSE)
 ![platforms](https://img.shields.io/badge/platforms-iOS%20%7C%20Android-black)
 
-| Live camera | Paint a clip | The exported file |
+| Live camera | Painting a clip | Painting a photo |
 | --- | --- | --- |
-| ![Live camera with the skeleton tracking a person](https://raw.githubusercontent.com/khalid999devs/react-native-pose-detection/main/ss/live-camera.png) | ![Studio screen painting an uploaded video](https://raw.githubusercontent.com/khalid999devs/react-native-pose-detection/main/ss/studio-video.png) | ![A frame of the exported video with the skeleton painted](https://raw.githubusercontent.com/khalid999devs/react-native-pose-detection/main/ss/export-frame.png) |
+| ![Live camera with the skeleton tracking a person](https://raw.githubusercontent.com/khalid999devs/react-native-pose-detection/main/ss/live-camera.png) | ![Studio screen painting an uploaded video](https://raw.githubusercontent.com/khalid999devs/react-native-pose-detection/main/ss/studio-video.png) | ![Studio screen painting an uploaded photo](https://raw.githubusercontent.com/khalid999devs/react-native-pose-detection/main/ss/studio-photo.png) |
+
+![A frame of an exported video with the skeleton painted in](https://raw.githubusercontent.com/khalid999devs/react-native-pose-detection/main/ss/export-frame.png)
 
 ## Why this one
 
