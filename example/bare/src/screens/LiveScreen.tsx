@@ -83,6 +83,7 @@ export function LiveScreen({ onClose }: { onClose: () => void }) {
   const [targetFps, setTargetFps] = React.useState<(typeof TARGET_FPS)[number]>('auto');
   const [angles, setAngles] = React.useState(false);
   const [facingRequest, setFacingRequest] = React.useState<(typeof FACING)[number]>('auto');
+  const [switching, setSwitching] = React.useState(false);
   const [delegate, setDelegate] = React.useState<(typeof DELEGATES)[number]>('auto');
   const [profile, setProfile] = React.useState<(typeof PROFILES)[number]>('auto');
   const [thermalPolicy, setThermalPolicy] = React.useState<(typeof THERMAL)[number]>('adaptive');
@@ -137,8 +138,10 @@ export function LiveScreen({ onClose }: { onClose: () => void }) {
    * box over the camera. Switching lenses is the one people hit: a device with a single camera, or
    * one already mid-switch, rejects with `CAMERA_SWITCH_FAILED`.
    */
+  /// Every ref method rejects rather than throwing, so one place turns that into the notice bar.
+  /// Returns the promise so a caller that also has to know when the work ended can chain onto it.
   const call = React.useCallback((run: () => Promise<unknown> | undefined) => {
-    Promise.resolve(run()).catch((problem: unknown) => {
+    return Promise.resolve(run()).catch((problem: unknown) => {
       setNotice({
         message: problem instanceof Error ? problem.message : String(problem),
         fatal: false,
@@ -146,7 +149,17 @@ export function LiveScreen({ onClose }: { onClose: () => void }) {
     });
   }, []);
 
-  const flip = React.useCallback(() => call(() => camera.current?.switchCamera()), [call]);
+  /**
+   * `switchCamera()` resolves when the new lens actually delivers a frame, not when the request is
+   * accepted, so awaiting it is what makes the pending state mean something. A second tap while one
+   * is in flight is dropped rather than queued: the native side rebinds the session, and asking it
+   * to rebind again mid-rebind is how a switch ends up failing for reasons nobody can see.
+   */
+  const flip = React.useCallback(() => {
+    if (switching) return;
+    setSwitching(true);
+    void call(() => camera.current?.switchCamera()).finally(() => setSwitching(false));
+  }, [call, switching]);
 
   if (!permission.granted) {
     return (
@@ -416,7 +429,7 @@ export function LiveScreen({ onClose }: { onClose: () => void }) {
         {/* Its own container, because switching lenses is not one of the three things the panels
             configure: it acts immediately and belongs beside them rather than among them. */}
         <Glass style={styles.railInner} radius={theme.radius.pill} intensity={60}>
-          <IconButton icon="sync-outline" label="Switch camera" onPress={flip} />
+          <IconButton icon="sync-outline" label="Switch camera" busy={switching} onPress={flip} />
         </Glass>
       </View>
     </View>

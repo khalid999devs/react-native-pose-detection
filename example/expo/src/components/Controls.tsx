@@ -20,21 +20,25 @@ export function IconButton({
   icon,
   label,
   active,
+  busy,
   size = 46,
   onPress,
 }: {
   icon: IconName;
   label: string;
   active?: boolean;
+  /** Swaps the icon for a spinner and stops taking presses, for an action that takes a moment. */
+  busy?: boolean;
   size?: number;
   onPress: () => void;
 }) {
   return (
     <Pressable
       onPress={onPress}
+      disabled={busy}
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={{ selected: !!active }}
+      accessibilityState={{ selected: !!active, busy: !!busy, disabled: !!busy }}
       style={({ pressed }) => [
         styles.icon,
         { width: size, height: size },
@@ -42,11 +46,15 @@ export function IconButton({
         pressed && styles.pressed,
       ]}
     >
-      <Ionicons
-        name={icon}
-        size={Math.round(size * 0.42)}
-        color={active ? theme.color.accent : theme.color.text}
-      />
+      {busy ? (
+        <ActivityIndicator size="small" color={theme.color.accent} />
+      ) : (
+        <Ionicons
+          name={icon}
+          size={Math.round(size * 0.42)}
+          color={active ? theme.color.accent : theme.color.text}
+        />
+      )}
     </Pressable>
   );
 }

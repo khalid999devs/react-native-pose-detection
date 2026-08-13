@@ -16,6 +16,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { exportPose, type ExportResult } from 'react-native-pose-detection';
 
+import { Choice } from '../components/Controls';
 import { Card } from '../components/Glass';
 import { NAV_CLEARANCE } from '../components/NavBar';
 import { theme } from '../theme';
@@ -30,6 +31,9 @@ import { theme } from '../theme';
  */
 const EXPORT_DIR = 'exported';
 const VIDEO_EXTENSIONS = ['.mp4', '.mov', '.m4v'];
+// The package takes its confidence threshold from this when none is given, so picking more than one
+// here is also what lowers the bar enough for a second body to be returned at all.
+const PEOPLE = ['1', '2', '3', '4', '5'] as const;
 
 const isVideo = (uri: string) => VIDEO_EXTENSIONS.some((ext) => uri.toLowerCase().endsWith(ext));
 
@@ -49,6 +53,7 @@ export function UploadScreen() {
   const [error, setError] = React.useState<string | null>(null);
   const [entries, setEntries] = React.useState<Entry[]>([]);
   const [viewing, setViewing] = React.useState<Entry | null>(null);
+  const [people, setPeople] = React.useState<(typeof PEOPLE)[number]>('1');
   const task = React.useRef<{ cancel: () => void } | null>(null);
 
   const refresh = React.useCallback(() => {
@@ -88,9 +93,7 @@ export function UploadScreen() {
     try {
       const running = exportPose(picked.assets[0].uri, {
         overlay: { color: theme.color.overlay, lineWidth: 3, pointRadius: 4 },
-        // Everybody in frame gets a skeleton, not only the nearest body. Asking for more than one
-        // is also what lowers the confidence bar, so no second option is needed here.
-        maxPoses: 5,
+        maxPoses: Number(people),
         directory: exportDirectory().uri,
         onProgress: setProgress,
       });
@@ -105,7 +108,7 @@ export function UploadScreen() {
       setBusy(false);
       refresh();
     }
-  }, [refresh]);
+  }, [refresh, people]);
 
   const remove = React.useCallback(
     (entry: Entry) => {
@@ -144,10 +147,14 @@ export function UploadScreen() {
           size={24}
           color={busy ? theme.color.muted : theme.color.background}
         />
-        <Text style={styles.dropLabel}>
+        <Text style={[styles.dropLabel, busy && styles.dropLabelBusy]}>
           {busy ? `Painting ${Math.round(progress * 100)}%` : 'Choose a photo or clip'}
         </Text>
       </Pressable>
+
+      <Card style={styles.people}>
+        <Choice title="People to look for" options={PEOPLE} value={people} onChange={setPeople} />
+      </Card>
 
       {busy ? (
         <View style={styles.track}>
@@ -399,8 +406,16 @@ const styles = StyleSheet.create({
     fontSize: theme.font.body,
     fontWeight: '600',
   },
+  // The pill turns pale while it works, so the label has to stop being the colour of the pill it
+  // was sitting on.
+  dropLabelBusy: {
+    color: theme.color.text,
+  },
   pressed: {
     opacity: 0.6,
+  },
+  people: {
+    paddingVertical: theme.space(3),
   },
   track: {
     flexDirection: 'row',
