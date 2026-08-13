@@ -3,9 +3,10 @@
 Real-time pose detection for React Native and Expo. 33 body landmarks, iOS and Android,
 powered by MediaPipe.
 
-> **Pre-release, not yet published.** Android has the camera, the detector and the native
-> overlay, written but not yet run on a device. The trigger and calibration engine is not built,
-> and iOS has not started. This describes `0.1.0`, not what installs today.
+> **Pre-release, not yet published.** Both platforms are complete: the camera, the detector, the
+> native overlay, the trigger engine and the self-tuning performance governor. iOS runs on
+> physical hardware; the Android device pass is what remains before `0.1.0`. This describes
+> `0.1.0`, not what installs today.
 
 ## Install
 

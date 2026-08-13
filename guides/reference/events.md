@@ -34,8 +34,9 @@ type ReadyEvent = {
 };
 ```
 
-`targetFps` and `deviceTier` are placeholders, a flat 30 and `'medium'`, until calibration lands.
-Everything else is measured from the session that just came up.
+`targetFps` and `deviceTier` are what the session opened with: the cached calibration when this
+device has run before, the static probe's guess when it has not. The governor refines both within
+a couple of seconds and reports each move through `onPerformanceChange`.
 
 ## `onError`
 

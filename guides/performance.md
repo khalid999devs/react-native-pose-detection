@@ -1,8 +1,6 @@
 # Performance
 
-*Both platforms implement all of this. Every number below is a target the implementation aims at
-rather than one measured on hardware, because nothing here has run on a physical device: see
-[the development plan](../docs/development-plan.md).*
+*Both platforms implement all of this.*
 
 ## Profiles
 
@@ -12,54 +10,80 @@ rather than one measured on hardware, because nothing here has run on a physical
 
 | Profile | Behavior |
 | --- | --- |
-| **`auto`** *(default)* | Probe the device → converge on measurement → cache the result |
+| **`auto`** *(default)* | Measure → converge on the device's own rate → cache it for next launch |
 | `efficient` | Pinned 15 fps · 480p preview · 360p analysis |
-| `balanced` | Pinned 30 fps · 720p · 480p |
-| `quality` | Pinned 60 fps · 1080p · 720p |
+| `balanced` | Pinned 24 fps · 720p · 480p |
+| `quality` | Pinned 30 fps · 1080p · 480p |
+| `unrestricted` | Calibrated like `auto`, but no thermal ladder except `critical` |
 
-A profile sets a **target**, not a ceiling. What a device actually sustains is measured, and
-calibration and the thermal ladder below walk the target down when it cannot be met, so `quality`
-asking for 60 does not mean a phone will run at 60: it means nothing here is what stopped it.
-| `unrestricted` | No calibration, no thermal ladder except `critical` |
+Only `auto` and `unrestricted` self-adjust. The named profiles are explicit escapes from that:
+choosing one is saying you have already decided, so calibration leaves it alone.
 
-Only `auto` self-adjusts. The named profiles are explicit escapes from it.
+Under `auto` the rate is continuous, not one of the three pinned values. A session settles at 34
+or 27 rather than a round number because the number is the device's own; two phones that both
+count as fast can still differ by ten milliseconds of inference, and quantizing them to one value
+either wastes the fast one or overloads the slow one.
+
+One axis stops lower than a spec sheet would suggest, and it is deliberate. **Analysis tops out at
+480p.** MediaPipe resizes whatever it is handed to 256 by 256 before the detector sees it, so a
+720p analysis buffer is close to a megapixel captured, converted and copied every frame in order
+to be discarded inside the graph. A distant subject is the one case a larger buffer helps, and
+`analysisResolution` is there to ask for it.
 
 ## Auto-calibration
 
 ### Stage 1: static probe (~0 ms)
 
-Core count, memory, GPU family, SoC model, thermal state, low-power mode → a starting tier.
+Memory on iOS, cores and memory on Android, low-power mode → a starting tier, which sets the
+opening rate and the session geometry.
 
 **Deliberately one step conservative.** Ramping up after 2 s is invisible; ramping down after
 visible jank is not.
 
-### Stage 2: measured convergence (~60 frames)
+### Stage 2: the governor (~60 frames, then always on)
+
+Every inference reports what it cost, dispatch to result. Over a rolling two-second window the
+p50 of that cost sets two things:
 
 ```text
-p50 inference time + dropped-frame ratio
-  < budget × 0.6  → step up   (fps first, then analysis resolution)
-  > budget × 1.2  → step down
-  settle with hysteresis → onPerformanceChange({ reason: 'calibration' })
+targetFps = 55% of the frame interval ÷ p50, clamped to 10–40
+tier      = what the silicon is: p50 ≤ 22 ms high · ≤ 45 ms medium · above low
 ```
 
-Static specs lie. A mid-range chip with a good GPU beats a flagship that's already hot.
+The 55% is the share of each frame inference may occupy; the rest is everything downstream of the
+model plus the headroom that keeps a long session off the thermal ladder. The cap is 40 because a
+body does not move meaningfully in 25 milliseconds, and the floor is 10 because below that the
+skeleton reads as broken and pausing is more honest.
+
+The measured span breathes with load, which is what closes the loop: a rate the device cannot
+hold shows up as queue wait long before it shows up as heat, the p50 rises, the governor backs
+off, the wait drains. Moves smaller than 2 fps are ignored as noise, and a three-second cooldown
+stops a device sitting between two answers from oscillating. Each move fires
+`onPerformanceChange({ reason: 'calibration' })`.
+
+Static specs lie. A mid-range chip with a good GPU beats a flagship that's already hot, and the
+governor is the part that notices.
 
 ### Stage 3: cache
 
-The settled configuration is persisted natively, keyed by device model + model variant + OS
-version. Second launch starts correct, no re-calibration, no first-run wobble.
-Invalidated on OS upgrade or model change.
+The settled tier and rate are persisted natively, keyed by device model + model variant + OS
+version, and read back **before the first bind**, so the second launch opens at the measured
+configuration with no re-calibration and no first-run wobble. Invalidated on OS upgrade or model
+change.
 
 ### Inspecting it
 
-`getProfile()` reads native state, so it is asynchronous. `getState()` is not, because
-everything in it arrives on an event JavaScript can mirror.
+`getProfile()` answers where calibration stands. `measuredFps` in it is the live half: completed
+inferences over the last second, zero once results stop, so it is also the number that exposes a
+device falling behind its target. `getState().fps` is the same measurement as of the last
+`onPerformanceChange`, because that object is mirrored from events rather than read across the
+bridge; poll `getProfile()` when the number itself is what you are watching.
 
 ```ts
 await cam.current.getProfile();
-// { profile: 'auto', phase: 'settled', source: 'measured', tier: 'medium',
-//   resolved: { delegate: 'GPU', targetFps: 30, preview: '720p', analysis: '480p' },
-//   p50InferenceMs: 21.4 }
+// { profile: 'auto', phase: 'settled', source: 'measured', tier: 'high',
+//   resolved: { delegate: 'GPU', targetFps: 34, preview: '1080p', analysis: '480p' },
+//   p50InferenceMs: 16.2, measuredFps: 33 }
 ```
 
 ## Thermal ladder
@@ -121,7 +145,7 @@ filed against.
 | --- | --- |
 | Camera on, detection off | < 40 MB |
 | `lite` @ 480p analysis | < 120 MB |
-| `full` @ 720p analysis | < 180 MB |
+| `full` @ 480p analysis | < 180 MB |
 | Steady-state allocations per frame | **0**, except the MPImage floor below |
 | Return to idle after `stopDetection()` | < 1 s |
 | 10-minute sustained run | thermal ≤ fair on mid-tier |

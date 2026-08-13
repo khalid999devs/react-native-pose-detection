@@ -198,11 +198,12 @@ type ProfileState = {
               preview: '480p' | '720p' | '1080p';
               analysis: '360p' | '480p' | '720p' };
   p50InferenceMs: number;
+  measuredFps: number;
 };
 ```
 
-Nothing returns a `ProfileState` yet. `getProfile()` throws until calibration lands, see
-[ref methods](./ref-methods.md#setprofile-and-getprofile-throw).
+`measuredFps` is completed inferences over the last second, zero once results stop. How the rest
+is produced is [the performance guide](../performance.md#auto-calibration)'s subject.
 
 ## `CameraState`
 
@@ -211,7 +212,7 @@ type CameraState = {
   facing: 'front' | 'back';
   active: boolean;
   detecting: boolean;
-  fps: number;
+  fps: number;   // as of the last onPerformanceChange; getProfile().measuredFps is live
   delegate: 'GPU' | 'CPU';
   deviceTier: 'high' | 'medium' | 'low';
 };

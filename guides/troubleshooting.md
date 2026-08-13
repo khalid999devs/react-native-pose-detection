@@ -121,8 +121,9 @@ ndk { abiFilters "arm64-v8a" }
 ## Frame rate lower than expected
 
 Check `await getProfile()` first: `phase` tells you whether calibration has settled, and
-`p50InferenceMs` against `1000 / targetFps` tells you whether it has anywhere left to go. What
-else you can change:
+`p50InferenceMs` is the cost the rate was derived from. Under `profile="auto"` a low number **is**
+the calibrated answer: the governor already runs the highest rate that cost sustains, so a low
+rate means expensive inference, not a stuck setting. What you can change:
 
 - the model variant, which is a **build-time** choice and not a prop. Set `"model": "lite"` in
   the plugin config and re-run `npx expo prebuild`, or run

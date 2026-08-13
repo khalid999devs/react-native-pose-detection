@@ -17,7 +17,7 @@ type PoseCameraRef = {
   setOverlayEnabled(enabled: boolean): Promise<void>;
 
   setProfile(profile: Profile): void;
-  getProfile(): ProfileState;
+  getProfile(): Promise<ProfileState>;
   getState(): CameraState;
 
   snapshot(): Promise<PoseFrame | null>;
@@ -56,11 +56,11 @@ success.
 
 ```ts
 cam.current?.getState();
-// { facing: 'front', active: true, detecting: true, fps: 23.8,
+// { facing: 'front', active: true, detecting: true, fps: 24,
 //   delegate: 'GPU', deviceTier: 'medium' }
 ```
 
-`fps` is measured from the analyzer, so it is what ran rather than what was asked for.
+`fps` counts completed inferences, so it is what actually ran rather than what was asked for.
 
 ### `getProfile` is async, `getState` is not
 
@@ -68,9 +68,11 @@ cam.current?.getState();
 await cam.current?.getProfile();
 ```
 
-`getProfile()` reads native state. The phase, the source and the measured p50 are on no event, so
-JavaScript has nothing to mirror them from, and a synchronous version would have to invent them.
-`getState()` stays synchronous because everything in it does arrive on an event.
+`getProfile()` reads native state. The phase, the source, the measured p50 and the live
+`measuredFps` are on no event, so JavaScript has nothing to mirror them from, and a synchronous
+version would have to invent them. `getState()` stays synchronous because everything in it does
+arrive on an event, which also means its `fps` is a snapshot from the last `onPerformanceChange`;
+a readout that follows the measurement itself should poll `getProfile().measuredFps`.
 
 `getProfile()`'s output belongs in any performance bug report: it says what tier was chosen, how
 it was chosen, and what the inference actually cost.
