@@ -14,8 +14,12 @@ rather than one measured on hardware, because nothing here has run on a physical
 | --- | --- |
 | **`auto`** *(default)* | Probe the device → converge on measurement → cache the result |
 | `efficient` | Pinned 15 fps · 480p preview · 360p analysis |
-| `balanced` | Pinned 24 fps · 720p · 480p |
-| `quality` | Pinned 30 fps · 1080p · 720p |
+| `balanced` | Pinned 30 fps · 720p · 480p |
+| `quality` | Pinned 60 fps · 1080p · 720p |
+
+A profile sets a **target**, not a ceiling. What a device actually sustains is measured, and
+calibration and the thermal ladder below walk the target down when it cannot be met, so `quality`
+asking for 60 does not mean a phone will run at 60: it means nothing here is what stopped it.
 | `unrestricted` | No calibration, no thermal ladder except `critical` |
 
 Only `auto` self-adjusts. The named profiles are explicit escapes from it.
@@ -54,7 +58,7 @@ everything in it arrives on an event JavaScript can mirror.
 ```ts
 await cam.current.getProfile();
 // { profile: 'auto', phase: 'settled', source: 'measured', tier: 'medium',
-//   resolved: { delegate: 'GPU', targetFps: 24, preview: '720p', analysis: '480p' },
+//   resolved: { delegate: 'GPU', targetFps: 30, preview: '720p', analysis: '480p' },
 //   p50InferenceMs: 21.4 }
 ```
 

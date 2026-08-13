@@ -3,6 +3,7 @@ import { Modal, StatusBar, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { NavBar, type TabId } from './src/components/NavBar';
+import { AboutScreen } from './src/screens/AboutScreen';
 import { DiagnosticsScreen } from './src/screens/DiagnosticsScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { LiveScreen } from './src/screens/LiveScreen';
@@ -25,6 +26,7 @@ import { theme } from './src/theme';
 export default function App() {
   const [tab, setTab] = React.useState<TabId>('home');
   const [diagnostics, setDiagnostics] = React.useState(false);
+  const [about, setAbout] = React.useState(false);
   const live = tab === 'live';
 
   return (
@@ -38,12 +40,22 @@ export default function App() {
         />
 
         {tab === 'home' ? (
-          <HomeScreen onNavigate={setTab} onDiagnostics={() => setDiagnostics(true)} />
+          <HomeScreen
+            onNavigate={setTab}
+            onDiagnostics={() => setDiagnostics(true)}
+            onAbout={() => setAbout(true)}
+          />
         ) : null}
         {live ? <LiveScreen onClose={() => setTab('home')} /> : null}
         {tab === 'upload' ? <UploadScreen /> : null}
 
         {live ? null : <NavBar active={tab} onSelect={setTab} />}
+
+        <Modal visible={about} animationType="slide" presentationStyle="fullScreen">
+          <SafeAreaProvider>
+            <AboutScreen onClose={() => setAbout(false)} />
+          </SafeAreaProvider>
+        </Modal>
 
         <Modal visible={diagnostics} animationType="slide" presentationStyle="fullScreen">
           <SafeAreaProvider>

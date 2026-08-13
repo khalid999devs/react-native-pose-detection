@@ -25,8 +25,8 @@ final class PerformanceResolverTests: XCTestCase {
 
   func testAutoTakesWhateverTierCalibrationSettledOn() {
     XCTAssertEqual(resolve(tier: .low).targetFps, 15)
-    XCTAssertEqual(resolve(tier: .medium).targetFps, 24)
-    XCTAssertEqual(resolve(tier: .high).targetFps, 30)
+    XCTAssertEqual(resolve(tier: .medium).targetFps, 30)
+    XCTAssertEqual(resolve(tier: .high).targetFps, 60)
   }
 
   func testANamedProfilePinsItsTierAndIgnoresWhatWasMeasured() {
@@ -36,7 +36,7 @@ final class PerformanceResolverTests: XCTestCase {
     XCTAssertEqual(efficient.analysis, "360p")
 
     let quality = resolve(profile: .quality, tier: .low)
-    XCTAssertEqual(quality.targetFps, 30)
+    XCTAssertEqual(quality.targetFps, 60)
     XCTAssertEqual(quality.preview, "1080p")
   }
 
@@ -60,19 +60,19 @@ final class PerformanceResolverTests: XCTestCase {
   }
 
   func testThermalPolicyOffStopsTheResponseAndReportingIsNotThisResolversJob() {
-    XCTAssertEqual(resolve(thermal: .serious, policy: .off).targetFps, 24)
+    XCTAssertEqual(resolve(thermal: .serious, policy: .off).targetFps, 30)
     XCTAssertFalse(resolve(thermal: .critical, policy: .off).detectionPaused)
   }
 
   func testCriticalOnlyIgnoresEverythingBelowCritical() {
-    XCTAssertEqual(resolve(thermal: .serious, policy: .criticalOnly).targetFps, 24)
+    XCTAssertEqual(resolve(thermal: .serious, policy: .criticalOnly).targetFps, 30)
     XCTAssertTrue(resolve(thermal: .critical, policy: .criticalOnly).detectionPaused)
   }
 
   func testUnrestrictedOptsOutOfTheLadderButNotOutOfCritical() {
     XCTAssertEqual(
       resolve(profile: .unrestricted, thermal: .serious).targetFps,
-      24,
+      30,
       "a device about to shut down is not a preference anyone can hold"
     )
     XCTAssertTrue(resolve(profile: .unrestricted, thermal: .critical).detectionPaused)

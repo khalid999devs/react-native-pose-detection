@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { theme } from '../theme';
@@ -25,7 +25,9 @@ export function NavBar({ active, onSelect }: { active: TabId; onSelect: (tab: Ta
   const insets = useSafeAreaInsets();
   return (
     <View
-      style={[styles.wrap, { bottom: Math.max(insets.bottom, theme.space(5)) }]}
+      // Android's gesture bar inset is smaller than the space a floating bar needs to look
+      // deliberate, so it gets a floor of its own rather than the raw inset.
+      style={[styles.wrap, { bottom: insets.bottom + Platform.select({ ios: 0, default: 16 }) }]}
       pointerEvents="box-none"
     >
       <View style={styles.bar}>
@@ -47,7 +49,7 @@ export function NavBar({ active, onSelect }: { active: TabId; onSelect: (tab: Ta
               <Ionicons
                 name={selected ? tab.active : tab.icon}
                 size={19}
-                color={selected ? theme.color.accent : theme.color.faint}
+                color={selected ? theme.color.accent : theme.color.muted}
               />
               {selected ? <Text style={styles.label}>{tab.label}</Text> : null}
             </Pressable>
@@ -77,7 +79,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.color.background,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: theme.color.border,
-    ...theme.lift,
+    ...theme.liftStrong,
   },
   tab: {
     flexDirection: 'row',

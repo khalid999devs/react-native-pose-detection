@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 /**
  * One palette, one scale.
  *
@@ -28,6 +30,8 @@ export const theme = {
 
     /** Behind glass over the camera, so a control stays readable on a bright frame. */
     scrim: 'rgba(255,255,255,0.72)',
+    /** Android has no blur behind a camera surface, so its panels carry the contrast alone. */
+    scrimSolid: 'rgba(255,255,255,0.94)',
   },
 
   space: (steps: number) => steps * 4,
@@ -48,11 +52,38 @@ export const theme = {
   },
 
   /** One soft shadow, used only where an element genuinely floats. */
-  lift: {
-    shadowColor: '#0B1220',
-    shadowOpacity: 0.1,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 8,
-  },
+  /**
+   * One soft shadow, used only where an element genuinely floats.
+   *
+   * Android's `elevation` follows a different curve from an iOS shadow, and a value that reads as a
+   * gentle lift on one reads as a dark halo on the other, so the two are tuned apart rather than
+   * shared.
+   */
+  lift: Platform.select({
+    ios: {
+      shadowColor: '#0B1220',
+      shadowOpacity: 0.1,
+      shadowRadius: 20,
+      shadowOffset: { width: 0, height: 6 },
+    },
+    default: { elevation: 2 },
+  }),
+
+  /**
+   * For the one element that floats over everything else.
+   *
+   * iOS renders a wide, soft, tinted shadow and needs a strong one before it reads as lifted at
+   * all. Android's `elevation` draws a tighter grey shape that turns into a dark halo at the same
+   * apparent strength, so it goes the other way. The two numbers are not a conversion of each
+   * other; they are what each platform needs to produce the same impression.
+   */
+  liftStrong: Platform.select({
+    ios: {
+      shadowColor: '#0B1220',
+      shadowOpacity: 0.18,
+      shadowRadius: 28,
+      shadowOffset: { width: 0, height: 12 },
+    },
+    default: { elevation: 3 },
+  }),
 } as const;

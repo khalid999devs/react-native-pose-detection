@@ -15,8 +15,9 @@ import {
   type ReadyEvent,
 } from 'react-native-pose-detection';
 
-import { Button, Choice, IconButton, ToggleRow, type IconName } from '../components/Controls';
+import { Button, Choice, IconButton, Rule, ToggleRow, type IconName } from '../components/Controls';
 import { Card, Glass } from '../components/Glass';
+import { Sheet } from '../components/Sheet';
 import { theme } from '../theme';
 
 type Category = 'camera' | 'detection' | 'debug';
@@ -30,6 +31,27 @@ const CATEGORIES: { id: Category; icon: IconName; label: string }[] = [
 const RESOLUTIONS = ['auto', '480p', '720p', '1080p'] as const;
 const ANALYSIS = ['auto', '360p', '480p', '720p'] as const;
 const LOG_LEVELS = ['off', 'warn', 'info', 'debug'] as const;
+const TARGET_FPS = ['auto', '15', '24', '30', '60'] as const;
+const FACING = ['auto', 'front', 'back'] as const;
+const DELEGATES = ['auto', 'gpu', 'cpu'] as const;
+const PROFILES = ['auto', 'efficient', 'balanced', 'quality', 'unrestricted'] as const;
+const THERMAL = ['adaptive', 'critical-only', 'off'] as const;
+const DATA_MODES = ['off', 'throttled', 'batched', 'live'] as const;
+const MAX_POSES = ['1', '2', '3', '4', '5'] as const;
+
+/**
+ * What the angle toggle draws when it is on.
+ *
+ * Off is an empty list rather than a hidden one: native skips the whole angle pass when the config
+ * carries none, so switching this off stops the trigonometry and the arcs rather than drawing them
+ * somewhere nobody looks.
+ */
+const ANGLE_JOINTS = [
+  { joint: 'leftElbow' },
+  { joint: 'rightElbow' },
+  { joint: 'leftKnee' },
+  { joint: 'rightKnee' },
+] as const;
 
 /**
  * The camera, full bleed, with everything else floating at the edges.
@@ -54,6 +76,17 @@ export function LiveScreen({ onClose }: { onClose: () => void }) {
   const [facing, setFacing] = React.useState<'front' | 'back'>('front');
   const [resolution, setResolution] = React.useState<(typeof RESOLUTIONS)[number]>('auto');
   const [analysis, setAnalysis] = React.useState<(typeof ANALYSIS)[number]>('auto');
+  const [targetFps, setTargetFps] = React.useState<(typeof TARGET_FPS)[number]>('auto');
+  const [angles, setAngles] = React.useState(false);
+  const [facingRequest, setFacingRequest] = React.useState<(typeof FACING)[number]>('auto');
+  const [delegate, setDelegate] = React.useState<(typeof DELEGATES)[number]>('auto');
+  const [profile, setProfile] = React.useState<(typeof PROFILES)[number]>('auto');
+  const [thermalPolicy, setThermalPolicy] = React.useState<(typeof THERMAL)[number]>('adaptive');
+  const [dataMode, setDataMode] = React.useState<(typeof DATA_MODES)[number]>('off');
+  const [maxPoses, setMaxPoses] = React.useState<(typeof MAX_POSES)[number]>('1');
+  const [smoothing, setSmoothing] = React.useState(true);
+  const [poseCount, setPoseCount] = React.useState(0);
+  const [snapshot, setSnapshot] = React.useState<string | null>(null);
 
   const [logLevel, setLevel] = React.useState<(typeof LOG_LEVELS)[number]>('off');
   const [showLogs, setShowLogs] = React.useState(false);
@@ -94,9 +127,21 @@ export function LiveScreen({ onClose }: { onClose: () => void }) {
     return () => subscription.remove();
   }, [logLevel]);
 
-  const flip = React.useCallback(() => {
-    void camera.current?.switchCamera();
+  /**
+   * Every ref method crosses to native and can fail, and a rejection nobody catches becomes a red
+   * box over the camera. Switching lenses is the one people hit: a device with a single camera, or
+   * one already mid-switch, rejects with `CAMERA_SWITCH_FAILED`.
+   */
+  const call = React.useCallback((run: () => Promise<unknown> | undefined) => {
+    Promise.resolve(run()).catch((problem: unknown) => {
+      setNotice({
+        message: problem instanceof Error ? problem.message : String(problem),
+        fatal: false,
+      });
+    });
   }, []);
+
+  const flip = React.useCallback(() => call(() => camera.current?.switchCamera()), [call]);
 
   if (!permission.granted) {
     return (
@@ -127,9 +172,16 @@ export function LiveScreen({ onClose }: { onClose: () => void }) {
       <PoseCamera
         ref={camera}
         style={StyleSheet.absoluteFill}
-        facing={facing}
+        facing={facingRequest}
         active={active}
         detection={detecting}
+        delegate={delegate}
+        profile={profile}
+        thermalPolicy={thermalPolicy}
+        maxPoses={Number(maxPoses)}
+        smoothing={smoothing}
+        data={{ mode: dataMode }}
+        onPose={dataMode === 'off' ? undefined : () => setPoseCount((value) => value + 1)}
         resolution={resolution}
         analysisResolution={analysis}
         overlay={
@@ -139,6 +191,7 @@ export function LiveScreen({ onClose }: { onClose: () => void }) {
             pointRadius: 4,
             landmarks,
             connections,
+            angles: angles ? ANGLE_JOINTS : [],
           }
         }
         onReady={onReady}
@@ -168,7 +221,11 @@ export function LiveScreen({ onClose }: { onClose: () => void }) {
             <Divider />
             <Live label="gpu" value={ready?.delegate ?? '–'} />
             <Divider />
-            <Live label="in" value={String(ready?.analysisResolution ?? '–')} />
+            {dataMode === 'off' ? (
+              <Live label="in" value={String(ready?.analysisResolution ?? '–')} />
+            ) : (
+              <Live label="frames" value={String(poseCount)} />
+            )}
           </Glass>
         ) : (
           <View style={styles.spacer} />
@@ -198,34 +255,43 @@ export function LiveScreen({ onClose }: { onClose: () => void }) {
         </View>
       ) : null}
 
-      {showLogs && logLevel !== 'off' && !panel ? (
-        <View style={[styles.logWrap, { bottom: panelBottom }]} pointerEvents="box-none">
-          <Glass style={styles.logCard} radius={theme.radius.md} intensity={55}>
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {lines.length === 0 ? (
-                <Text style={styles.logEmpty}>waiting for the first entry</Text>
-              ) : (
-                lines.map((entry, index) => (
-                  <Text
-                    key={`${entry.timestamp}-${index}`}
-                    style={styles.logLine}
-                    numberOfLines={1}
-                  >
-                    <Text style={styles.logCategory}>{entry.category}</Text> {entry.message}
-                  </Text>
-                ))
-              )}
-            </ScrollView>
-          </Glass>
-        </View>
-      ) : null}
+      <View style={[styles.logWrap, { bottom: panelBottom }]} pointerEvents="box-none">
+        <Sheet
+          visible={showLogs && logLevel !== 'off' && !panel}
+          style={styles.logCard}
+          radius={theme.radius.md}
+        >
+          <ScrollView showsVerticalScrollIndicator={false}>
+            {lines.length === 0 ? (
+              <Text style={styles.logEmpty}>waiting for the first entry</Text>
+            ) : (
+              lines.map((entry, index) => (
+                <Text key={`${entry.timestamp}-${index}`} style={styles.logLine} numberOfLines={1}>
+                  <Text style={styles.logCategory}>{entry.category}</Text> {entry.message}
+                </Text>
+              ))
+            )}
+          </ScrollView>
+        </Sheet>
+      </View>
 
-      {panel ? (
-        <View style={[styles.panelWrap, { bottom: panelBottom }]} pointerEvents="box-none">
-          <Glass style={styles.panel} radius={theme.radius.lg} intensity={65}>
+      <View style={[styles.panelWrap, { bottom: panelBottom }]} pointerEvents="box-none">
+        <Sheet visible={panel !== null} style={styles.panel}>
+          <ScrollView
+            contentContainerStyle={styles.panelContent}
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+          >
             {panel === 'camera' ? (
               <>
                 <ToggleRow title="Camera" value={active} onChange={setActive} />
+                <Rule />
+                <Choice
+                  title="Lens"
+                  options={FACING}
+                  value={facingRequest}
+                  onChange={setFacingRequest}
+                />
                 <Choice
                   title="Preview quality"
                   options={RESOLUTIONS}
@@ -237,6 +303,12 @@ export function LiveScreen({ onClose }: { onClose: () => void }) {
                   options={ANALYSIS}
                   value={analysis}
                   onChange={setAnalysis}
+                />
+                <Choice
+                  title="Target frame rate"
+                  options={TARGET_FPS}
+                  value={targetFps}
+                  onChange={setTargetFps}
                 />
               </>
             ) : null}
@@ -256,12 +328,29 @@ export function LiveScreen({ onClose }: { onClose: () => void }) {
                 <ToggleRow title="Skeleton" value={overlay} onChange={setOverlay} />
                 <ToggleRow title="Joints" value={landmarks} onChange={setLandmarks} />
                 <ToggleRow title="Bones" value={connections} onChange={setConnections} />
+                <ToggleRow title="Angles" value={angles} onChange={setAngles} />
+                <ToggleRow title="Smoothing" value={smoothing} onChange={setSmoothing} />
+                <Rule />
+                <Choice
+                  title="Delegate"
+                  options={DELEGATES}
+                  value={delegate}
+                  onChange={setDelegate}
+                />
+                <Choice
+                  title="People"
+                  options={MAX_POSES}
+                  value={maxPoses}
+                  onChange={setMaxPoses}
+                />
+                <Choice title="Profile" options={PROFILES} value={profile} onChange={setProfile} />
               </>
             ) : null}
 
             {panel === 'debug' ? (
               <>
                 <ToggleRow title="Readout" value={showStats} onChange={setShowStats} />
+                <Rule />
                 <Choice
                   title="Log level"
                   options={LOG_LEVELS}
@@ -269,11 +358,38 @@ export function LiveScreen({ onClose }: { onClose: () => void }) {
                   onChange={setLevel}
                 />
                 <ToggleRow title="Console" value={showLogs} onChange={setShowLogs} />
+                <Rule />
+                <Choice
+                  title="Frames to JavaScript"
+                  options={DATA_MODES}
+                  value={dataMode}
+                  onChange={(next) => {
+                    setPoseCount(0);
+                    setDataMode(next);
+                  }}
+                />
+                <Choice
+                  title="Thermal policy"
+                  options={THERMAL}
+                  value={thermalPolicy}
+                  onChange={setThermalPolicy}
+                />
+                <Button
+                  title={snapshot ?? 'Take a snapshot'}
+                  tone="quiet"
+                  onPress={() => {
+                    void camera.current?.snapshot().then((frame) => {
+                      setSnapshot(
+                        frame ? `${frame.landmarks.length / 4} landmarks` : 'no pose in frame',
+                      );
+                    });
+                  }}
+                />
               </>
             ) : null}
-          </Glass>
-        </View>
-      ) : null}
+          </ScrollView>
+        </Sheet>
+      </View>
 
       <View style={[styles.rail, { bottom: railBottom }]} pointerEvents="box-none">
         <Glass style={styles.railInner} radius={theme.radius.pill} intensity={60}>
@@ -384,20 +500,22 @@ const styles = StyleSheet.create({
     right: theme.space(4),
   },
   logCard: {
-    maxHeight: 150,
+    maxHeight: 160,
     padding: theme.space(3),
+    backgroundColor: 'rgba(9,12,18,0.92)',
+    borderColor: 'rgba(255,255,255,0.14)',
   },
   logLine: {
-    color: theme.color.muted,
+    color: 'rgba(236,240,246,0.82)',
     fontSize: 10,
     fontFamily: 'monospace',
     lineHeight: 15,
   },
   logCategory: {
-    color: theme.color.accent,
+    color: '#4DD8EE',
   },
   logEmpty: {
-    color: theme.color.faint,
+    color: 'rgba(236,240,246,0.45)',
     fontSize: 10,
     fontFamily: 'monospace',
   },
@@ -407,6 +525,9 @@ const styles = StyleSheet.create({
     right: theme.space(4),
   },
   panel: {
+    maxHeight: 340,
+  },
+  panelContent: {
     padding: theme.space(5),
     gap: theme.space(4),
   },

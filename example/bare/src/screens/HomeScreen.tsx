@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import icon from '../../assets/icon.png';
 import { Card } from '../components/Glass';
 import { NAV_CLEARANCE } from '../components/NavBar';
 import type { TabId } from '../components/NavBar';
@@ -19,9 +20,11 @@ const SPECS: { icon: IconName; label: string; value: string }[] = [
 export function HomeScreen({
   onNavigate,
   onDiagnostics,
+  onAbout,
 }: {
   onNavigate: (tab: TabId) => void;
   onDiagnostics: () => void;
+  onAbout: () => void;
 }) {
   const insets = useSafeAreaInsets();
 
@@ -32,10 +35,16 @@ export function HomeScreen({
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.brand}>
-        <View style={styles.mark}>
-          <Ionicons name="scan" size={15} color={theme.color.background} />
-        </View>
+        <Image source={icon} style={styles.mark} />
         <Text style={styles.brandText}>Pose Detection</Text>
+        <Pressable
+          onPress={onAbout}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="About this package"
+        >
+          <Ionicons name="information-circle-outline" size={22} color={theme.color.muted} />
+        </Pressable>
       </View>
 
       <View style={styles.head}>
@@ -130,7 +139,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: theme.space(6),
+    paddingHorizontal: theme.space(5),
+    paddingVertical: theme.space(6),
     paddingBottom: NAV_CLEARANCE + theme.space(4),
     gap: theme.space(7),
   },
@@ -143,11 +153,9 @@ const styles = StyleSheet.create({
     width: 26,
     height: 26,
     borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: theme.color.text,
   },
   brandText: {
+    flex: 1,
     color: theme.color.text,
     fontSize: theme.font.label,
     fontWeight: '600',

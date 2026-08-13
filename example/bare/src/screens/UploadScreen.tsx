@@ -235,7 +235,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: theme.space(6),
+    paddingHorizontal: theme.space(5),
+    paddingVertical: theme.space(6),
     paddingBottom: NAV_CLEARANCE + theme.space(4),
     gap: theme.space(5),
   },

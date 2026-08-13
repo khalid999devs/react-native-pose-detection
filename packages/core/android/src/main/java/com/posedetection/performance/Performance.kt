@@ -81,11 +81,19 @@ internal data class ResolvedPerformance(
  * intermediate values, so `getProfile()` always reports something a person can reason about.
  */
 internal object Tiers {
+    /**
+     * The frame rate a tier starts at.
+     *
+     * The high tier aims above the 30 a preview is usually shown at, because the resolver sets a
+     * target rather than a cap: what a device actually reaches is measured, and calibration and the
+     * thermal ladder walk it back down. Holding a capable phone at 30 when it can sustain more
+     * meant the one number people look at was decided here rather than by their hardware.
+     */
     fun targetFps(tier: DeviceTier): Int =
         when (tier) {
             DeviceTier.LOW -> 15
-            DeviceTier.MEDIUM -> 24
-            DeviceTier.HIGH -> 30
+            DeviceTier.MEDIUM -> 30
+            DeviceTier.HIGH -> 60
         }
 
     fun preview(tier: DeviceTier): String =

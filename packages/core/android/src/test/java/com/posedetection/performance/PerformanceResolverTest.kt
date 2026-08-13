@@ -21,8 +21,8 @@ class PerformanceResolverTest {
     @Test
     fun `auto takes whatever tier calibration settled on`() {
         assertEquals(15, resolve(tier = DeviceTier.LOW).targetFps)
-        assertEquals(24, resolve(tier = DeviceTier.MEDIUM).targetFps)
-        assertEquals(30, resolve(tier = DeviceTier.HIGH).targetFps)
+        assertEquals(30, resolve(tier = DeviceTier.MEDIUM).targetFps)
+        assertEquals(60, resolve(tier = DeviceTier.HIGH).targetFps)
     }
 
     @Test
@@ -33,7 +33,7 @@ class PerformanceResolverTest {
         assertEquals("360p", efficient.analysis)
 
         val quality = resolve(profile = Profile.QUALITY, tier = DeviceTier.LOW)
-        assertEquals(30, quality.targetFps)
+        assertEquals(60, quality.targetFps)
         assertEquals("1080p", quality.preview)
     }
 
@@ -64,14 +64,14 @@ class PerformanceResolverTest {
     fun `thermalPolicy off stops the response, and reporting is not this object's job`() {
         val resolved = resolve(thermal = ThermalState.SERIOUS, policy = ThermalPolicy.OFF)
 
-        assertEquals(24, resolved.targetFps)
+        assertEquals(30, resolved.targetFps)
         assertFalse(resolve(thermal = ThermalState.CRITICAL, policy = ThermalPolicy.OFF).detectionPaused)
     }
 
     @Test
     fun `critical-only ignores everything below critical`() {
         assertEquals(
-            24,
+            30,
             resolve(thermal = ThermalState.SERIOUS, policy = ThermalPolicy.CRITICAL_ONLY).targetFps,
         )
         assertTrue(
@@ -83,7 +83,7 @@ class PerformanceResolverTest {
     fun `unrestricted opts out of the ladder, but not out of critical`() {
         assertEquals(
             "a device about to shut down is not a preference anyone can hold",
-            24,
+            30,
             resolve(profile = Profile.UNRESTRICTED, thermal = ThermalState.SERIOUS).targetFps,
         )
         assertTrue(

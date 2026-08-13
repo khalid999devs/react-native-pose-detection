@@ -144,9 +144,15 @@ extension PoseCameraView {
 
     // The one path that actually downgrades is 'auto'. An explicit 'gpu' is pinned and never falls
     // back, so comparing the resolved delegate against the request is the whole test.
+    //
+    // Not in a simulator. There the CPU is a deliberate choice rather than a device falling short,
+    // and reporting it as a problem would train people to ignore the one channel that tells them
+    // their real phone has a problem. It is on the log instead, from `PoseDetector`.
+    #if !targetEnvironment(simulator)
     if request != .cpu && created.delegateKind == .CPU {
       emitError(.gpuUnavailable, "The GPU delegate is unavailable, running on CPU.")
     }
+    #endif
     emitReadyOnce()
   }
 

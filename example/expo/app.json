@@ -6,7 +6,11 @@
     "orientation": "portrait",
     "newArchEnabled": true,
     "android": {
-      "package": "com.posedetection.example"
+      "package": "com.posedetection.example",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0B1220"
+      }
     },
     "ios": {
       "bundleIdentifier": "com.posedetection.example",
@@ -29,6 +33,7 @@
     ],
     "updates": {
       "enabled": false
-    }
+    },
+    "icon": "./assets/icon.png"
   }
 }

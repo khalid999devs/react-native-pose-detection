@@ -74,11 +74,19 @@ struct ResolvedPerformance: Equatable {
  intermediate values, so `getProfile()` always reports something a person can reason about.
  */
 enum Tiers {
+  /**
+   The frame rate a tier starts at.
+
+   The high tier aims above the 30 a preview is usually shown at, because the resolver sets a
+   target rather than a cap: what a device actually reaches is measured, and calibration and the
+   thermal ladder walk it back down. Holding a capable phone at 30 when it can sustain more meant
+   the one number people look at was decided here rather than by their hardware.
+   */
   static func targetFps(_ tier: DeviceTier) -> Int {
     switch tier {
     case .low: return 15
-    case .medium: return 24
-    case .high: return 30
+    case .medium: return 30
+    case .high: return 60
     }
   }
 

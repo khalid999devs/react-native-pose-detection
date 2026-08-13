@@ -18,21 +18,26 @@ type Props = {
  *
  * Blur alone will not keep dark text readable over a bright frame, so every panel also carries a
  * near-white scrim and a hairline edge: the blur gives depth, the scrim gives contrast, and the
- * edge is what stops the panel dissolving into a pale background.
+ * edge is what stops the panel dissolving into a pale background. The scrim is the blur's own
+ * background rather than a child, because on Android an absolutely positioned child is laid out in
+ * the padded content box and draws a square slab inside the rounded card.
  *
- * `dimezisBlurView` is asked for by name because Android's default blur is a flat tint; without it
- * the same component is glass on one platform and a grey box on the other, and these two apps are
- * meant to be indistinguishable.
+ * **Android gets no blur.** Its only real implementation needs a `blurTarget` ref to the view being
+ * blurred, which cannot work here: these panels sit over a camera preview, which is a surface the
+ * view hierarchy cannot sample. Asking for it anyway logs a warning on every mount and then falls
+ * back to nothing, so the fallback is chosen deliberately instead, and the scrim is made opaque
+ * enough to carry the panel on its own.
  */
 export function Glass({ children, style, radius = theme.radius.lg, intensity = 40 }: Props) {
+  if (Platform.OS !== 'ios') {
+    return (
+      <View style={[styles.blur, styles.solid, { borderRadius: radius }, style]}>{children}</View>
+    );
+  }
   return (
     <BlurView
       intensity={intensity}
       tint="light"
-      experimentalBlurMethod={Platform.OS === 'android' ? 'dimezisBlurView' : undefined}
-      // The scrim is the blur's own background rather than an absolutely positioned child: on
-      // Android the Dimezis blur lays a child like that out in the padded content box, which draws
-      // a square white slab inside the rounded card.
       style={[styles.blur, { borderRadius: radius }, style]}
     >
       {children}
@@ -52,6 +57,9 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(12,13,15,0.10)',
     overflow: 'hidden',
     ...theme.lift,
+  },
+  solid: {
+    backgroundColor: theme.color.scrimSolid,
   },
   card: {
     backgroundColor: theme.color.surface,

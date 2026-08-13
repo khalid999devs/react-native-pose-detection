@@ -1,6 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  View,
+} from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 
 import { theme } from '../theme';
@@ -130,7 +138,13 @@ export function Choice<T extends string>({
   return (
     <View style={styles.choice}>
       <Text style={styles.rowTitle}>{title}</Text>
-      <View style={styles.choiceRow}>
+      {/* Scrolls rather than wraps: five profile names do not fit a phone's width, and a wrapped
+          second line makes a row of chips read as two separate settings. */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.choiceRow}
+      >
         {options.map((option) => {
           const selected = option === value;
           return (
@@ -149,12 +163,22 @@ export function Choice<T extends string>({
             </Pressable>
           );
         })}
-      </View>
+      </ScrollView>
     </View>
   );
 }
 
+/** Separates groups inside a control panel. */
+export function Rule() {
+  return <View style={styles.rule} />;
+}
+
 const styles = StyleSheet.create({
+  rule: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: theme.color.border,
+    marginVertical: theme.space(0.5),
+  },
   icon: {
     borderRadius: theme.radius.pill,
     alignItems: 'center',
@@ -222,6 +246,7 @@ const styles = StyleSheet.create({
   choiceRow: {
     flexDirection: 'row',
     gap: theme.space(2),
+    paddingRight: theme.space(4),
   },
   chip: {
     paddingVertical: theme.space(2),
