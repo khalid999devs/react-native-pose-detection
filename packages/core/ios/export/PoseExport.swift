@@ -108,16 +108,19 @@ enum PoseExport {
     let painted = UIGraphicsImageRenderer(size: canvas, format: format).image { context in
       image.draw(in: projection.rect)
       guard options.drawOverlay, let landmarks = firstPose(result) else { return }
-      OverlayRenderer(
+      let scale = overlayScale(canvas: canvas)
+      var renderer = OverlayRenderer(
         config: options.overlay,
-        palette: OverlayPalette(options.overlay),
+        palette: OverlayPalette(options.overlay, scale: scale),
         landmarks: landmarks,
         projection: projection,
         // A file is never mirrored: what was picked is what gets painted.
         mirrored: false,
         sourceWidth: Int(display.width),
         sourceHeight: Int(display.height)
-      ).draw(into: context.cgContext)
+      )
+      renderer.scale = scale
+      renderer.draw(into: context.cgContext)
     }
 
     let url = options.directory.appendingPathComponent("\(options.fileName).jpg")

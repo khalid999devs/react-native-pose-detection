@@ -24,7 +24,8 @@ extension VideoExporter {
       maxPoses: options.maxPoses,
       video: true
     )
-    let palette = OverlayPalette(options.overlay)
+    let scale = overlayScale(canvas: geometry.canvas)
+    let palette = OverlayPalette(options.overlay, scale: scale)
 
     guard reader.reader.startReading() else {
       throw ExportError(reader.reader.error?.localizedDescription ?? "could not start reading the video")
@@ -71,15 +72,11 @@ extension VideoExporter {
         nextSampleMs = positionMs + stepMs
       }
 
-      let renderer = hasPose && options.drawOverlay ? OverlayRenderer(
-        config: options.overlay,
+      let renderer = hasPose ? makeRenderer(
         palette: palette,
         landmarks: landmarks,
-        projection: geometry.projection,
-        // A file is never mirrored: what was picked is what gets painted.
-        mirrored: false,
-        sourceWidth: Int(geometry.display.width),
-        sourceHeight: Int(geometry.display.height)
+        geometry: geometry,
+        scale: scale
       ) : nil
 
       try paint(
@@ -112,6 +109,29 @@ extension VideoExporter {
       frameCount: frameCount,
       posesFound: posesFound
     )
+  }
+
+  /// Nil when the overlay is switched off, so a frame with no skeleton takes the same path as a
+  /// frame with nobody in it rather than a second branch through the loop.
+  private func makeRenderer(
+    palette: OverlayPalette,
+    landmarks: [Float],
+    geometry: ExportGeometry,
+    scale: CGFloat
+  ) -> OverlayRenderer? {
+    guard options.drawOverlay else { return nil }
+    var renderer = OverlayRenderer(
+      config: options.overlay,
+      palette: palette,
+      landmarks: landmarks,
+      projection: geometry.projection,
+      // A file is never mirrored: what was picked is what gets painted.
+      mirrored: false,
+      sourceWidth: Int(geometry.display.width),
+      sourceHeight: Int(geometry.display.height)
+    )
+    renderer.scale = scale
+    return renderer
   }
 
   // MARK: - One frame

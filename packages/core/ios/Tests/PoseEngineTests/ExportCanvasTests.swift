@@ -58,3 +58,34 @@ final class ExportCanvasTests: XCTestCase {
     XCTAssertEqual(canvas.width, 540)
   }
 }
+
+/// The multiplier that keeps an exported skeleton looking like the preview's.
+final class OverlayScaleTests: XCTestCase {
+
+  /// A 1080 pixel wide frame is roughly a phone screen's worth of pixels, so a `lineWidth` of 3
+  /// lands near the 9 pixels a 3 point line covers on a 3x screen.
+  func testAFullHdCanvasScalesRoughlyLikeAPhoneScreen() {
+    let scale = overlayScale(canvas: CGSize(width: 1080, height: 1920))
+    XCTAssertEqual(scale, 2.7, accuracy: 0.01)
+  }
+
+  /// Otherwise the same clip exported landscape and portrait would come back with different
+  /// weights of line for one config.
+  func testOrientationDoesNotChangeTheScale() {
+    XCTAssertEqual(
+      overlayScale(canvas: CGSize(width: 1920, height: 1080)),
+      overlayScale(canvas: CGSize(width: 1080, height: 1920))
+    )
+  }
+
+  /// Never below one: a small export should not come back with a skeleton thinner than the config
+  /// asked for.
+  func testASmallCanvasNeverThinsTheSkeleton() {
+    XCTAssertEqual(overlayScale(canvas: CGSize(width: 240, height: 320)), 1)
+    XCTAssertEqual(overlayScale(canvas: .zero), 1)
+  }
+
+  func testAFourKCanvasScalesUpRatherThanStayingHairThin() {
+    XCTAssertEqual(overlayScale(canvas: CGSize(width: 3840, height: 2160)), 5.4, accuracy: 0.01)
+  }
+}

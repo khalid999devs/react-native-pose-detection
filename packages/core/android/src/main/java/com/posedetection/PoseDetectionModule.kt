@@ -11,6 +11,8 @@ import com.posedetection.engine.OneEuroFilter
 import com.posedetection.engine.parseData
 import com.posedetection.engine.parseSelection
 import com.posedetection.engine.parseTriggers
+import com.posedetection.export.ExportCancelled
+import com.posedetection.export.PoseExport
 import com.posedetection.performance.Profile
 import com.posedetection.performance.ThermalPolicy
 import com.posedetection.view.OverlayConfig
@@ -40,7 +42,7 @@ class PoseDetectionModule : Module() {
             Function("startLogStream") { PoseLog.startStream() }
             Function("stopLogStream") { PoseLog.stopStream() }
 
-            Events("onVideoProgress")
+            Events("onVideoProgress", "onExportProgress")
 
             AsyncFunction(
                 "detectOnImage",
@@ -87,6 +89,35 @@ class PoseDetectionModule : Module() {
             }
 
             Function("cancelDetectOnVideo") { taskId: Int -> StaticDetection.cancel(taskId) }
+
+            // Handed to the export executor rather than run on Expo's, which is what keeps a long
+            // export off any thread the camera cares about. See PoseExport for the other rules.
+            AsyncFunction(
+                "exportPose",
+            ) { uri: String, options: Map<String, Any?>?, taskId: Int, promise: expo.modules.kotlin.Promise ->
+                val context = appContext.reactContext
+                if (context == null) {
+                    promise.reject("NO_CONTEXT", "The module has no context.", null)
+                    return@AsyncFunction
+                }
+                PoseExport.executor.execute {
+                    runCatching {
+                        PoseExport.run(context, uri, options, taskId) { progress ->
+                            sendEvent("onExportProgress", mapOf("taskId" to taskId, "progress" to progress))
+                        }
+                    }.onSuccess { promise.resolve(it.payload()) }
+                        .onFailure {
+                            val cancelled = it is ExportCancelled
+                            promise.reject(
+                                if (cancelled) "EXPORT_CANCELLED" else "EXPORT_FAILED",
+                                it.message ?: "the export failed",
+                                null,
+                            )
+                        }
+                }
+            }
+
+            Function("cancelExportPose") { taskId: Int -> PoseExport.cancel(taskId) }
 
             AsyncFunction("getCameraPermission") { promise: expo.modules.kotlin.Promise ->
                 val permissions = appContext.permissions

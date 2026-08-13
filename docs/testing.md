@@ -57,6 +57,9 @@ contract, and none of them fails on its own when it drifts.
   engine, the wire format and the performance resolver. Neither covers `CameraSource`,
   `PoseDetector` or the overlay, because those need a camera, a model and a screen; those are
   what the device tests below are for.
+- **Export is covered only where it is arithmetic.** `ExportCanvas` has a suite on each platform
+  for the output size and the overlay scale. The codecs, the GL path and the muxer are not
+  testable off a device and have never run on one.
 
 ## Required device tests
 
@@ -99,7 +102,7 @@ delegate behaves differently on them.
 ## Two evaluators, one behavior
 
 The condition evaluator and the geometry exist twice, Swift and Kotlin, and **both
-implementations must produce identical output for identical input.** 65 JUnit tests and 81
+implementations must produce identical output for identical input.** 76 JUnit tests and 81
 XCTests assert the same behavior on each side, and the wire parity test reads all three languages'
 constant tables and fails when they disagree. That last one is the only part CI enforces
 mechanically; the rest is two suites written against one specification.

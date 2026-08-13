@@ -31,3 +31,25 @@ private func even(_ value: CGFloat) -> CGFloat {
   let rounded = max(2, value.rounded())
   return rounded - rounded.truncatingRemainder(dividingBy: 2)
 }
+
+/// A phone screen is around this many points across, which is the size the overlay defaults were
+/// chosen to look right at.
+private let referenceEdge: CGFloat = 400
+
+/**
+ How much to multiply the overlay's widths and radii by when painting into `canvas`.
+
+ A live preview draws in points on a screen a few hundred points wide, so a `lineWidth` of 3 is a
+ clearly visible line. An export draws in pixels, where 3 on a 1080 pixel frame is a hair. Scaling
+ by the canvas's short edge against a nominal phone width means one config produces a skeleton that
+ looks the same in the preview and in the file, at any output size, which is the whole promise of
+ configuring both with the same numbers.
+
+ The short edge rather than the long one, so a clip and the portrait video of the same scene do not
+ come back with different weights of line.
+ */
+func overlayScale(canvas: CGSize) -> CGFloat {
+  let shortEdge = min(canvas.width, canvas.height)
+  guard shortEdge > 0 else { return 1 }
+  return max(1, shortEdge / referenceEdge)
+}

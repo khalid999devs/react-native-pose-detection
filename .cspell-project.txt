@@ -55,6 +55,7 @@ Metal
 monorepo
 movenet
 multiset
+muxer
 NNAPI
 nonisolated
 onnx
@@ -91,6 +92,7 @@ tarballs
 tflite
 thermalservice
 toolkits
+transcode
 transcoders
 Ultralytics
 unbuilt

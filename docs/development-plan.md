@@ -254,8 +254,8 @@ against a view which is not doing the work yet.
 - [x] Camera switch, same rules as Android, including the stale-frame guard and the timeout that
       settles a switch the new camera never confirms
 - [x] Memory warnings, thermal state, low power mode
-- [x] Engine bindings identical to Android, verified by 81 XCTests over the same behavior the
-      65 JUnit tests cover, and by the wire parity guard now reading both native sides
+- [x] Engine bindings identical to Android, verified by 85 XCTests over the same behavior the
+      76 JUnit tests cover, and by the wire parity guard now reading both native sides
 - [x] Consumer ProGuard rules have no iOS counterpart, but the Swift equivalent is
       `-ObjC`-safe symbol handling; check the archive, not the debug build. The `ios-bare` CI cell
       is the only one that builds Release, and it asserts `PoseDetectionModule` is still in the
@@ -298,7 +298,7 @@ test passes. Both wait on a device, which is Phase 6. Zero jump-detection code p
 - [ ] Calibration test, settles < 3 s on low/mid/high devices; cache honored on relaunch
 - [ ] Thermal simulation, every ladder step fires and recovers
 - [x] Unit tests on both native sides: trigger evaluator, condition evaluator, geometry, wire
-      encoding, driven by shared fixtures. 65 JUnit tests and 81 XCTests, both in CI
+      encoding, driven by shared fixtures. 76 JUnit tests and 85 XCTests, both in CI
 - [ ] **Measure real app size**, release archive with and without the plugin, per model, per
       platform. Replace the iOS estimates in `guides/performance.md` with actual numbers.
 - [ ] **Measure FPS** on 3–4 real devices spanning low/mid/high

@@ -33,6 +33,12 @@ that, and all four are structural rather than best effort:
 | 3 | A `utility` background queue | Below the camera's analysis queue, so under load the scheduler starves the export rather than sharing evenly. Serial, so two exports queue rather than gang up |
 | 4 | Bounded memory | One frame decoded at a time, one pooled buffer encoded at a time, nothing accumulated. A ten minute video costs what a ten second one costs |
 
+One honest caveat to rule 2: on Android the **pixels** of a video export do go through the GPU,
+because decoder to GL to encoder is the only path the platform offers and the alternative,
+converting every frame in Kotlin, would take far more CPU from the camera than that takes GPU. The
+part that matters is unchanged: **inference never touches the GPU on either platform**, and
+inference is the heavy, sustained load that would actually cost the preview its frame rate.
+
 An export is therefore slower than it could be, on purpose. You can run one while the camera is
 live and the preview keeps its frame rate.
 
@@ -112,10 +118,14 @@ type ExportResult = {
 `posesFound: 0` is worth handling. It means the export succeeded and painted nothing, which is a
 different thing from a failure and usually means the body was out of frame or too small.
 
-Images are written as JPEG, videos as H.264 in an MP4 with the audio track copied through
-untouched. Rotation is baked into the output rather than carried as a track transform, so a clip
-shot in portrait plays upright everywhere, including in the players and server side transcoders
-that ignore the transform.
+Images are written as JPEG and videos as H.264 in an MP4. Rotation is baked into the output rather
+than carried as a track transform, so a clip shot in portrait plays upright everywhere, including
+in the players and server side transcoders that ignore the transform.
+
+On iOS the original audio track is copied through untouched. **On Android the export is currently
+silent**: the video path is written and the audio passthrough is not, so a clip comes back with its
+picture painted and its sound dropped. That is the one behavioral difference between the platforms
+and it is worth knowing before you ship a feature that depends on the audio.
 
 ## When you want the numbers instead
 

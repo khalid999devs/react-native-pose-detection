@@ -14,7 +14,7 @@ import UIKit
  */
 extension OverlayRenderer {
   func drawAngles(_ context: CGContext) {
-    context.setLineWidth(config.lineWidth * 0.75)
+    context.setLineWidth(lineWidth * 0.75)
 
     for (index, spec) in config.angles.enumerated() {
       let vertex = spec.triple[1]
@@ -55,7 +55,7 @@ extension OverlayRenderer {
       let start = CGFloat(bisector) - sweep / 2
       context.addArc(
         center: center,
-        radius: spec.radius,
+        radius: spec.radius * scale,
         startAngle: start,
         endAngle: start + sweep,
         clockwise: false
@@ -76,14 +76,14 @@ extension OverlayRenderer {
     bisector: CGFloat,
     color: CGColor
   ) {
-    let labelRadius = spec.radius + OverlayRenderer.labelGap
+    let labelRadius = (spec.radius + OverlayRenderer.labelGap) * scale
     let anchor = CGPoint(x: center.x + cos(bisector) * labelRadius, y: center.y + sin(bisector) * labelRadius)
 
     var attributes = palette.labelAttributes
     attributes[.foregroundColor] = UIColor(cgColor: color)
     let text = format(degrees: degrees, decimals: spec.decimals) as NSString
     let size = text.size(withAttributes: attributes)
-    let padding = OverlayRenderer.labelPadding
+    let padding = OverlayRenderer.labelPadding * scale
 
     let box = CGRect(
       x: anchor.x - size.width / 2 - padding,

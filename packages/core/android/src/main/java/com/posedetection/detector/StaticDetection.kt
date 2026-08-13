@@ -3,6 +3,7 @@ package com.posedetection.detector
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.media.MediaExtractor
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import com.google.mediapipe.framework.image.BitmapImageBuilder
@@ -274,11 +275,11 @@ internal object StaticDetection {
         return buffer
     }
 
-    private fun requireModel(context: Context): String =
+    fun requireModel(context: Context): String =
         PoseDetector.findModelAsset(context)
             ?: throw StaticDetectionError("No pose model is bundled. Run the CLI or prebuild first.")
 
-    private fun loadBitmap(
+    fun loadBitmap(
         context: Context,
         uri: String,
     ): Bitmap? =
@@ -288,7 +289,21 @@ internal object StaticDetection {
             }
         }.getOrNull() ?: runCatching { BitmapFactory.decodeFile(Uri.parse(uri).path) }.getOrNull()
 
-    private fun open(
+    /** The same source resolution as [open], for the extractor the exporter reads frames with. */
+    fun openExtractor(
+        extractor: MediaExtractor,
+        context: Context,
+        uri: String,
+    ) {
+        val parsed = Uri.parse(uri)
+        if (parsed.scheme == null || parsed.scheme == "file") {
+            extractor.setDataSource(parsed.path!!)
+        } else {
+            extractor.setDataSource(context, parsed, null)
+        }
+    }
+
+    fun open(
         retriever: MediaMetadataRetriever,
         context: Context,
         uri: String,

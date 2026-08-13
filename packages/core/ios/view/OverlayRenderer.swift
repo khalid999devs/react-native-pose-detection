@@ -12,10 +12,12 @@ struct OverlayPalette {
   let arcs: [CGColor]
   let labelAttributes: [NSAttributedString.Key: Any]
 
-  init(_ config: OverlayConfig) {
+  init(_ config: OverlayConfig, scale: CGFloat = 1) {
     stroke = config.color.uiColor.cgColor
     arcs = config.angles.map { ($0.color ?? config.color).uiColor.cgColor }
-    labelAttributes = [.font: UIFont.systemFont(ofSize: OverlayRenderer.labelFontSize, weight: .semibold)]
+    labelAttributes = [
+      .font: UIFont.systemFont(ofSize: OverlayRenderer.labelFontSize * scale, weight: .semibold)
+    ]
   }
 }
 
@@ -45,6 +47,19 @@ struct OverlayRenderer {
   let sourceWidth: Int
   let sourceHeight: Int
 
+  /**
+   Multiplies every width, radius and font size.
+
+   A view draws in points, where a `lineWidth` of 3 is 3 points on a screen a few hundred points
+   wide. An export draws in pixels, where 3 would be a hair on a 1080 pixel frame, so the same
+   config would produce a skeleton nobody can see. The exporter passes the ratio that puts the two
+   back on the same footing; the view passes 1 and is unaffected.
+   */
+  var scale: CGFloat = 1
+
+  var lineWidth: CGFloat { config.lineWidth * scale }
+  var pointRadius: CGFloat { config.pointRadius * scale }
+
   func draw(into context: CGContext) {
     guard sourceWidth > 0, sourceHeight > 0 else { return }
     if config.connections { drawConnections(context) }
@@ -69,7 +84,7 @@ struct OverlayRenderer {
   }
 
   private func drawLandmarks(_ context: CGContext) {
-    let radius = config.pointRadius
+    let radius = pointRadius
     guard radius > 0 else { return }
     context.setFillColor(palette.stroke)
 
@@ -89,7 +104,7 @@ struct OverlayRenderer {
 
   private func drawConnections(_ context: CGContext) {
     context.setStrokeColor(palette.stroke)
-    context.setLineWidth(config.lineWidth)
+    context.setLineWidth(lineWidth)
     context.setLineCap(.round)
 
     var drawn = false
