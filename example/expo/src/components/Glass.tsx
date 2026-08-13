@@ -30,9 +30,11 @@ export function Glass({ children, style, radius = theme.radius.lg, intensity = 4
       intensity={intensity}
       tint="light"
       experimentalBlurMethod={Platform.OS === 'android' ? 'dimezisBlurView' : undefined}
+      // The scrim is the blur's own background rather than an absolutely positioned child: on
+      // Android the Dimezis blur lays a child like that out in the padded content box, which draws
+      // a square white slab inside the rounded card.
       style={[styles.blur, { borderRadius: radius }, style]}
     >
-      <View style={[StyleSheet.absoluteFill, styles.scrim, { borderRadius: radius }]} />
       {children}
     </BlurView>
   );
@@ -45,13 +47,11 @@ export function Card({ children, style, radius = theme.radius.md }: Props) {
 
 const styles = StyleSheet.create({
   blur: {
+    backgroundColor: theme.color.scrim,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(12,13,15,0.10)',
     overflow: 'hidden',
     ...theme.lift,
-  },
-  scrim: {
-    backgroundColor: theme.color.scrim,
   },
   card: {
     backgroundColor: theme.color.surface,

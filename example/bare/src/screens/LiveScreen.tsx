@@ -16,7 +16,7 @@ import {
 } from 'react-native-pose-detection';
 
 import { Button, Choice, IconButton, ToggleRow, type IconName } from '../components/Controls';
-import { Glass } from '../components/Glass';
+import { Card, Glass } from '../components/Glass';
 import { theme } from '../theme';
 
 type Category = 'camera' | 'detection' | 'debug';
@@ -101,7 +101,7 @@ export function LiveScreen({ onClose }: { onClose: () => void }) {
   if (!permission.granted) {
     return (
       <View style={[styles.gate, { paddingTop: insets.top }]}>
-        <Glass style={styles.gateCard} radius={theme.radius.lg} intensity={20}>
+        <Card style={styles.gateCard} radius={theme.radius.lg}>
           <Text style={styles.gateTitle}>Camera access</Text>
           <Text style={styles.gateBody}>
             {permission.canAskAgain
@@ -111,7 +111,7 @@ export function LiveScreen({ onClose }: { onClose: () => void }) {
           {permission.canAskAgain ? (
             <Button title="Allow camera" onPress={() => void permission.request()} />
           ) : null}
-        </Glass>
+        </Card>
       </View>
     );
   }
@@ -423,6 +423,7 @@ const styles = StyleSheet.create({
   },
   gate: {
     flex: 1,
+    backgroundColor: theme.color.background,
     alignItems: 'center',
     justifyContent: 'center',
     padding: theme.space(6),
