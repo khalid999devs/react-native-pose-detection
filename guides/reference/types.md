@@ -20,8 +20,9 @@ type PoseFrame = {
 };
 ```
 
-**Android produces these. iOS does not yet**, because there is no iOS module at all. `onPose` and
-`onPoseBatch` fire on Android as soon as `data.mode` is anything but `off`.
+**Both platforms produce these**, from one wire format written three times and guarded by a test
+that reads all three. `onPose` and `onPoseBatch` fire as soon as `data.mode` is anything but
+`off`.
 
 Every field is `readonly` in the real declaration, dropped above for readability. The same is true
 of the event types in [events](./events.md).

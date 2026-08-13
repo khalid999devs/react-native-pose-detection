@@ -54,11 +54,20 @@ On Apple Silicon, use an arm64 emulator image, which is what Android Studio give
 
 ## iOS build fails
 
-There is no iOS module yet: the package ships no `ios/` sources and no podspec, so nothing of
-this library links on iOS today. The MediaPipe version iOS will use is not settled either;
-0.10.35 is published to CocoaPods but has not been built against, and
-[an open question about XCFramework linking](https://github.com/google-ai-edge/mediapipe/issues/6258)
-is why. See [ADR 0007](../docs/adr/0007-pin-mediapipe-0-10-35.md).
+**`Unable to find a specification for ExpoModulesCore`** almost always means the deployment
+target, not the dependency. Expo SDK 57 requires iOS 16.4, and autolinking silently skips every
+Expo pod in an app that targets lower, so the first thing to fail is the one that resolves this
+package. Raise `platform :ios` in the Podfile and `IPHONEOS_DEPLOYMENT_TARGET` in the project to
+`16.4`. The podspec itself declares 15.1, which is this package's own floor; Expo raises it during
+`pod install` and prints that it did.
+
+**A Swift compile error inside `expo-modules-jsi` or `expo-modules-core`** is a toolchain
+mismatch rather than anything in this package. Expo SDK 57 does not compile on Xcode 26.3: `abs`
+becomes ambiguous under C++ interop in one and `sending 'emitter' risks causing data races` in the
+other. Use an Xcode that the SDK supports.
+
+The MediaPipe pin is settled: `MediaPipeTasksVision 0.10.35`, the same version Android uses, and
+it resolves from CocoaPods trunk. See [ADR 0007](../docs/adr/0007-pin-mediapipe-0-10-35.md).
 
 ## `minSdkVersion` error on Android
 

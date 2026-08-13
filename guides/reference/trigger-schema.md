@@ -2,7 +2,7 @@
 
 Conceptual guide: [guides/triggers.md](../triggers.md).
 
-**Android runs these.** iOS has no module yet.
+**Both platforms run these.** Neither has run on a physical device.
 
 ## `Trigger`
 

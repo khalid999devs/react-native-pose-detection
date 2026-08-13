@@ -19,6 +19,12 @@
           "model": "full",
           "cameraPermissionText": "This example uses the camera to detect your pose on device."
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "This example runs pose detection on an image or video you pick."
+        }
       ]
     ],
     "updates": {

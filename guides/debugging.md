@@ -3,8 +3,9 @@
 The library ships a diagnostic channel that is **completely off by default** and costs nothing
 until you turn it on.
 
-*Android only. Entries reach Logcat whatever is attached, so `adb logcat` works with no listener,
-and are batched to JavaScript roughly every 250 ms while one is. iOS has no module yet.*
+*Built on both platforms. Entries reach Logcat on Android and `os.Logger` on iOS whatever is
+attached, so `adb logcat` and Console.app work with no listener, and are batched to JavaScript
+roughly every 250 ms while one is.*
 
 ## Turning it on
 

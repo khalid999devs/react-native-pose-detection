@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 export const theme = {
   bg: '#0b0d10',
   panel: '#151a20',
@@ -8,3 +10,6 @@ export const theme = {
   danger: '#ff6b6b',
   ok: '#4ade80',
 } as const;
+
+/** React Native has no generic monospace alias that resolves on both platforms. */
+export const mono = Platform.select({ ios: 'Menlo', default: 'monospace' });

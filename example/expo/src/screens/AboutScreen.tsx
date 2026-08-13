@@ -1,37 +1,54 @@
 import * as React from 'react';
-import { ScrollView, StyleSheet, Text } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Text } from 'react-native';
 
-import { Panel } from '../components';
-import { PENDING_SCREENS } from './registry';
+import { Panel, Row } from '../components';
 import { theme } from '../theme';
 
 export function AboutScreen() {
   return (
     <ScrollView contentContainerStyle={styles.content}>
-      <Panel title="What works">
+      <Panel title="What this is">
         <Text style={styles.body}>
-          Camera preview, on-device pose detection, and the native skeleton overlay, on Android. The
-          GPU delegate is probed with a real inference before it is trusted, and falls back to CPU
-          when that probe fails.
+          The reference implementation for react-native-pose-detection, and the manual QA harness
+          for it. Every prop, event and ref method has a control somewhere in here, which is the
+          rule: a feature with no way to exercise it is a feature nobody will find.
         </Text>
       </Panel>
 
-      <Panel title="What is missing">
+      <Panel title="Build">
+        <Row label="platform" value={`${Platform.OS} ${String(Platform.Version)}`} />
+        <Row label="install path" value="config plugin" />
+        <Row label="model" value="full, copied at prebuild" />
+      </Panel>
+
+      <Panel title="What has not happened">
         <Text style={styles.body}>
-          Frames do not reach JavaScript yet. The native ring buffer, the trigger evaluator,
-          calibration, and the thermal ladder are unbuilt, so these screens are not here yet:
+          Nothing in this package has run on a physical device. Both native sides compile, both test
+          suites pass, and both install paths produce an app, but every number in the performance
+          guide is still a target rather than a measurement.
         </Text>
-        {PENDING_SCREENS.map((screen) => (
-          <Text key={screen.title} style={styles.pending}>
-            {screen.title}
-            <Text style={styles.needs}>{`  needs ${screen.needs}`}</Text>
-          </Text>
-        ))}
+        <Text style={styles.body}>
+          The Scenarios screen is what makes that testable: it drives the camera switches, remounts
+          and toggles that have historically broken this kind of package, and it is meant to be run
+          with a profiler attached.
+        </Text>
       </Panel>
 
       <Panel title="iOS">
         <Text style={styles.body}>
-          Not started. There is no Swift source and no podspec, so this app builds for Android only.
+          Swift on AVFoundation, mirroring the Kotlin package for package. Rotation is applied by
+          the capture connection rather than passed to MediaPipe, mirroring belongs to the preview
+          alone, and the session runs on its own serial queue. The differences from Android are
+          listed in docs/native-modules.md rather than left to be discovered.
+        </Text>
+      </Panel>
+
+      <Panel title="Primitives, not policy">
+        <Text style={styles.body}>
+          There is no rep counter in the package. The Recipes screen builds four of them out of
+          angles, velocities and a state machine, and every one of them is a snippet copied from
+          guides/recipes/ rather than an API. A squat threshold that suits a gym app is wrong for a
+          physiotherapy one, and that judgment belongs to the app.
         </Text>
       </Panel>
     </ScrollView>
@@ -41,6 +58,4 @@ export function AboutScreen() {
 const styles = StyleSheet.create({
   body: { color: theme.text, fontSize: 14, lineHeight: 21 },
   content: { gap: 12, paddingBottom: 24 },
-  needs: { color: theme.muted, fontSize: 12, fontWeight: '400' },
-  pending: { color: theme.text, fontSize: 13, fontWeight: '600' },
 });

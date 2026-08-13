@@ -1,9 +1,8 @@
 # Getting Started
 
-**Android only so far, and pre-1.0.** The camera, the native overlay and camera switching run
-today. Triggers, frame delivery to JavaScript, calibration and the thermal ladder are typed and
-decoded in JavaScript but have no Kotlin behind them yet, so the sections below marked *not
-built yet* describe what you will be able to call, not what fires today. iOS has not started.
+**Pre-1.0, and not yet run on a device.** Both platforms are written and build, so everything on
+this page is implemented on both. What has not happened is a physical device: treat the numbers
+as targets rather than measurements.
 
 ## Requirements
 
@@ -11,9 +10,9 @@ built yet* describe what you will be able to call, not what fires today. iOS has
 | --- | --- |
 | React Native | 0.74+ |
 | Expo SDK | 51+ (dev client or EAS Build) |
-| iOS | 15.1+ |
+| iOS | 15.1+, and 16.4+ on Expo SDK 57, which is what `ExpoModulesCore` requires |
 | Android | API 24+ |
-| Architecture | old and new both supported |
+| Architecture | new. React Native 0.82 removed the legacy one, so there is nothing to choose |
 
 **Expo Go is not supported** and never will be. This package contains native code.
 Use a [development build](https://docs.expo.dev/develop/development-builds/introduction/).
@@ -96,9 +95,6 @@ permanent, which is the case an "allow" button cannot fix: see
 [camera permission](./reference/permissions.md).
 
 ## Getting data out
-
-*Android delivers frames today. Triggers are the next piece of the engine and do not fire yet,
-on either platform. iOS has no module at all.*
 
 Nothing crosses the bridge until you ask. Three ways, cheapest first:
 

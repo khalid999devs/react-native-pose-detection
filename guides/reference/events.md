@@ -1,23 +1,23 @@
 # Events
 
-| Callback | Fires | Rate | Built |
-| --- | --- | --- | --- |
-| `onReady` | camera + detector up | once | Android |
-| `onError` | a failure occurred | rare | Android |
-| `onCameraChange` | switch complete and stable | per switch | Android |
-| `onPerformanceChange` | calibration settled or thermal adaptation | rare | no |
-| `onTrigger` | a trigger transitioned | ~1 per event | no |
-| `onPose` | frame delivered | 10/s or 30/s | no |
-| `onPoseBatch` | buffer flushed | 2/s | no |
-| `onFramesDropped` | the ring buffer dropped frames | per delivery | no |
-| `onLog` | a batch of log entries | ~4/s while logging | no |
+| Callback | Fires | Rate |
+| --- | --- | --- |
+| `onReady` | camera + detector up | once |
+| `onError` | a failure occurred | rare |
+| `onCameraChange` | switch complete and stable | per switch |
+| `onPerformanceChange` | calibration settled or thermal adaptation | rare |
+| `onTrigger` | a trigger transitioned | ~1 per event |
+| `onPose` | frame delivered | 10/s or 30/s |
+| `onPoseBatch` | buffer flushed | 2/s |
+| `onFramesDropped` | the ring buffer dropped frames | per delivery |
+| `onLog` | a batch of log entries | ~4/s while logging |
 
-"Built" is the native half. iOS has none of it yet. The three Android events are the camera and
-detector lifecycle; everything below them waits on the engine, so with today's build only
-`onReady`, `onError` and `onCameraChange` ever fire.
+Every one is implemented on both platforms. Three of them are not native events at all:
+`onPose`, `onPoseBatch` and `onFramesDropped` are called by `<PoseCamera>` after it drains the
+native ring buffer, because an event cannot carry an ArrayBuffer and a function return can. See
+[ADR 0008](../../docs/adr/0008-frames-are-drained-not-pushed.md).
 
-With the defaults (`data.mode` unset, no triggers) only `onReady` would fire even on a complete
-build.
+With the defaults (`data.mode` unset, no triggers) only `onReady` fires.
 
 ## `onReady`
 

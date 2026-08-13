@@ -2,11 +2,10 @@
 
 A diagnostic channel that costs nothing when it's off and streams live when it's on.
 
-**Status:** the JavaScript side exists. `setLogLevel()` validates and forwards, `addLogListener()`
-maintains the registry and starts and stops the native stream, and `onLog` fans a batch out. The
-native channel behind it is Phase 4 work: Android writes to Logcat only today and emits nothing to
-JavaScript, and there is no iOS. Everything below the contract section describes what the native
-side must do, not what it does.
+**Status:** built end to end on both platforms. `setLogLevel()` validates and forwards,
+`addLogListener()` maintains the registry and starts and stops the native stream, and `onLog` fans
+a batch out. Native mirrors every entry to Logcat on Android and `os.Logger` on iOS whatever is
+attached, and batches to JavaScript while a listener is. Nothing here has run on a device.
 
 ## Contract
 

@@ -7,11 +7,13 @@ Working *on* the library? See [docs/](../docs/README.md).
 
 ## What works today
 
-The package is pre-1.0 and Android-only so far. A live camera, the native skeleton and angle
-overlay, camera switching, and the GPU-to-CPU fallback all run. The engine underneath them,
-trigger evaluation, frame delivery to JavaScript, calibration, smoothing and the thermal
-response, exists as types and JavaScript decoding but has no Kotlin behind it yet, and iOS has
-not started. Every guide below marks the parts you cannot call yet.
+The package is pre-1.0. Both platforms are written and build: a live camera, the native skeleton
+and angle overlay, camera switching, the GPU-to-CPU fallback, trigger evaluation, frame delivery
+to JavaScript, smoothing, calibration and the thermal response, in Kotlin on CameraX and in Swift
+on AVFoundation.
+
+**None of it has run on a physical device.** Every number in [performance](./performance.md) is a
+target rather than a measurement, and that is the one caveat worth carrying into every page below.
 
 ## Start here
 

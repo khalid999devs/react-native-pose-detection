@@ -1,7 +1,7 @@
 # Data delivery
 
-*Android only. The ring buffer, the wire encoder and all four modes are built and running there.
-iOS has no module yet, so nothing on this page fires on iOS.*
+*The ring buffer, the wire encoder and all four modes are built on both platforms. Neither has
+run on a physical device.*
 
 Nothing crosses to JavaScript until you ask for it. Choosing *how* it crosses is the single
 biggest performance decision you'll make.

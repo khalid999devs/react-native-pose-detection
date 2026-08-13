@@ -49,9 +49,14 @@ jobs:
       - run: npm run lint:md
       - run: npm run spell
       # Third-party action, so it is pinned to a commit rather than to a tag its owner can move.
+      #
+      # The token is not for private links: with one, lychee resolves github.com URLs through the
+      # API instead of fetching the pages, which is what stops the runner's `HTTP/2 protocol
+      # error` against github.com from failing a build over links that are fine.
       - uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
         with:
           args: '--config lychee.toml --no-progress "**/*.md"'
+          token: ${{ secrets.GITHUB_TOKEN }}
 
   kotlin:
     name: 'Native: Kotlin lint'
@@ -71,34 +76,19 @@ jobs:
           sudo mv ktlint /usr/local/bin/ktlint
       - run: ktlint 'packages/core/android/**/*.kt'
 
-  # Split in two so the macOS runner, billed at ten times the Linux rate, is only started when
-  # there is actually Swift to lint. The detection needs a checkout, so it cannot be a job-level
-  # `if` on the macOS job itself.
-  swift-sources:
-    name: 'Native: Swift sources present?'
-    runs-on: ubuntu-latest
-    outputs:
-      present: ${{ steps.detect.outputs.present }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - id: detect
-        run: |
-          if [ -n "$(find packages/core/ios -name '*.swift' 2>/dev/null)" ]; then
-            echo 'present=true' >> "$GITHUB_OUTPUT"
-          else
-            echo 'present=false' >> "$GITHUB_OUTPUT"
-            echo 'No Swift sources yet, skipping the macOS runner.'
-          fi
-
+  # One macOS runner, billed at ten times the Linux rate, so the lint and the engine suite share
+  # it. The detection job that used to gate this is gone: there is Swift on every branch now.
   swift:
-    name: 'Native: Swift lint'
-    needs: swift-sources
-    if: needs.swift-sources.outputs.present == 'true'
+    name: 'Native: Swift lint and engine tests'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: brew install swiftlint
       - run: swiftlint lint --strict
+      # No simulator, no Xcode project and no MediaPipe: this is the half of the iOS source that
+      # has no platform in it, which is the same half JUnit covers on Android. Run directly rather
+      # than through the npm script, so the macOS runner does not pay for an `npm ci` to reach it.
+      - run: swift test --package-path packages/core/ios
 
   package:
     name: 'Package: exports, types, tarball'
@@ -282,6 +272,157 @@ jobs:
           ./gradlew :app:dependencies --configuration debugRuntimeClasspath --no-daemon \
             | grep -q 'project :react-native-pose-detection'
 
+  ios-expo:
+    name: 'iOS: build the Expo example'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+      # Expo SDK 57 does not compile on Xcode 26.3: `expo-modules-jsi` fails on an ambiguous `abs`
+      # under C++ interop and `expo-modules-core` on a sending-risks-data-races error. Neither is
+      # ours, and neither reproduces on the toolchain this image ships. Printed so that a future
+      # image bump that reintroduces it is one line away from being diagnosed.
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphonesimulator --show-sdk-version
+          brew list xcbeautify >/dev/null 2>&1 || brew install xcbeautify
+
+      - name: Cache the pose model
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/react-native-pose-detection
+          key: pose-model-full-float16-1
+
+      - name: Generate the native project
+        working-directory: example/expo
+        run: npx expo prebuild --platform ios --clean --no-install
+
+      - name: Assert the config plugin did its work
+        working-directory: example/expo/ios
+        run: |
+          test -f PoseDetection/Resources/pose_landmarker_full.task
+          grep -q 'NSCameraUsageDescription' PoseDetection/Info.plist
+          # The resource has to be in the target as well as on disk, or it is not in the bundle.
+          grep -q 'pose_landmarker_full.task' PoseDetection.xcodeproj/project.pbxproj
+
+      - name: Pods
+        working-directory: example/expo/ios
+        run: pod install
+
+      - name: Build
+        working-directory: example/expo/ios
+        shell: bash
+        run: |
+          xcodebuild build \
+            -workspace PoseDetection.xcworkspace \
+            -scheme PoseDetection \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcbeautify --renderer github-actions
+        env:
+          NSUnbufferedIO: YES
+
+      - name: Assert the app bundle carries exactly one model
+        working-directory: example/expo/ios
+        run: |
+          app=$(find build/Build/Products -maxdepth 2 -name '*.app' | head -1)
+          test "$(find "$app" -name '*.task' | wc -l | tr -d ' ')" -eq 1
+
+  ios-bare:
+    name: 'iOS: build the bare example, release'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          brew list xcbeautify >/dev/null 2>&1 || brew install xcbeautify
+
+      - name: Cache the pose model
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/react-native-pose-detection
+          key: pose-model-full-float16-1
+
+      # No prebuild: the Xcode project is committed, so this is the CLI writing into one that
+      # already exists, which is the case the config plugin never sees.
+      - name: Install the model through the CLI
+        working-directory: example/bare
+        run: npx react-native-pose-detection fetch-model full
+
+      - name: Doctor
+        working-directory: example/bare
+        run: npx react-native-pose-detection doctor
+
+      # Before `pod install`, which writes into the same directory. The committed pbxproj already
+      # carries the model reference, so any difference means the CLI and the checked-in project
+      # have drifted and one of them is wrong.
+      - name: Assert the CLI left the Xcode project unchanged
+        run: git diff --exit-code -- example/bare/ios
+
+      - name: Pods
+        working-directory: example/bare/ios
+        run: pod install
+
+      # The lock is committed, so a resolve that changes it means a transitive pod moved under a
+      # constraint that was supposed to pin it.
+      - name: Assert Podfile.lock did not move
+        run: git diff --exit-code -- example/bare/ios/Podfile.lock
+
+      # Release rather than Debug, and this is the only cell that builds it. Release is where the
+      # optimizer and the linker's dead-stripping run, and a Swift symbol reached only from the
+      # Expo module registry is exactly what gets stripped when it is not reachable statically.
+      - name: Build
+        working-directory: example/bare/ios
+        shell: bash
+        run: |
+          xcodebuild build \
+            -workspace PoseExampleBare.xcworkspace \
+            -scheme PoseExampleBare \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcbeautify --renderer github-actions
+        env:
+          NSUnbufferedIO: YES
+
+      - name: Assert the module survived dead-stripping
+        working-directory: example/bare/ios
+        run: |
+          app=$(find build/Build/Products -maxdepth 2 -name '*.app' | head -1)
+          binary="$app/$(basename "$app" .app)"
+          # Two ways of asking, because a release app target is stripped: nm sees the symbol when
+          # it survived, and the mangled name is in Swift's type metadata either way.
+          nm -gU "$binary" 2>/dev/null | grep -q 'PoseDetectionModule' \
+            || strings -a "$binary" | grep -q 'PoseDetectionModule' \
+            || { echo "::error::PoseDetectionModule is not in the release binary."; exit 1; }
+          test "$(find "$app" -name '*.task' | wc -l | tr -d ' ')" -eq 1
+
+      # Autolinking is the whole reason this app exists: no config plugin ran, so if the pod is
+      # not in the workspace, nothing else here would have noticed.
+      - name: Assert the pod was autolinked
+        working-directory: example/bare/ios
+        run: grep -q 'ReactNativePoseDetection' Podfile.lock
+
   commits:
     name: 'Commits: conventional format'
     runs-on: ubuntu-latest
@@ -297,5 +438,7 @@ jobs:
       - run: npm ci
       - run: npx commitlint --from ${{ github.event.pull_request.base.sha }} --to HEAD --verbose
 
-  # android-expo and android-bare are two of the eight cells. Phase 6 adds the rest:
-  #   platform (ios, android) × install (expo, bare) × architecture (old, new)
+  # The matrix is four cells, not the eight this was reserved for: platform (ios, android) ×
+  # install (expo, bare). The architecture axis collapsed on its own, because React Native 0.82
+  # removed the legacy architecture and 0.86 is what both examples are on. `newArchEnabled=true`
+  # survives in the bare app's gradle.properties as a leftover the template still writes.

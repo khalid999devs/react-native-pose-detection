@@ -11,7 +11,7 @@ npm test
 ```
 
 That is `tsc -p packages/core/tsconfig.test.json && node --test ".test-build/tests/**/*.test.js"`,
-and it runs 60 tests. It is part of `npm run check`, and CI runs it on Node 22.22.1 and 24, the floor
+and it runs 73 tests. It is part of `npm run check`, and CI runs it on Node 22.22.1 and 24, the floor
 declared in `engines` and the version `.nvmrc` pins for development.
 
 **There is no test framework.** Assertions come from `node:assert/strict` and the runner is
@@ -31,7 +31,7 @@ land inside `packages/core` are artifacts that can reach the tarball.
 tree means the published `files` list needs no exclusion rule to keep them out of the tarball:
 `src` ships, `tests` does not.
 
-## What those 60 tests cover
+## What those 73 tests cover
 
 | Area | File | What is asserted |
 | --- | --- | --- |
@@ -40,38 +40,45 @@ tree means the published `files` list needs no exclusion rule to keep them out o
 | Accessors | `tests/accessors.test.ts` | Reading landmarks out of a full buffer and out of one `data.select` narrowed, including that a joint `select` left out throws instead of returning another joint's numbers |
 | Trigger validation | `tests/validation/triggers.test.ts` | Every rejection the validator promises: unknown keys, `between` outside an angle condition, out-of-range bounds, contradictions that can never fire, an explicitly `undefined` bound, and a cyclic or BigInt config |
 | Joint tables | `tests/types/joints.test.ts` | 33 landmarks, 35 skeleton connections, 12 angle joints, and that the type guards reject `Object.prototype` keys such as `toString` |
+| Wire parity | `tests/frames/wireParity.test.ts` | That the Kotlin and the Swift agree with `wire.ts` on every header slot, every flag, the landmark count and stride, and that all three declare the twelve angles in the same order and between the same three joints |
+| Reference parity | `tests/docs/referenceParity.test.ts` | That every prop and ref method the types declare appears in `guides/reference/`, that the events table lists exactly the callbacks the props declare, and that the `ErrorCode` union and its documented table are the same set |
 
 The theme is the same throughout: the wire format and the joint tables are shared with native code
 that cannot be imported here, so what is testable in JavaScript is the contract, and it is worth
-testing precisely because the other side of it is not.
+testing precisely because the other side of it is not. The two parity tests extend that idea past
+the code: the Kotlin, the Swift and the reference guides are all restatements of the same
+contract, and none of them fails on its own when it drifts.
 
 ## What is not tested
 
-- **No native unit tests.** There is no JUnit suite for the Kotlin and no XCTest suite, because
-  the engine those tests would cover is not written. Android gets ktlint and a compile, nothing
-  more.
-- **No device tests of any kind.** Nothing in this repository has run on a phone. The Android
-  layer compiles and packages correctly, and that is the entire claim.
-- **No iOS.** There are no Swift sources yet, which is why the macOS lint job in CI is gated
-  behind a detection step.
+- **No device tests of any kind.** Nothing in this repository has run on a phone. Both native
+  layers compile, their unit suites pass, and that is the entire claim.
+- **The native suites cover the half with no platform in it.** JUnit and XCTest both run the
+  engine, the wire format and the performance resolver. Neither covers `CameraSource`,
+  `PoseDetector` or the overlay, because those need a camera, a model and a screen; those are
+  what the device tests below are for.
 
 ## Required device tests
 
-These are Phase 6 work and none of them exists yet. They are listed because each one is here for a
-crash that already happened once, and the list is what Phase 6 gets measured against.
+**Written, never run.** The Scenarios screen in `example/expo` drives every one of them, and the
+bare app runs the two that are about teardown. Each is here for a crash that already happened
+once. What is missing is a phone and, for the memory ones, a profiler attached to it.
 
 ### Camera-switch stress
 
 100 rapid switches with detection on. Asserts: no crash, no leak, trigger counters preserved,
-detection state preserved.
+detection state preserved. Each switch is awaited on `switchCamera()`'s own promise, which
+resolves when the session is stable again, so the next one starts the instant that happens rather
+than after a sleep long enough to hide the race.
 
 ### Mount/unmount leak
 
-100 mount/unmount cycles. Memory returns to baseline ±5 MB.
+50 mount/unmount cycles in each app, each awaited to the next `onReady`. Memory returns to
+baseline ±5 MB.
 
 ### Memory budget
 
-10-minute run per profile against the table in [performance](../guides/performance.md).
+10-minute soak per profile against the table in [performance](../guides/performance.md).
 
 ### Calibration convergence
 
@@ -91,11 +98,11 @@ delegate behaves differently on them.
 
 ## Two evaluators, one behavior
 
-The condition evaluator and the geometry will exist twice, Swift and Kotlin, and **both
-implementations must produce identical output for identical input.** Shared fixture files are
-meant to drive both suites, so a divergence is a bug even when each side looks correct on its own.
-Neither implementation exists yet, so this is a rule for Phases 4 and 5 rather than something CI
-currently enforces.
+The condition evaluator and the geometry exist twice, Swift and Kotlin, and **both
+implementations must produce identical output for identical input.** 54 JUnit tests and 58
+XCTests assert the same behavior on each side, and the wire parity test reads all three languages'
+constant tables and fails when they disagree. That last one is the only part CI enforces
+mechanically; the rest is two suites written against one specification.
 
 ## CI matrix
 
@@ -103,12 +110,22 @@ currently enforces.
 | --- | --- |
 | Platform | iOS, Android |
 | Install | Expo prebuild, bare |
-| Architecture | old, new |
 
-**Two of the eight cells are wired.** `android-expo` and `android-bare` build the two example
-apps on every push, one through the config plugin and one through the CLI. The iOS cells wait on
-the Swift module, and the architecture axis is a single value today because both apps run the new
-architecture and nothing has been tried on the old one.
+**All four cells are wired**, and there are four rather than the eight this was drawn for: React
+Native 0.82 removed the legacy architecture, so the architecture axis has one value and is gone
+from the table rather than pinned at one.
+
+| Cell | Builds | Also asserts |
+| --- | --- | --- |
+| `android-expo` | Debug APK after `expo prebuild` | four ABIs, exactly one model, the camera permission in the merged manifest |
+| `android-bare` | Debug APK after the CLI install | `doctor`, the committed Xcode project unchanged, the module autolinked, and the JUnit suite |
+| `ios-expo` | Simulator Debug after `pod install` | the model registered in the target, and exactly one in the app bundle |
+| `ios-bare` | Simulator **Release** after `pod install` | `Podfile.lock` unchanged, the pod autolinked, and `PoseDetectionModule` still in the binary after dead-stripping |
+
+Only `ios-bare` builds Release, and it is the one that answers the iOS half of the ProGuard
+question: Android ships consumer keep rules because R8 can strip a class reached only from JNI,
+and the Swift equivalent is a symbol reached only from Expo's generated module registry. Release
+is where the linker's dead-stripping runs, so a Debug build would never have shown it.
 
 The device regression tests above will run on a schedule rather than per PR, since they need
 hardware a runner does not have.

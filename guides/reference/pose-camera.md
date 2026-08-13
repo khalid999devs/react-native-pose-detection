@@ -8,8 +8,18 @@ import { PoseCamera, type PoseCameraRef } from 'react-native-pose-detection';
 
 ## What runs today
 
-iOS is not implemented at all. **Every prop on this page runs on Android.** None of it has run
-on a physical device yet, so treat the numbers as targets rather than measurements.
+**Every prop on this page is implemented on both platforms.** None of it has run on a physical
+device yet, so treat the numbers as targets rather than measurements.
+
+## Layout
+
+| Prop | Type | Notes |
+| --- | --- | --- |
+| `style` | `StyleProp<ViewStyle>` | An ordinary React Native view style. The preview fills the view and the overlay is drawn inside it, so `{ flex: 1 }` is the usual answer and a fixed height is the other one. |
+
+The preview's aspect ratio comes from the camera rather than from this style, so a view whose
+shape does not match it letterboxes rather than stretching the picture. Landmarks are normalized
+against the analysis frame either way, so nothing about the layout moves them.
 
 ## Configuration
 
@@ -22,7 +32,7 @@ on a physical device yet, so treat the numbers as targets rather than measuremen
 | `resolution` | `'auto' \| '480p' \| '720p' \| '1080p'` | `'auto'` | preview |
 | `analysisResolution` | `'auto' \| '360p' \| '480p' \| '720p'` | `'auto'` | what the model sees |
 | `thermalPolicy` | `'adaptive' \| 'critical-only' \| 'off'` | `'adaptive'` | `off` stops the response, not the reporting |
-| `maxPoses` | `number` (1 to 5) | `1` | above 1, triggers and frames use the primary pose: largest box, ties by distance from centre |
+| `maxPoses` | `number` (1 to 5) | `1` | above 1, triggers and frames use the primary pose: largest box, ties by distance from center |
 | `smoothing` | `boolean \| { minCutoff, beta }` | `true` | One-Euro filter over x, y and z. Visibility is never smoothed |
 
 Any explicit value pins that axis. The rest stay automatic.
@@ -123,8 +133,8 @@ triggers?: readonly Trigger[];
 ```
 
 Validated during render, so a bad config throws `PoseConfigError` at the call site rather than
-becoming a trigger that silently never fires. The evaluator runs on Android; iOS has no module
-yet, so nothing fires there. See [trigger schema](./trigger-schema.md).
+becoming a trigger that silently never fires. The evaluator runs on both platforms. See
+[trigger schema](./trigger-schema.md).
 
 ## Diagnostics
 
@@ -138,10 +148,9 @@ Scoped to this camera. `setLogLevel()` sets it globally instead, and throws `Pos
 an unknown level or category rather than doing nothing, because a silently ignored level looks
 exactly like a bug in whatever you were trying to diagnose.
 
-Entries reach Logcat whatever is attached, and are batched to JavaScript while a listener is.
-On iOS neither happens, because there is no module. `addLogListener()` is a multiset rather than a
-set, so the same function registered twice needs two `remove()` calls. See
-[debugging](../debugging.md).
+Entries reach Logcat, or `os.Logger` on iOS, whatever is attached, and are batched to JavaScript
+while a listener is. `addLogListener()` is a multiset rather than a set, so the same function
+registered twice needs two `remove()` calls. See [debugging](../debugging.md).
 
 ## Callbacks
 

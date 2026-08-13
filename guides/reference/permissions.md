@@ -11,8 +11,10 @@ function Camera() {
 }
 ```
 
-**Android only today.** There is no iOS module yet, so on iOS the hook reports `undetermined` and
-sets `error`. The shape does not change when iOS lands.
+**Built on both platforms**, with one difference worth knowing: Android can tell `denied` from
+`blocked`, and iOS cannot. iOS prompts once per install, so any refusal is permanent and the hook
+reports `blocked` with `canAskAgain: false`. Sending the user to Settings is the only route back
+on either platform; on iOS it is the only route at all.
 
 ## `useCameraPermission(options?)`
 

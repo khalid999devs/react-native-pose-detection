@@ -1,6 +1,6 @@
 # Images and video files
 
-*Android only. iOS has no module yet.*
+*Built on both platforms. Neither has run on a physical device.*
 
 Same detector, no camera.
 

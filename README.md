@@ -3,10 +3,10 @@
 Real-time pose detection for React Native and Expo. 33 body landmarks, iOS and Android,
 powered by MediaPipe.
 
-> **Pre-release, not yet published.** Android has the camera, the detector and the native
-> overlay, written but not yet run on a device. The engine that evaluates triggers, computes
-> geometry and calibrates is not built, and iOS has not started. What follows is the shape of
-> `0.1.0`, not what you can install today. Progress: [development plan](./docs/development-plan.md).
+> **Pre-release, not yet published.** Both platforms are written: the camera, the detector, the
+> native overlay, the trigger engine, the geometry and the calibrator, on Android and iOS. None of
+> it has run on a physical device. What follows is the shape of `0.1.0`, not what you can install
+> today. Progress: [development plan](./docs/development-plan.md).
 
 ```bash
 npm i react-native-pose-detection
@@ -34,7 +34,7 @@ with **zero data crossing to JavaScript**.
 | | |
 | --- | --- |
 | **No model files to hunt down** | The config plugin fetches, verifies, and installs the model. Other libraries make you download a `.task` by hand and place it in two native folders. |
-| **Zero runtime dependencies** | Nothing is installed alongside it. The peers are `expo`, `react` and `react-native`, which you already have: no VisionCamera, no Reanimated. Works on both old and new architecture. |
+| **Zero runtime dependencies** | Nothing is installed alongside it. The peers are `expo`, `react` and `react-native`, which you already have: no VisionCamera, no Reanimated. |
 | **Zero bridge cost by default** | Landmarks stay native. Data crossing to JS is something you opt into. |
 | **Logic runs natively** | Declare thresholds; the state machine runs on the camera thread and calls you ~once per event, not 30× per second. |
 | **Tunes itself** | Measures the device, settles on the fastest configuration it can sustain, and remembers it. Backs off when the phone gets hot. |
@@ -46,7 +46,7 @@ with **zero data crossing to JavaScript**.
 | --- | --- |
 | React Native | 0.74+ |
 | Expo SDK | 51+ (development build or EAS) |
-| iOS | 15.1+ |
+| iOS | 15.1+, and 16.4+ on Expo SDK 57, which is what `ExpoModulesCore` requires |
 | Android | API 24+ |
 
 **Expo Go is not supported**. This package contains native code. Use a

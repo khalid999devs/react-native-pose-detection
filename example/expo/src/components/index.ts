@@ -1,4 +1,9 @@
+export { Button } from './Button';
 export { CameraGate } from './CameraGate';
+export { Chips } from './Chips';
 export { Panel } from './Panel';
 export { Row } from './Row';
+export { Segmented } from './Segmented';
+export { Stat } from './Stat';
+export { Stepper } from './Stepper';
 export { Toggle } from './Toggle';

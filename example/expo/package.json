@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "expo": "^57.0.12",
+    "expo-image-picker": "^57.0.9",
     "react": "^19.2.3",
     "react-native": "0.86.2",
     "react-native-pose-detection": "*"

@@ -304,9 +304,9 @@ squash-merge commit, so they land in the CHANGELOG.
 
 ### What CI checks
 
-`code`, `docs`, `kotlin`, `swift` (skipped while there are no Swift sources), `package`,
-`security` and `commits`, plus CodeQL in its own workflow. `code` and `package` each run twice,
-on Node 22.22.1 and on 24. Run the local half first:
+`code`, `docs`, `kotlin`, `swift`, `package`, `security`, the four build cells `android-expo`,
+`android-bare`, `ios-expo` and `ios-bare`, and `commits`, plus CodeQL in its own workflow. `code`
+and `package` each run twice, on Node 22.22.1 and on 24. Run the local half first:
 
 ```bash
 npm run check       # everything that needs no native toolchain
@@ -330,7 +330,7 @@ Include:
 - `await cam.current.getProfile()` output. Failing that, send the
   `onReady` and `onPerformanceChange` payloads instead
 - `data.mode`, `maxPoses`, model variant
-- Expo or bare, old or new architecture
+- Expo or bare
 - Minimal reproduction
 
 Performance reports with no resolved configuration in them can't be acted on: the same code runs

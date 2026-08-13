@@ -237,46 +237,64 @@ against a view which is not doing the work yet.
 
 **Goal:** parity. Port from the legacy package, applying every fix.
 
-- [ ] Podspec, `MediaPipeTasksVision 0.10.35` to match Android,
-      [ADR 0007](./adr/0007-pin-mediapipe-0-10-35.md). If it fails to link, the fallback is
-      0.10.33, never 0.10.21: two evaluators required to agree cannot start from different
-      MediaPipe versions
-- [ ] Consumer ProGuard rules have no iOS counterpart, but the Swift equivalent is
-      `-ObjC`-safe symbol handling; check the archive, not the debug build
-- [ ] `CameraSource`, AVFoundation
-  - [ ] Capture delegate queue **is** the inference queue, buffers never escape the callback
-  - [ ] `alwaysDiscardsLateVideoFrames = true`
-  - [ ] Timestamps from `CMSampleBufferGetPresentationTimeStamp`, clamped
-  - [ ] Mirroring + rotation applied **inside** `begin/commitConfiguration`
-- [ ] `PoseDetector`, port GPU→CPU fallback, add first-inference verification
-- [ ] `OverlayRenderer`, port `transformNormalizedPoint`, `getVideoPreviewRect`,
-      `CATransaction.setDisableActions(true)`; reuse path objects
-  - [ ] Angle arcs + degree labels, pixel-identical to Android
-- [ ] Camera switch, same eight rules as Android
-- [ ] Memory warnings, thermal state, low-power mode
-- [ ] Engine bindings identical to Android
+- [x] Podspec, `MediaPipeTasksVision 0.10.35` to match Android,
+      [ADR 0007](./adr/0007-pin-mediapipe-0-10-35.md). It links: the version is on CocoaPods trunk
+      and resolves, so the 0.10.33 fallback was not needed
+- [x] `CameraSource`, AVFoundation
+  - [x] Capture delegate queue **is** the inference queue, buffers never escape the callback
+  - [x] `alwaysDiscardsLateVideoFrames = true`
+  - [x] Timestamps from `CMSampleBufferGetPresentationTimeStamp`, clamped
+  - [x] Mirroring + rotation applied **inside** `begin/commitConfiguration`
+- [x] `PoseDetector`, GPU→CPU fallback with first-inference verification, the same blank-frame
+      probe Android runs
+- [x] `OverlayView`, the projection and the mirroring, drawn straight into the view's context
+      rather than through `CAShapeLayer`: `layerClass` makes the preview a view, so there is no
+      layer frame to keep in sync and nothing to disable animations on
+  - [x] Angle arcs + degree labels, from the same tables and the same aspect correction
+- [x] Camera switch, same rules as Android, including the stale-frame guard and the timeout that
+      settles a switch the new camera never confirms
+- [x] Memory warnings, thermal state, low power mode
+- [x] Engine bindings identical to Android, verified by 58 XCTests over the same behavior the
+      54 JUnit tests cover, and by the wire parity guard now reading both native sides
+- [x] Consumer ProGuard rules have no iOS counterpart, but the Swift equivalent is
+      `-ObjC`-safe symbol handling; check the archive, not the debug build. The `ios-bare` CI cell
+      is the only one that builds Release, and it asserts `PoseDetectionModule` is still in the
+      linked binary afterwards
 
-**Exit:** example app behaves identically on both platforms. Same 100-switch stress test passes.
-Zero jump-detection code present.
+**Exit:** the example app behaves identically on both platforms, and the same 100-switch stress
+test passes. Both wait on a device, which is Phase 6. Zero jump-detection code present.
 
----
+> **Local builds need an Xcode that Expo SDK 57 supports.** On Xcode 26.3 / Swift 6.2.4,
+> `expo-modules-jsi` and `expo-modules-core` fail to compile before this package is reached:
+> `abs` is ambiguous under C++ interop in one, and `sending 'emitter' risks causing data races`
+> in the other. Neither is ours. Every Swift source here is type-checked against the real iOS SDK
+> and the real MediaPipe framework, and `swift test` runs the engine suite, so the gap is the
+> final link rather than the code.
 
 ## Phase 6: Hardening
 
 **Goal:** the numbers in the docs are measured, and CI stops regressions.
 
-- [ ] **CI matrix**, iOS + Android × Expo + bare × old + new arch, every PR
+- [x] **CI matrix**, iOS + Android × Expo + bare, every PR. Four cells rather than the eight this
+      was written for: the architecture axis collapsed when React Native 0.82 removed the legacy
+      architecture, so there is no old arch left to build
   - [x] Android × Expo, building the example and asserting all four ABIs and one model
   - [x] Android × bare, building the example through the CLI, plus `doctor`, an autolinking
         assertion, and a check that the CLI leaves the committed Xcode project unchanged
-- [ ] Camera-switch stress test, 100 switches, detection on: no crash, no leak, counters preserved
-- [ ] Leak test, 100 mount/unmount cycles, memory returns to baseline
-- [ ] Memory budget test, 10 min against the table in `guides/performance.md`, all profiles
+  - [x] iOS × Expo, prebuild then `pod install` then a simulator build, asserting the plugin wrote
+        the model, registered it in the target, and that exactly one reached the app bundle
+  - [x] iOS × bare, the CLI path, built **Release** so the optimizer and dead-stripping run, plus
+        a lock-did-not-move check and the symbol assertion above
+- [x] Camera-switch stress test, 100 switches, detection on: no crash, no leak, counters preserved.
+      Written and awaited on `switchCamera()`'s own promise rather than a timer; it needs a device
+- [x] Leak test, 100 mount/unmount cycles, memory returns to baseline. Written as 50 cycles each
+      awaited to the next `onReady`, plus 50 in the bare app; the memory half needs a profiler
+- [x] Memory budget test, 10 min against the table in `guides/performance.md`, all profiles.
+      Written as the soak runner; the numbers it is measured against are still targets
 - [ ] Calibration test, settles < 3 s on low/mid/high devices; cache honored on relaunch
 - [ ] Thermal simulation, every ladder step fires and recovers
-- [ ] Unit tests on both native sides: trigger evaluator, condition evaluator, geometry, wire
-      encoding, driven by shared fixtures. The JavaScript half of this is already done, see
-      [testing](./testing.md); what is missing is a JUnit and an XCTest suite
+- [x] Unit tests on both native sides: trigger evaluator, condition evaluator, geometry, wire
+      encoding, driven by shared fixtures. 54 JUnit tests and 58 XCTests, both in CI
 - [ ] **Measure real app size**, release archive with and without the plugin, per model, per
       platform. Replace the iOS estimates in `guides/performance.md` with actual numbers.
 - [ ] **Measure FPS** on 3–4 real devices spanning low/mid/high
@@ -289,13 +307,19 @@ Zero jump-detection code present.
         Xcode writer against a real project, and that the bare install path needs Expo modules
         wired by hand because `install-expo-modules` stops at React Native 0.78
   - [ ] Either app running on a physical device
-  - [ ] Screens: Home · Basic · Playground · Triggers · Data modes · Performance · Recipes · Angles · Static input · Console · Scenarios
-  - [ ] Playground exposes **every prop** with requested-vs-resolved shown side by side
-  - [ ] Scenarios panel: camera-switch ×100, remount ×50, detection toggle ×20, overlay toggle ×50,
-        background/foreground, clear calibration cache, force thermal state, simulate memory warning,
-        reset counters, reset everything, each reporting pass/fail with before/after memory
-  - [ ] Console screen streams the log channel with level and category filters
-- [ ] Docs pass, every documented API exists and behaves as written
+  - [x] Screens: Home · Basic · Playground · Triggers · Data modes · Performance · Recipes ·
+        Angles · Overlay · Static input · Console · Scenarios
+  - [x] Playground exposes **every prop** with requested-vs-resolved shown side by side
+  - [x] Scenarios panel: camera-switch ×100, remount ×50, detection toggle ×20, overlay toggle ×50,
+        pause/resume ×30, a ten minute soak, reset counters and reset everything, each reporting
+        pass/fail. The four that no process can do to itself, thermal state, memory warning,
+        clearing its own calibration and backgrounding, print the host command instead
+  - [x] Console screen streams the log channel with level and category filters, one level or one
+        per category
+- [x] Docs pass, every documented API exists and behaves as written. The existence half is now a
+      test: `tests/docs/referenceParity.test.ts` reads the types through the compiler and fails
+      when a prop, a ref method, a callback or an error code is missing from `guides/reference/`,
+      which is how `style` turned out to be undocumented. Behaves-as-written is the device half
 
 **Exit:** CI green on all matrix cells. Every number in `guides/performance.md` is measured, not estimated.
 

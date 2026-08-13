@@ -48,7 +48,7 @@ Details and rationale in [architecture](./architecture.md#camera-switching).
 1. **Primitives, not policy.** If it needs to know the activity, it's a recipe, not library code.
 2. **Zero bridge cost by default.** Data crossing to JS is opt-in.
 3. **Zero runtime dependencies.** The peers are `expo`, `react` and `react-native` and nothing
-   else: no VisionCamera, no Reanimated. Old and new architecture.
+   else: no VisionCamera, no Reanimated.
 4. **Auto by default, override anything.** Safe floor, no ceiling.
 5. **One model in the app**, selected by config, never bundled in the npm tarball.
 6. **Camera, detection, and overlay** are three independent switches.
@@ -57,11 +57,10 @@ Details and rationale in [architecture](./architecture.md#camera-switching).
 
 ## Current status
 
-Pre-release. Phases 0 to 3 are done: contracts, config plugin and CLI, and the Android camera,
-detector and overlay, the last of those written and building but never run on a device. Phase 4
-is half done, the JavaScript side of frame delivery is written and tested and the Kotlin engine
-is not started, so triggers, geometry, calibration and static input do nothing yet. iOS has not
-begun.
+Pre-release. Phases 0 to 5 are done: contracts, config plugin and CLI, the Android camera and
+engine in Kotlin, and the iOS one in Swift. Phase 6 is where it stands, so both example apps are
+built and every CI cell is wired, and the one thing that has never happened is a physical device.
+Every number in `guides/performance.md` is still a target.
 
 The phase table in the [development plan](./development-plan.md) is the record. Check the boxes
 there rather than trusting this paragraph, which is the one that goes stale.

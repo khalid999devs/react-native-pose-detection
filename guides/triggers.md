@@ -1,6 +1,6 @@
 # Triggers
 
-*Android runs these. iOS has no module yet, so nothing here fires on iOS.*
+*Both platforms run these. Neither has run on a physical device.*
 
 Business logic that runs natively, at frame rate, and crosses the bridge only when something
 actually happens.

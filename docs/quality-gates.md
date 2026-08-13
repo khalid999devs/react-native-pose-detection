@@ -167,14 +167,17 @@ One job per line, in `.github/workflows/ci.yml`, plus CodeQL in its own workflow
 | `security` | ubuntu | `audit:deps`, `audit:license`, `audit:dev` |
 | `android-expo` | ubuntu | Prebuilds `example/expo`, builds the APK, asserts four ABIs and one model |
 | `android-bare` | ubuntu | Installs the model into `example/bare` with the CLI, runs `doctor`, builds the APK, asserts four ABIs, one model, and that the module was autolinked |
+| `ios-expo` | macOS | Prebuilds `example/expo`, `pod install`, simulator build, asserts the plugin registered the model in the target and that exactly one reached the app bundle |
+| `ios-bare` | macOS | Installs the model into `example/bare` with the CLI, asserts the CLI left the Xcode project and `Podfile.lock` unchanged, builds **Release** so dead-stripping runs, and asserts the module survived it |
 | `commits` | ubuntu, pull requests only | commitlint from the base commit to HEAD |
 | CodeQL | ubuntu | Per PR and weekly, JavaScript and TypeScript |
 
-Two details worth knowing before editing the file. Every action is pinned to a commit SHA rather
-than a tag, because a tag is a pointer its owner can move onto different code after review.
-And `swift` is split from `swift-sources` so the macOS runner, billed at ten times the Linux
-rate, never starts while there is no Swift to lint. The detection needs a checkout, so it cannot
-be a job-level `if`.
+Three details worth knowing before editing the file. Every action is pinned to a commit SHA
+rather than a tag, because a tag is a pointer its owner can move onto different code after review.
+The macOS runners are billed at ten times the Linux rate, so `swift` runs the lint and the engine
+suite on one of them rather than two, and only `ios-bare` builds Release. And every `xcodebuild`
+step declares `shell: bash`, because the runner's default shell does not set `pipefail` and the
+pipe into `xcbeautify` would otherwise swallow a failing build's exit code.
 
 The Node versions in `code` and `package` are the floor from `engines` and the version `.nvmrc`
 pins, which makes the floor a tested promise rather than a guess.

@@ -1,5 +1,6 @@
 import * as React from 'react';
 import {
+  ActivityIndicator,
   Linking,
   Pressable,
   SafeAreaView,
@@ -10,20 +11,62 @@ import {
   View,
 } from 'react-native';
 import { PoseCamera, useCameraPermission } from 'react-native-pose-detection';
-import type { ErrorEvent, ReadyEvent } from 'react-native-pose-detection';
+import type { ErrorEvent, PoseCameraRef, ReadyEvent } from 'react-native-pose-detection';
+
+const READY_TIMEOUT_MS = 10_000;
+
+type Report = { readonly label: string; readonly passed: boolean; readonly detail: string };
 
 export default function App() {
   const camera = useCameraPermission();
+  const view = React.useRef<PoseCameraRef>(null);
   const [detection, setDetection] = React.useState(true);
   const [overlay, setOverlay] = React.useState(true);
   const [facing, setFacing] = React.useState<'front' | 'back'>('front');
   const [ready, setReady] = React.useState<ReadyEvent | null>(null);
   const [error, setError] = React.useState<ErrorEvent | null>(null);
+  const [generation, setGeneration] = React.useState(0);
+  const [running, setRunning] = React.useState<string | null>(null);
+  const [reports, setReports] = React.useState<readonly Report[]>([]);
+
+  const readyResolver = React.useRef<(() => void) | null>(null);
 
   const onReady = React.useCallback((event: ReadyEvent) => {
     setReady(event);
     setError(null);
+    readyResolver.current?.();
+    readyResolver.current = null;
   }, []);
+
+  // Two loops rather than the eleven the Expo app runs. What this app has to prove is that the
+  // CLI install path tears down and comes back, not that the UI does, and duplicating the whole
+  // harness here would mean every change to it landed twice.
+  const remount = () =>
+    new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        readyResolver.current = null;
+        reject(new Error(`no onReady within ${READY_TIMEOUT_MS} ms`));
+      }, READY_TIMEOUT_MS);
+
+      readyResolver.current = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+      setGeneration((n) => n + 1);
+    });
+
+  const stress = async (label: string, body: () => Promise<string>) => {
+    setRunning(label);
+    try {
+      const detail = await body();
+      setReports((current) => [{ label, passed: true, detail }, ...current]);
+    } catch (thrown) {
+      const detail = thrown instanceof Error ? thrown.message : String(thrown);
+      setReports((current) => [{ label, passed: false, detail }, ...current]);
+    } finally {
+      setRunning(null);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.root}>
@@ -37,6 +80,8 @@ export default function App() {
       <View style={styles.preview}>
         {camera.granted ? (
           <PoseCamera
+            key={generation}
+            ref={view}
             style={StyleSheet.absoluteFill}
             facing={facing}
             detection={detection}
@@ -116,6 +161,75 @@ export default function App() {
           </Text>
         </Panel>
 
+        <Panel title="Install check">
+          <Row label="Native module" value="linked" />
+          <Row label="Model" value={ready ? `${ready.model} loaded` : 'not loaded yet'} />
+          <Row label="Camera permission" value={camera.status} />
+          <Text style={styles.muted}>
+            What a running app can see. The rest of what the CLI wrote is on disk rather than in
+            memory, and `npx react-native-pose-detection doctor` is what reads it: nine checks over
+            the model file, its checksum, the Gradle wiring, the Xcode resource and both manifests.
+          </Text>
+        </Panel>
+
+        <Panel title="Teardown">
+          <View style={styles.controls}>
+            <Pressable
+              style={styles.stressButton}
+              disabled={running !== null}
+              onPress={() =>
+                void stress('Switch camera x100', async () => {
+                  for (let index = 0; index < 100; index += 1) {
+                    const current = view.current;
+                    if (!current) throw new Error('the camera is not mounted');
+                    await current.switchCamera();
+                  }
+                  return '100 switches, each awaited to a stable session';
+                })
+              }
+            >
+              {running === 'Switch camera x100' ? (
+                <ActivityIndicator color={theme.muted} size="small" />
+              ) : null}
+              <Text style={styles.stressText}>Switch x100</Text>
+            </Pressable>
+
+            <Pressable
+              style={styles.stressButton}
+              disabled={running !== null}
+              onPress={() =>
+                void stress('Remount x50', async () => {
+                  for (let index = 0; index < 50; index += 1) await remount();
+                  return '50 mount and unmount cycles, each awaited to onReady';
+                })
+              }
+            >
+              {running === 'Remount x50' ? (
+                <ActivityIndicator color={theme.muted} size="small" />
+              ) : null}
+              <Text style={styles.stressText}>Remount x50</Text>
+            </Pressable>
+          </View>
+
+          <Text style={styles.muted}>
+            Mounts so far: {generation + 1}. Run these with a profiler attached; the JavaScript heap
+            is not where a leak in this package would show up.
+          </Text>
+
+          {reports.map((report, index) => (
+            <View key={`${report.label}${index}`} style={styles.row}>
+              <Text style={report.passed ? styles.pass : styles.error}>
+                {`${report.passed ? 'pass' : 'fail'}  ${report.label}`}
+              </Text>
+            </View>
+          ))}
+          {reports.map((report, index) => (
+            <Text key={`detail${report.label}${index}`} style={styles.muted}>
+              {report.detail}
+            </Text>
+          ))}
+        </Panel>
+
         <Panel title="How the model got here">
           <Text style={styles.body}>{'npx react-native-pose-detection fetch-model full'}</Text>
           <Text style={styles.muted}>
@@ -163,6 +277,7 @@ const theme = {
   muted: '#8d99a6',
   accent: '#4da3ff',
   danger: '#ff6b6b',
+  ok: '#4ade80',
 } as const;
 
 const styles = StyleSheet.create({
@@ -197,9 +312,22 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   panels: { gap: 12, paddingBottom: 24, paddingHorizontal: 16 },
+  pass: { color: theme.ok, fontSize: 13, fontWeight: '600' },
   preview: { backgroundColor: '#000', flex: 1, marginHorizontal: 16, overflow: 'hidden' },
   root: { backgroundColor: theme.bg, flex: 1 },
   row: { flexDirection: 'row', justifyContent: 'space-between' },
+  stressButton: {
+    alignItems: 'center',
+    backgroundColor: theme.panel,
+    borderColor: theme.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  stressText: { color: theme.text, fontSize: 13, fontWeight: '600' },
   subheading: { color: theme.muted, fontSize: 13 },
   toggle: {
     backgroundColor: theme.panel,
