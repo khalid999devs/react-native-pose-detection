@@ -92,19 +92,25 @@ final class VideoExporter {
     )
     let canvas = exportCanvasSize(display: display, maxSize: options.maxSize)
     let output = options.directory.appendingPathComponent("\(options.fileName).mp4")
+
+    // Written under a staging name and moved into place at the end, so a process that dies
+    // mid-write can never leave behind something that looks like a finished export. Whatever a
+    // dead process does leave is swept the next time the directory is prepared.
+    let staging = options.directory.appendingPathComponent("\(options.fileName).partial.mp4")
     try? FileManager.default.removeItem(at: output)
+    try? FileManager.default.removeItem(at: staging)
 
     let reader = try makeReader(asset: asset, track: track)
-    let writer = try makeWriter(output: output, canvas: canvas, audioFormat: reader.audioFormat)
+    let writer = try makeWriter(output: staging, canvas: canvas, audioFormat: reader.audioFormat)
 
-    // Every exit from here on removes a half-written file and tears the pipeline down, so a
+    // Every exit from here on removes the half-written file and tears the pipeline down, so a
     // cancel, a decode failure and a clean finish all leave the same state behind.
     var finished = false
     defer {
       if !finished {
         reader.reader.cancelReading()
         writer.writer.cancelWriting()
-        try? FileManager.default.removeItem(at: output)
+        try? FileManager.default.removeItem(at: staging)
       }
     }
 
@@ -126,6 +132,9 @@ final class VideoExporter {
       ),
       output: output
     )
+    // The writer finalized the staging file; the move is what makes the export exist under the
+    // name the summary hands back.
+    try FileManager.default.moveItem(at: staging, to: output)
     finished = true
     return summary
   }

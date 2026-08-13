@@ -61,7 +61,19 @@ enum PoseExport {
     PoseLog.info(.engine, "export maxPoses=\(options.maxPoses) minConfidence=\(options.minConfidence)")
 
     running.begin(taskId)
-    defer { running.end(taskId) }
+    // Suspension is the one failure the cleanup blocks cannot see: the threads freeze mid-write,
+    // and if the system then terminates the app nothing unwinds. The background task buys the
+    // minutes an export actually needs, and its expiry cancels this task so the pipeline leaves
+    // through the same cleanup as every other failure.
+    let background = UIApplication.shared.beginBackgroundTask(withName: "pose-export") {
+      running.cancel(taskId)
+    }
+    defer {
+      running.end(taskId)
+      if background != .invalid {
+        UIApplication.shared.endBackgroundTask(background)
+      }
+    }
 
     if isVideo(uri: uri) {
       let exporter = VideoExporter(

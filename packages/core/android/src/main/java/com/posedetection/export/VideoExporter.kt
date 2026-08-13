@@ -109,6 +109,13 @@ internal class VideoExporter(
         var overlay: Bitmap? = null
         var audio: ExportAudio? = null
         val output = File(options.directory, "${options.fileName}.mp4")
+
+        // Written under a staging name and renamed into place at the end, so a process that dies
+        // mid-write can never leave behind something that looks like a finished export. Whatever
+        // a dead process does leave is swept the next time the directory is prepared.
+        val staging = File(options.directory, "${options.fileName}.partial.mp4")
+        output.delete()
+        staging.delete()
         var complete = false
 
         try {
@@ -145,7 +152,7 @@ internal class VideoExporter(
             decoder.configure(format, gl.decoderSurface, null, 0)
             decoder.start()
 
-            muxer = MediaMuxer(output.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+            muxer = MediaMuxer(staging.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
             overlay = Bitmap.createBitmap(canvas[0], canvas[1], Bitmap.Config.ARGB_8888)
 
             audio = ExportAudio.open(context, uri)
@@ -157,6 +164,11 @@ internal class VideoExporter(
                     report(DETECT_SHARE + (1f - DETECT_SHARE) * done)
                 }
 
+            // Finalized here rather than in the cleanup below, because the rename must not happen
+            // before the muxer has written the file's index, and a rename that fails has to be a
+            // failed export rather than a summary pointing at nothing.
+            muxer.stop()
+            if (!staging.renameTo(output)) throw ExportError("the export could not be moved into place")
             complete = true
             return ExportSummary(
                 file = output,
@@ -173,12 +185,12 @@ internal class VideoExporter(
             encoder?.release()
             gl?.release()
             overlay?.recycle()
-            runCatching { if (complete) muxer?.stop() }
-            muxer?.release()
+            // Stopped on the happy path above; an incomplete muxer has nothing stoppable in it.
+            runCatching { muxer?.release() }
             audio?.release()
             extractor.release()
             // A half written file looks like a finished export to anything that finds it later.
-            if (!complete) output.delete()
+            if (!complete) staging.delete()
         }
     }
 

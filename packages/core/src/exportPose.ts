@@ -12,7 +12,7 @@ export type ExportOptions = {
    * 1 to 5. Every pose found is painted, and `posesFound` counts them. Default 1.
    *
    * A ceiling rather than a promise: MediaPipe's landmarker is built around one primary subject and
-   * usually returns one body however high this goes. See guides/export.md before relying on it.
+   * usually returns one body however high this goes. See guides/files.md before relying on it.
    */
   maxPoses?: number;
   /**

@@ -82,12 +82,25 @@ struct ExportOptions {
         }
         base = URL(fileURLWithPath: value)
         try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        sweepStaging(base)
         return base
       }
       base = url
     }
     try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+    sweepStaging(base)
     return base
+  }
+
+  /**
+   Whatever a dead process left mid-write. Exports run serially on one queue, so nothing swept
+   here can belong to an export that is still running.
+   */
+  private static func sweepStaging(_ base: URL) {
+    let contents = (try? FileManager.default.contentsOfDirectory(atPath: base.path)) ?? []
+    for name in contents where name.hasSuffix(".partial.mp4") {
+      try? FileManager.default.removeItem(at: base.appendingPathComponent(name))
+    }
   }
 
   /// Sanitized rather than trusted: this reaches the filesystem, and a name with a slash in it

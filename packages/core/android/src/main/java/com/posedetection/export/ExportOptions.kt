@@ -94,7 +94,16 @@ internal class ExportOptions(
                     }
                 }
             base.mkdirs()
+            sweepStaging(base)
             return base
+        }
+
+        /**
+         * Whatever a dead process left mid-write. Exports run serially on one executor, so
+         * nothing swept here can belong to an export that is still running.
+         */
+        private fun sweepStaging(base: File) {
+            base.listFiles { file -> file.name.endsWith(".partial.mp4") }?.forEach { it.delete() }
         }
 
         /**
