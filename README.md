@@ -156,10 +156,10 @@ you hear about it once per rep:
 
 ```tsx
 <PoseCamera
-  data={{ mode: 'throttled', throttleMs: 100 }}
+  data={{ mode: 'throttled', throttleMs: 100, angles: ['leftKnee'] }}
   onPose={(frame) => {
     // frame.landmarks is a Float32Array of [x, y, z, visibility] per joint
-    setLeftKnee(frame.angles?.leftKnee);
+    setKneeAngle(frame.angles?.leftKnee);
   }}
 />
 ```
