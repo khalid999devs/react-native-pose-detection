@@ -1,6 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "ignoreBinaries": ["swiftlint", "ktlint", "lychee"],
+  "ignoreBinaries": ["swiftlint", "ktlint", "lychee", "swift"],
   "workspaces": {
     "packages/core": {
       "entry": ["plugin/src/index.ts", "plugin/src/cli.ts"]

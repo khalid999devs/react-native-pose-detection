@@ -1,12 +1,12 @@
 # Native modules
 
-Both platforms are Expo Modules, which gives old- and new-architecture support without a
-per-architecture code path.
+Both platforms are Expo Modules, which is what keeps the JS-facing surface declared once per
+platform instead of once per architecture. That mattered more when there were two: React Native
+0.82 removed the legacy architecture, so there is one left.
 
-**Only Android exists.** `packages/core/android` has the camera, the detector and the overlay.
-There is no `packages/core/ios` yet, which is why the macOS lint job in CI is gated behind a
-step that looks for Swift sources. Read the rules below as what both platforms must satisfy, and
-the Android file as the only implementation of them so far.
+Both exist. `packages/core/android` is Kotlin on CameraX, `packages/core/ios` is Swift on
+AVFoundation, and the rules below are what each has to satisfy. Where they differ, the difference
+is named rather than left for somebody to find.
 
 ## Module definition
 
@@ -125,6 +125,22 @@ All session state mutates on `sessionQueue`. Reading it from another thread requ
 immutable snapshot captured at frame time, never a shared mutable flag. Unsynchronized
 booleans across queues were the root cause of the legacy package's camera-switch crashes.
 
+## Where the two differ
+
+Everything above is the same on both. These are the places the platforms genuinely diverge, and
+each one is a decision rather than an oversight.
+
+| | Android | iOS |
+| --- | --- | --- |
+| Session queue | the main thread, because CameraX requires `bindToLifecycle` there | a serial `sessionQueue`, because `startRunning` blocks |
+| Rotation | left on the buffer, passed to MediaPipe as `ImageProcessingOptions` | applied by the capture connection, so MediaPipe is always handed `.up` |
+| Buffer conversion | `FrameConverter` copies the `ImageProxy` into a reused bitmap | none: `MPImage(sampleBuffer:)` takes the `CMSampleBuffer` directly |
+| Teardown | four registrations and an explicit destroy hook | `deinit`, plus notification tokens removed on detach |
+| Drain queue | off the main queue, deliberately | on it: ExpoModulesCore puts every view function there and offers no opt-out |
+| Permission states | `denied` and `blocked` are distinguishable | a refusal is always `blocked`; iOS prompts once |
+| Device probe | cores and memory | memory only, because Apple has shipped six cores since the A11 |
+| Volatile reads | `@Volatile` | a lock, through `Guarded<T>`, since Swift has no equivalent below iOS 18 |
+
 ## Android notes
 
 - **Coordinates are anisotropic.** Landmarks are normalized by dividing x by width and y by
@@ -179,6 +195,31 @@ Measured from an assembled debug APK on the 0.10.35 pin, not from the AAR:
 
 Google does not publish every version to CocoaPods, so iOS choices are narrower than Android's.
 
+## iOS notes
+
+- **Rotation is applied by the capture connection**, inside `beginConfiguration`/
+  `commitConfiguration`, so buffers arrive display-upright and `MPImage` is always constructed
+  with `.up`. `AVCaptureVideoOrientation` and `UIInterfaceOrientation` have opposite names for the
+  same two landscape cases but matching raw values, so `CaptureRotation` converts through
+  `rawValue`. Converting by name is the classic way to get a sideways preview.
+- **Mirroring is the preview's alone.** The video data output connection is never mirrored, so
+  landmarks describe the real world; the overlay flips at draw time. Mirroring the analysis output
+  instead puts every left limb on the right.
+- **The preview is a view, not a layer somebody keeps in sync.** `PreviewView` overrides
+  `layerClass`, so UIKit resizes the preview layer during layout and there is no frame assignment
+  to mistime on rotation.
+- **`AVAssetImageGenerator.copyCGImage` and `AVAsset.duration` are deprecated in iOS 16** and their
+  replacements are async and 16-only. This package supports 15.1, so both are still called, both
+  warn, and both are isolated in `StaticDetection` so the warning names the one decision behind
+  them. Raising the floor to 16 is the fix, and it is a compatibility decision rather than a
+  cleanup.
+- **Expo SDK 57 requires iOS 16.4**, so an app that targets lower gets every Expo pod silently
+  skipped by autolinking, and this package fails to resolve `ExpoModulesCore`. `example/bare`
+  pins 16.4 for exactly that reason. The podspec itself declares 15.1, which is this package's own
+  floor; Expo raises it to match `ExpoModulesCore` during `pod install`.
+
+## MediaPipe on both platforms
+
 - `LIVE_STREAM` mode rejects non-increasing timestamps. Clamp, never trust the source.
 - Landmarker construction is expensive, first inference can stall for seconds. It is created
   once per process and pre-warmed during camera setup.
@@ -191,5 +232,7 @@ Google does not publish every version to CocoaPods, so iOS choices are narrower 
 | Frozen preview, Android | a missed `imageProxy.close()` |
 | MediaPipe timestamp error | clamping logic, or an async hop reordering frames |
 | Crash on rapid camera switch | generation counter, or state read off `sessionQueue` |
-| Overlay misaligned | `transformNormalizedPoint` and the preview-rect calculation |
+| Frozen preview, iOS | a sample buffer retained past `captureOutput` |
+| Overlay misaligned | the projection in `OverlayView`, and the frame size it was handed |
+| Landmarks sideways or upside down, iOS | the connection's rotation, set in `CaptureRotation` |
 | Memory climbing | allocations in the frame path: profile it |

@@ -320,7 +320,7 @@ internal class OverlayView(
             arcPaint.color = spec.color ?: config.color
             arcBounds.set(cx - radius, cy - radius, cx + radius, cy + radius)
 
-            // The sweep is the angle itself, centred on the bisector, so the arc sits inside the two
+            // The sweep is the angle itself, centered on the bisector, so the arc sits inside the two
             // limb segments rather than crossing them.
             val sweep = degrees
             val start = Math.toDegrees(bisector.toDouble()).toFloat() - sweep / 2f

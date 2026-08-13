@@ -167,3 +167,9 @@ desktop.ini
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json.example
+
+# SwiftPM, which builds the iOS engine test suite. The package it belongs to is a test harness,
+# not something consumers see: `packages/core/ios/Package.swift` is excluded from both the podspec
+# and the tarball.
+packages/core/ios/.build/
+packages/core/ios/.swiftpm/

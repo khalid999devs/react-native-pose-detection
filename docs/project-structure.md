@@ -8,7 +8,7 @@ react-native-pose-detection/
 ├── packages/
 │   └── core/                  the published package
 │       ├── src/               TypeScript: public API, types, validation
-│       ├── ios/               Swift                     (not written yet)
+│       ├── ios/               Swift
 │       ├── android/           Kotlin
 │       ├── plugin/            Expo config plugin, model manifest, downloader
 │       └── cli/               bin shim, the implementation lives in plugin/
@@ -16,9 +16,6 @@ react-native-pose-detection/
     ├── expo/                  Expo app: every screen, installed via the config plugin
     └── bare/                  bare React Native app: install path only, via the CLI
 ```
-
-`packages/core/ios` is Phase 5 work, so the tree above is where it goes rather than what is
-checked in. Both example apps exist and build for Android.
 
 `example/bare` commits its `android/` and `ios/` directories; `example/expo` does not. That is
 the difference between the two install paths, not an inconsistency: an Expo app regenerates its
@@ -80,6 +77,38 @@ The four packages match the vocabulary in [architecture](./architecture.md): cap
 engine, present. Parsing lives beside what it builds rather than in the module file, so a new
 condition is one file rather than two.
 
+## `packages/core/ios`
+
+```text
+ios/
+├── PoseDetectionModule.swift  the Expo module definition: props, events, functions
+├── Skeleton.swift             the landmark, connection and angle tables everything reads
+├── PoseLog.swift              the level mask, the ring buffer, the unified-log mirror
+├── ErrorCode.swift
+├── Permissions.swift
+├── Monotonic.swift            one clock, so every measured interval comes from the same source
+├── Guarded.swift              Swift has no `volatile`; this is what stands in for it
+├── JSCoercion.swift           untyped bridge values into Swift ones
+├── view/                      PoseCameraView across six files, the overlay, its prop parsing
+├── camera/                    CameraSource, PreviewView, CaptureRotation
+├── detector/                  PoseDetector, StaticDetection
+├── engine/                    the same six files Kotlin has, one per concern
+├── performance/               Calibrator, the thermal monitor, the precedence chain
+├── Package.swift              a test harness, not a distribution channel: see below
+└── Tests/PoseEngineTests/     XCTest over the half that has no platform in it
+```
+
+The package names match Android's, so a file has the same neighbors on both platforms. Two things
+are iOS-only: there is no `FrameConverter`, because `MPImage` takes a `CMSampleBuffer` as it
+arrives, and `PoseCameraView` is one type across six files because Swift extensions are how a
+1,200-line class stays readable. Stored state lives in `PoseCameraView.swift`; the rest is
+`+Props`, `+Session`, `+Capture`, `+Frames`, `+Delivery`, `+Ref` and `+Lifecycle`.
+
+`Package.swift` exists so `swift test` can run the engine, the wire format and the performance
+resolver on any machine with a Swift toolchain, with no simulator, no Xcode project and no
+MediaPipe. That is the same half JUnit covers on Android. It is excluded from both the podspec and
+the tarball; consumers only ever see `ReactNativePoseDetection.podspec`.
+
 ## `packages/core/plugin`
 
 ```text
@@ -120,7 +149,7 @@ Both platforms mirror the same four responsibilities:
 | `CameraSource` | AVFoundation | CameraX | capture, lifecycle, switching |
 | `PoseDetector` | MediaPipe Tasks | MediaPipe Tasks | inference, delegate fallback |
 | `PoseEngine` | Swift | Kotlin | geometry, triggers, emission |
-| `OverlayRenderer` | CAShapeLayer | Canvas | native skeleton drawing |
+| `OverlayView` | CoreGraphics | Canvas | native skeleton drawing |
 | `Calibrator` | Swift | Kotlin | device probe, convergence, cache |
 
 **`PoseEngine` must never import camera code.** The frame source is an input. This is the
@@ -140,10 +169,11 @@ video files, cheap to add rather than requiring a fork. See [ADR 0001](./adr/000
 
 ## Two implementations, one behavior
 
-The condition evaluator and geometry will exist twice, Swift and Kotlin. They must produce
-identical output for identical input. Shared JSON fixtures are meant to drive both test suites; a
-divergence is a bug even when each side looks correct alone. Neither exists yet, so this is a rule
-for Phases 4 and 5 rather than something enforced today. See [testing](./testing.md).
+The condition evaluator and geometry exist twice, Swift and Kotlin. They must produce identical
+output for identical input; a divergence is a bug even when each side looks correct alone. 54
+JUnit tests and 58 XCTests assert the same behavior, and the wire parity test reads both native
+constant tables plus the TypeScript one and fails when any of the three drifts. See
+[testing](./testing.md).
 
 ## What is deliberately absent
 

@@ -3,6 +3,8 @@ included:
 
 excluded:
   - packages/core/ios/build
+  # SwiftPM's output for the engine test suite, including the XCTest runner it generates.
+  - packages/core/ios/.build
 
 opt_in_rules:
   - empty_count
@@ -24,6 +26,18 @@ force_cast: error
 force_try: error
 force_unwrapping: error
 
+# Six is the width of the widest thing here: an angle takes the landmark buffer, three joint
+# indices, and the frame size it has to be corrected against. Seven is a sign of two jobs in one
+# function, which is why the error threshold is left near the default.
+function_parameter_count:
+  warning: 6
+  error: 8
+
 identifier_name:
   min_length: 2
   excluded: [x, y, z, i, j, n, a, b, dx, dy, ms]
+
+# `JS` is the namespace for reading untyped values off the bridge, and at every call site the two
+# letters are the point: `JS.number(raw["fps"])` says where the value came from and nothing else.
+type_name:
+  excluded: [JS]

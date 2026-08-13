@@ -5,7 +5,17 @@ require Pod::Executable.execute_command('node', ['-p',
     {paths: [process.argv[1]]},
   )', __dir__]).strip
 
-platform :ios, min_ios_version_supported
+# This package is an Expo module, so a bare app still needs Expo's autolinking on iOS, exactly as
+# it needs `expo-autolinking-settings` in settings.gradle. `install-expo-modules` would normally
+# write this, but it stops at React Native 0.78, so it is here by hand.
+require File.join(
+  File.dirname(`node --print "require.resolve('expo/package.json', { paths: [process.cwd()] })"`),
+  "scripts/autolinking"
+)
+
+# Not `min_ios_version_supported`, which is React Native's 15.1. Expo SDK 57 ships pods that
+# require 16.4, and autolinking silently skips every one of them when the app targets lower.
+platform :ios, '16.4'
 prepare_react_native_project!
 
 linkage = ENV['USE_FRAMEWORKS']
@@ -15,6 +25,7 @@ if linkage != nil
 end
 
 target 'PoseExampleBare' do
+  use_expo_modules!
   config = use_native_modules!
 
   use_react_native!(

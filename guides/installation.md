@@ -1,8 +1,7 @@
 # Installation
 
-**Android only so far.** The package ships no `ios/` sources and no podspec yet, so the iOS
-steps below are what will apply once the iOS module lands, not something to run today. Nothing
-about them is guesswork: the deployment target and the permission key are already fixed.
+**Not published yet, and not yet run on a device.** Both platforms are written and build. The
+steps below are what installing it looks like.
 
 ## Requirements
 
@@ -10,9 +9,9 @@ about them is guesswork: the deployment target and the permission key are alread
 | --- | --- |
 | React Native | 0.74+ |
 | Expo SDK | 51+ (dev client or EAS Build) |
-| iOS | 15.1+ |
+| iOS | 15.1+, and 16.4+ on Expo SDK 57, which is what `ExpoModulesCore` requires |
 | Android | API 24+ |
-| Architecture | old and new both supported |
+| Architecture | new. React Native 0.82 removed the legacy one, so there is nothing to choose |
 
 **Expo Go is not supported** and never will be. This package contains native code.
 
@@ -47,7 +46,7 @@ Full plugin options: [config plugin reference](./reference/config-plugin.md).
 ```bash
 npm i react-native-pose-detection expo
 npx react-native-pose-detection fetch-model full
-cd ios && pod install   # once iOS ships
+cd ios && pod install
 ```
 
 `expo` is not a typo and it does not turn your app into an Expo app. This package is built with
@@ -122,10 +121,28 @@ override fun createReactActivityDelegate(): ReactActivityDelegate =
 <string>We use the camera to analyse your movement.</string>
 ```
 
-`ios/Podfile`, deployment target 15.1 or higher:
+`ios/Podfile`, deployment target 15.1 or higher. On Expo SDK 57 it has to be 16.4, because that
+is what `ExpoModulesCore` requires and Expo's autolinking silently skips every one of its pods on
+an app that targets lower, which surfaces as CocoaPods failing to find `ExpoModulesCore`:
 
 ```ruby
-platform :ios, '15.1'
+platform :ios, '16.4'
+```
+
+A bare app also needs Expo's autolinking in its `Podfile`, the counterpart of
+`expo-autolinking-settings` in `settings.gradle`. `install-expo-modules` writes it for you on
+React Native 0.78 and below; above that, add it by hand:
+
+```ruby
+require File.join(
+  File.dirname(`node --print "require.resolve('expo/package.json', { paths: [process.cwd()] })"`),
+  "scripts/autolinking"
+)
+
+target 'YourApp' do
+  use_expo_modules!
+  # ...
+end
 ```
 
 ### Android

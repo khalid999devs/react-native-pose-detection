@@ -1,10 +1,9 @@
 # Architecture
 
-This is the target design, and about half of it is built. Android has `CameraSource`,
-`PoseDetector` and `OverlayRenderer`; `PoseEngine` and `Calibrator` do not exist on either
-platform, and neither does iOS. Where the present tense below describes native behavior, read it
-as the contract the code is being written against. The
-[development plan](./development-plan.md) has the current checkboxes.
+This is the design, and all of it is built on both platforms. None of it has run on a physical
+device, so where the present tense below describes native behavior, read it as what the code does
+rather than as what anyone has watched it do. The [development plan](./development-plan.md) has
+the current checkboxes.
 
 ## Layers
 

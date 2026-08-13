@@ -1,8 +1,8 @@
 # Performance
 
-*Android runs all of this. iOS has no module yet. Every number below is a target the
-implementation aims at rather than one measured on hardware, because nothing here has run on a
-physical device: see [the development plan](../docs/development-plan.md).*
+*Both platforms implement all of this. Every number below is a target the implementation aims at
+rather than one measured on hardware, because nothing here has run on a physical device: see
+[the development plan](../docs/development-plan.md).*
 
 ## Profiles
 

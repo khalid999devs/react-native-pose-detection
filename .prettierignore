@@ -14,3 +14,7 @@ package-lock.json
 # upstream. example/bare commits its copy on purpose, see example/README.md.
 example/*/android/
 example/*/ios/
+
+# SwiftPM's output for the iOS engine test suite.
+packages/core/ios/.build
+packages/core/ios/.swiftpm
