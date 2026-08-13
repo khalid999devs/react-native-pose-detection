@@ -55,6 +55,10 @@ enum PoseExport {
   ) throws -> ExportSummary {
     let source = try resolve(uri: uri)
     let options = try ExportOptions.parse(raw, sourceName: source.deletingPathExtension().lastPathComponent)
+    // The two values that decide who gets painted, and the pair most worth seeing when an export
+    // finds fewer bodies than expected: `minConfidence` follows `maxPoses` unless the caller set it,
+    // and the resolved number is not visible from JavaScript otherwise.
+    PoseLog.info(.engine, "export maxPoses=\(options.maxPoses) minConfidence=\(options.minConfidence)")
 
     running.begin(taskId)
     defer { running.end(taskId) }
@@ -85,6 +89,7 @@ enum PoseExport {
     let detector = try PoseDetector.createForStillInput(
       modelPath: try StaticDetection.requireModel(),
       maxPoses: options.maxPoses,
+      minConfidence: options.minConfidence,
       video: false
     )
     let result = try detector.detectImage(try MPImage(uiImage: image))
@@ -100,28 +105,13 @@ enum PoseExport {
       fit: .fit
     )
 
-    let format = UIGraphicsImageRendererFormat()
-    format.scale = 1
-    format.opaque = true
-    // Safe off the main thread, unlike the UIGraphicsBeginImageContext family it replaced, which
-    // is the reason an export can render at all without hopping onto the thread the camera draws on.
-    let painted = UIGraphicsImageRenderer(size: canvas, format: format).image { context in
-      image.draw(in: projection.rect)
-      guard options.drawOverlay, let landmarks = firstPose(result) else { return }
-      let scale = overlayScale(canvas: canvas)
-      var renderer = OverlayRenderer(
-        config: options.overlay,
-        palette: OverlayPalette(options.overlay, scale: scale),
-        landmarks: landmarks,
-        projection: projection,
-        // A file is never mirrored: what was picked is what gets painted.
-        mirrored: false,
-        sourceWidth: Int(display.width),
-        sourceHeight: Int(display.height)
-      )
-      renderer.scale = scale
-      renderer.draw(into: context.cgContext)
-    }
+    let painted = paint(
+      image,
+      result: result,
+      options: options,
+      projection: projection,
+      geometry: (display: display, canvas: canvas)
+    )
 
     let url = options.directory.appendingPathComponent("\(options.fileName).jpg")
     guard let data = painted.jpegData(compressionQuality: options.quality) else {
@@ -140,25 +130,61 @@ enum PoseExport {
     )
   }
 
-  /// The primary pose as the flat buffer the renderer and the geometry both read, or nil when the
-  /// frame had nobody in it.
-  static func firstPose(_ result: PoseLandmarkerResult) -> [Float]? {
-    var landmarks = [Float](repeating: 0, count: Skeleton.landmarkCount * Skeleton.landmarkStride)
-    guard fill(&landmarks, from: result) else { return nil }
-    return landmarks
+  /// The picture with every detected skeleton on top of it.
+  private static func paint(
+    _ image: UIImage,
+    result: PoseLandmarkerResult,
+    options: ExportOptions,
+    projection: OverlayProjection,
+    geometry: (display: CGSize, canvas: CGSize)
+  ) -> UIImage {
+    let canvas = geometry.canvas
+    let format = UIGraphicsImageRendererFormat()
+    format.scale = 1
+    format.opaque = true
+    let scale = overlayScale(canvas: canvas)
+    let palette = OverlayPalette(options.overlay, scale: scale)
+
+    // Safe off the main thread, unlike the UIGraphicsBeginImageContext family it replaced, which is
+    // the reason an export can render at all without hopping onto the thread the camera draws on.
+    return UIGraphicsImageRenderer(size: canvas, format: format).image { context in
+      image.draw(in: projection.rect)
+      guard options.drawOverlay else { return }
+      for landmarks in poses(result) {
+        var renderer = OverlayRenderer(
+          config: options.overlay,
+          palette: palette,
+          landmarks: landmarks,
+          projection: projection,
+          // A file is never mirrored: what was picked is what gets painted.
+          mirrored: false,
+          sourceWidth: Int(geometry.display.width),
+          sourceHeight: Int(geometry.display.height)
+        )
+        renderer.scale = scale
+        renderer.draw(into: context.cgContext)
+      }
+    }
   }
 
-  @discardableResult
-  static func fill(_ landmarks: inout [Float], from result: PoseLandmarkerResult) -> Bool {
-    guard let pose = result.landmarks.first else { return false }
-    for index in 0..<min(Skeleton.landmarkCount, pose.count) {
-      let point = pose[index]
-      let base = index * Skeleton.landmarkStride
-      landmarks[base + Skeleton.offsetX] = point.x
-      landmarks[base + Skeleton.offsetY] = point.y
-      landmarks[base + Skeleton.offsetZ] = point.z
-      landmarks[base + Skeleton.offsetVisibility] = point.visibility?.floatValue ?? 0
+  /**
+   Every pose in the frame as flat buffers the renderer reads, empty when nobody was in it.
+
+   All of them, not the front one: `maxPoses` is an export option, and painting one skeleton onto a
+   frame the caller asked to have five detected in would silently ignore what they asked for.
+   */
+  static func poses(_ result: PoseLandmarkerResult) -> [[Float]] {
+    return result.landmarks.map { pose in
+      var landmarks = [Float](repeating: 0, count: Skeleton.landmarkCount * Skeleton.landmarkStride)
+      for index in 0..<min(Skeleton.landmarkCount, pose.count) {
+        let point = pose[index]
+        let base = index * Skeleton.landmarkStride
+        landmarks[base + Skeleton.offsetX] = point.x
+        landmarks[base + Skeleton.offsetY] = point.y
+        landmarks[base + Skeleton.offsetZ] = point.z
+        landmarks[base + Skeleton.offsetVisibility] = point.visibility?.floatValue ?? 0
+      }
+      return landmarks
     }
-    return true
   }
 }

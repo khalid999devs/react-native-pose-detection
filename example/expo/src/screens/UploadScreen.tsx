@@ -3,7 +3,16 @@ import { Directory, File, Paths } from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import * as React from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Image,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  type ViewStyle,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { exportPose, type ExportResult } from 'react-native-pose-detection';
 
@@ -30,7 +39,7 @@ function exportDirectory(): Directory {
   return directory;
 }
 
-type Entry = { uri: string; name: string; size: number };
+type Entry = { uri: string; name: string; size: number; at: number };
 
 export function UploadScreen() {
   const insets = useSafeAreaInsets();
@@ -39,6 +48,7 @@ export function UploadScreen() {
   const [result, setResult] = React.useState<ExportResult | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [entries, setEntries] = React.useState<Entry[]>([]);
+  const [viewing, setViewing] = React.useState<Entry | null>(null);
   const task = React.useRef<{ cancel: () => void } | null>(null);
 
   const refresh = React.useCallback(() => {
@@ -47,8 +57,14 @@ export function UploadScreen() {
         exportDirectory()
           .list()
           .filter((item): item is File => item instanceof File)
-          .map((file) => ({ uri: file.uri, name: file.name, size: file.size ?? 0 }))
-          .sort((a, b) => a.name.localeCompare(b.name)),
+          .map((file) => ({
+            uri: file.uri,
+            name: file.name,
+            size: file.size ?? 0,
+            at: file.lastModified ?? 0,
+          }))
+          // Newest first: the file somebody just made is the one they came back to look at.
+          .sort((a, b) => b.at - a.at || a.name.localeCompare(b.name)),
       );
     } catch (problem) {
       setError(String(problem));
@@ -72,6 +88,9 @@ export function UploadScreen() {
     try {
       const running = exportPose(picked.assets[0].uri, {
         overlay: { color: theme.color.overlay, lineWidth: 3, pointRadius: 4 },
+        // Everybody in frame gets a skeleton, not only the nearest body. Asking for more than one
+        // is also what lowers the confidence bar, so no second option is needed here.
+        maxPoses: 5,
         directory: exportDirectory().uri,
         onProgress: setProgress,
       });
@@ -88,15 +107,19 @@ export function UploadScreen() {
     }
   }, [refresh]);
 
-  const clear = React.useCallback(() => {
-    try {
-      for (const entry of entries) new File(entry.uri).delete();
-    } catch (problem) {
-      setError(String(problem));
-    }
-    setResult(null);
-    refresh();
-  }, [entries, refresh]);
+  const remove = React.useCallback(
+    (entry: Entry) => {
+      try {
+        new File(entry.uri).delete();
+      } catch (problem) {
+        setError(String(problem));
+      }
+      setResult((current) => (current?.uri === entry.uri ? null : current));
+      setViewing((current) => (current?.uri === entry.uri ? null : current));
+      refresh();
+    },
+    [refresh],
+  );
 
   return (
     <ScrollView
@@ -142,7 +165,7 @@ export function UploadScreen() {
         </Card>
       ) : null}
 
-      {result ? <Result result={result} /> : null}
+      {result ? <Result result={result} onClose={() => setResult(null)} /> : null}
 
       {!result && !busy && entries.length === 0 ? (
         <View style={styles.empty}>
@@ -157,39 +180,120 @@ export function UploadScreen() {
         <View style={styles.list}>
           <View style={styles.listHead}>
             <Text style={styles.listTitle}>{EXPORT_DIR}</Text>
-            <Pressable onPress={clear} hitSlop={12} accessibilityRole="button">
-              <Text style={styles.clear}>Clear</Text>
-            </Pressable>
+            <Text style={styles.listCount}>
+              {entries.length} {entries.length === 1 ? 'file' : 'files'}
+            </Text>
           </View>
           <Card>
             {entries.map((entry, index) => (
-              <View key={entry.uri} style={[styles.row, index > 0 && styles.rowDivided]}>
+              <Pressable
+                key={entry.uri}
+                onPress={() => setViewing(entry)}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${entry.name}`}
+                style={({ pressed }) => [
+                  styles.row,
+                  index > 0 && styles.rowDivided,
+                  pressed && styles.rowPressed,
+                ]}
+              >
                 <Ionicons
                   name={isVideo(entry.uri) ? 'film-outline' : 'image-outline'}
                   size={17}
                   color={theme.color.faint}
                 />
-                <Text style={styles.rowName} numberOfLines={1}>
-                  {entry.name}
-                </Text>
-                <Text style={styles.rowSize}>{Math.max(1, Math.round(entry.size / 1024))} KB</Text>
-              </View>
+                <View style={styles.rowText}>
+                  <Text style={styles.rowName} numberOfLines={1}>
+                    {entry.name}
+                  </Text>
+                  <Text style={styles.rowMeta}>
+                    {Math.max(1, Math.round(entry.size / 1024))} KB · {when(entry.at)}
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={() => remove(entry)}
+                  hitSlop={10}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Delete ${entry.name}`}
+                  style={({ pressed }) => [styles.delete, pressed && styles.pressed]}
+                >
+                  <Ionicons name="trash-outline" size={16} color={theme.color.danger} />
+                </Pressable>
+              </Pressable>
             ))}
           </Card>
         </View>
       ) : null}
+
+      <Viewer entry={viewing} onClose={() => setViewing(null)} />
     </ScrollView>
   );
 }
 
-function Result({ result }: { result: ExportResult }) {
+/** Relative for anything from today, so the newest files read as newest at a glance. */
+function when(at: number) {
+  if (!at) return 'just now';
+  const minutes = Math.round((Date.now() - at) / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 60 * 24) return `${Math.round(minutes / 60)}h ago`;
+  return new Date(at).toLocaleDateString();
+}
+
+/** Full screen playback for anything already in the folder. */
+function Viewer({ entry, onClose }: { entry: Entry | null; onClose: () => void }) {
+  return (
+    <Modal
+      visible={entry !== null}
+      animationType="fade"
+      transparent={false}
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
+      <View style={styles.viewer}>
+        {entry ? (
+          isVideo(entry.uri) ? (
+            <VideoPreview uri={entry.uri} style={styles.viewerMedia} muted={false} />
+          ) : (
+            <Image source={{ uri: entry.uri }} style={styles.viewerMedia} resizeMode="contain" />
+          )
+        ) : null}
+        <Pressable
+          onPress={onClose}
+          hitSlop={14}
+          accessibilityRole="button"
+          accessibilityLabel="Close"
+          style={({ pressed }) => [styles.viewerClose, pressed && styles.pressed]}
+        >
+          <Ionicons name="close" size={22} color="#FFFFFF" />
+        </Pressable>
+        <Text style={styles.viewerName} numberOfLines={1}>
+          {entry?.name}
+        </Text>
+      </View>
+    </Modal>
+  );
+}
+
+function Result({ result, onClose }: { result: ExportResult; onClose: () => void }) {
   return (
     <View style={styles.result}>
-      {isVideo(result.uri) ? (
-        <VideoPreview uri={result.uri} />
-      ) : (
-        <Image source={{ uri: result.uri }} style={styles.preview} resizeMode="cover" />
-      )}
+      <View>
+        {isVideo(result.uri) ? (
+          <VideoPreview uri={result.uri} style={styles.preview} muted />
+        ) : (
+          <Image source={{ uri: result.uri }} style={styles.preview} resizeMode="cover" />
+        )}
+        <Pressable
+          onPress={onClose}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Close the preview"
+          style={({ pressed }) => [styles.previewClose, pressed && styles.pressed]}
+        >
+          <Ionicons name="close" size={18} color="#FFFFFF" />
+        </Pressable>
+      </View>
       <Card style={styles.resultStats}>
         <Metric label="Size" value={`${result.width}×${result.height}`} />
         <Metric label="Frames" value={String(result.frameCount)} />
@@ -220,14 +324,21 @@ function Metric({ label, value, tone }: { label: string; value: string; tone?: '
   );
 }
 
-/** Its own component so the player hook only exists when the result actually is a video. */
-function VideoPreview({ uri }: { uri: string }) {
+/** Its own component so the player hook only exists when what is being shown is a video. */
+function VideoPreview({ uri, style, muted }: { uri: string; style: ViewStyle; muted: boolean }) {
   const player = useVideoPlayer(uri, (instance) => {
     instance.loop = true;
-    instance.muted = true;
+    instance.muted = muted;
     instance.play();
   });
-  return <VideoView player={player} style={styles.preview} contentFit="cover" nativeControls />;
+  return (
+    <VideoView
+      player={player}
+      style={style}
+      contentFit={muted ? 'cover' : 'contain'}
+      nativeControls
+    />
+  );
 }
 
 const styles = StyleSheet.create({
@@ -367,29 +478,84 @@ const styles = StyleSheet.create({
     fontSize: theme.font.label,
     fontWeight: '700',
   },
-  clear: {
+  listCount: {
     color: theme.color.faint,
     fontSize: theme.font.tiny,
+    fontVariant: ['tabular-nums'],
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: theme.space(3),
-    paddingVertical: theme.space(3.5),
+    paddingVertical: theme.space(3),
     paddingHorizontal: theme.space(4.5),
+  },
+  rowPressed: {
+    backgroundColor: theme.color.surfaceSunken,
   },
   rowDivided: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: theme.color.border,
   },
-  rowName: {
+  rowText: {
     flex: 1,
+    gap: 2,
+  },
+  rowName: {
     color: theme.color.text,
     fontSize: theme.font.label,
   },
-  rowSize: {
+  rowMeta: {
     color: theme.color.faint,
     fontSize: theme.font.tiny,
     fontVariant: ['tabular-nums'],
+  },
+  delete: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.color.dangerSoft,
+  },
+  previewClose: {
+    position: 'absolute',
+    top: theme.space(3),
+    right: theme.space(3),
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(11,18,32,0.55)',
+  },
+  viewer: {
+    flex: 1,
+    backgroundColor: '#000000',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewerMedia: {
+    width: '100%',
+    height: '100%',
+  },
+  viewerClose: {
+    position: 'absolute',
+    top: theme.space(12),
+    right: theme.space(5),
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.16)',
+  },
+  viewerName: {
+    position: 'absolute',
+    left: theme.space(5),
+    right: theme.space(18),
+    top: theme.space(13),
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: theme.font.tiny,
   },
 });

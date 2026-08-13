@@ -9,7 +9,6 @@ import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import android.media.MediaMuxer
 import com.google.mediapipe.framework.image.BitmapImageBuilder
-import com.posedetection.Skeleton
 import com.posedetection.detector.PoseDetector
 import com.posedetection.detector.StaticDetection
 import java.io.File
@@ -67,6 +66,7 @@ internal class VideoExporter(
                     StaticDetection.requireModel(context),
                     options.maxPoses,
                     video = true,
+                    minConfidence = options.minConfidence,
                 )
 
             val stepMs = (1_000L / options.sampleFps).coerceAtLeast(1L)
@@ -78,10 +78,13 @@ internal class VideoExporter(
                         MediaMetadataRetriever.OPTION_CLOSEST,
                     )
                 if (frame != null) {
-                    val result = detector.detectVideo(BitmapImageBuilder(frame).build(), positionMs)
-                    val landmarks = FloatArray(Skeleton.LANDMARK_COUNT * Skeleton.LANDMARK_STRIDE)
-                    if (PoseExport.fill(landmarks, result)) poses.add(Pose(positionMs, landmarks))
-                    frame.recycle()
+                    try {
+                        val result = detector.detectVideo(BitmapImageBuilder(frame).build(), positionMs)
+                        val bodies = PoseExport.poses(result)
+                        if (bodies.isNotEmpty()) poses.add(Pose(positionMs, bodies))
+                    } finally {
+                        frame.recycle()
+                    }
                 }
                 // The detect pass is the slow half, so it owns most of the progress bar.
                 report(DETECT_SHARE * positionMs / durationMs)

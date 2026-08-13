@@ -23,14 +23,37 @@ import { version } from 'react-native-pose-detection/package.json';
 
 const REPOSITORY = 'https://github.com/khalid999devs/react-native-pose-detection';
 
-const NOTES: { version: string; lines: string[] }[] = [
+const FEATURES: { icon: IconName; title: string; detail: string }[] = [
   {
-    version: 'Unreleased',
-    lines: [
-      'exportPose paints a picked photo or clip into a file your app owns',
-      'The overlay is drawn by one renderer, so exports and the preview agree',
-      'CPU inference in simulators, where MediaPipe’s Metal path aborts',
-    ],
+    icon: 'body-outline',
+    title: '33 landmarks, live',
+    detail: 'Full BlazePose skeleton with world coordinates, angles and visibility, on device.',
+  },
+  {
+    icon: 'speedometer-outline',
+    title: 'Adaptive by default',
+    detail:
+      'Frame rate, resolution and delegate resolve from the device, then calibrate as it runs.',
+  },
+  {
+    icon: 'flash-outline',
+    title: 'Frames without bridge cost',
+    detail: 'One shared buffer, drained on demand, so a live stream does not serialize per frame.',
+  },
+  {
+    icon: 'notifications-outline',
+    title: 'Triggers',
+    detail: 'Angle, position and velocity conditions evaluated natively, delivered as events.',
+  },
+  {
+    icon: 'images-outline',
+    title: 'Photos and clips',
+    detail: 'Detect over a picked file, or export one with the skeleton painted into it.',
+  },
+  {
+    icon: 'thermometer-outline',
+    title: 'Thermal aware',
+    detail: 'Throttles itself as the device heats, and releases the model when backgrounded.',
   },
 ];
 
@@ -66,18 +89,20 @@ export function AboutScreen({ onClose }: { onClose: () => void }) {
           </View>
         </Card>
 
-        <Text style={styles.section}>Release notes</Text>
-        {NOTES.map((note) => (
-          <Card key={note.version} style={styles.note}>
-            <Text style={styles.noteVersion}>{note.version}</Text>
-            {note.lines.map((line) => (
-              <View key={line} style={styles.bullet}>
-                <View style={styles.dot} />
-                <Text style={styles.bulletText}>{line}</Text>
+        <Text style={styles.section}>What it does</Text>
+        <Card>
+          {FEATURES.map((feature, index) => (
+            <View key={feature.title} style={[styles.feature, index > 0 && styles.rowDivided]}>
+              <View style={styles.featureIcon}>
+                <Ionicons name={feature.icon} size={16} color={theme.color.accent} />
               </View>
-            ))}
-          </Card>
-        ))}
+              <View style={styles.featureText}>
+                <Text style={styles.featureTitle}>{feature.title}</Text>
+                <Text style={styles.featureDetail}>{feature.detail}</Text>
+              </View>
+            </View>
+          ))}
+        </Card>
 
         <Text style={styles.section}>Built on</Text>
         <Card>
@@ -159,31 +184,33 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     paddingTop: theme.space(3),
   },
-  note: {
-    padding: theme.space(4),
-    gap: theme.space(2.5),
-  },
-  noteVersion: {
-    color: theme.color.accent,
-    fontSize: theme.font.label,
-    fontWeight: '700',
-  },
-  bullet: {
+  feature: {
     flexDirection: 'row',
-    gap: theme.space(2.5),
+    gap: theme.space(3),
+    paddingVertical: theme.space(3.5),
+    paddingHorizontal: theme.space(4),
   },
-  dot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    marginTop: 7,
-    backgroundColor: theme.color.faint,
+  featureIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.color.accentSoft,
   },
-  bulletText: {
+  featureText: {
     flex: 1,
-    color: theme.color.muted,
+    gap: 3,
+  },
+  featureTitle: {
+    color: theme.color.text,
     fontSize: theme.font.label,
-    lineHeight: theme.font.label * 1.5,
+    fontWeight: '600',
+  },
+  featureDetail: {
+    color: theme.color.muted,
+    fontSize: theme.font.tiny,
+    lineHeight: theme.font.tiny * 1.5,
   },
   row: {
     flexDirection: 'row',

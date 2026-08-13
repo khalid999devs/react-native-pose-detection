@@ -94,13 +94,59 @@ cleans up the same way.
 | Option | Default | Notes |
 | --- | --- | --- |
 | `overlay` | `true` | The same shape `<PoseCamera overlay>` takes. `false` writes an unpainted, size-capped copy |
-| `maxPoses` | `1` | Only the first is painted. The rest are counted in `posesFound` |
+| `maxPoses` | `1` | Up to 5. Every pose found is painted, and `posesFound` counts them |
+| `minConfidence` | follows `maxPoses` | `0.5` at `maxPoses: 1`, `0.3` above it. See below |
 | `fps` | `10` | Detection samples a second, not output frame rate |
 | `maxSize` | `1920` | Long edge cap. `0` keeps the source's size |
 | `directory` | `'cache'` | See above |
 | `fileName` | source name + `-pose` | No extension; sanitized before it reaches the filesystem |
 | `quality` | `0.9` | JPEG quality. Images only |
 | `onProgress` | none | 0 to 1, throttled to about every two percent |
+
+### Finding bodies the defaults miss
+
+`maxPoses` and `minConfidence` decide who gets painted, and they are one decision rather than two,
+so leaving `minConfidence` out takes it from `maxPoses`: 0.5 for a single subject, 0.3 above that.
+Every pose the model returns is painted.
+
+```ts
+exportPose(uri, { maxPoses: 5 });                    // 0.3, because more than one was asked for
+exportPose(uri, { maxPoses: 5, minConfidence: 0.4 }); // your number wins
+```
+
+Somebody cropped by the frame edge, standing at the back or half behind equipment often sits under
+MediaPipe's default 0.5 and is simply not found. Dropping to 0.3 finds a good number of them. The
+cost is that furniture and shadows start being offered as people, so it is a number to tune against
+your own footage rather than one this package can pick for you.
+
+**Several people at once works, within limits.** MediaPipe's landmarker is built around one primary
+subject, so `maxPoses` above one raises a ceiling rather than making a promise, and on its own it
+changes nothing: the threshold has to come down with it. Measured against `pose_landmarker_full` on
+a photo of two separated, mostly whole people:
+
+| `maxPoses` | `minConfidence` | Poses returned |
+| --- | --- | --- |
+| 1 | anything | 1 |
+| 5 | 0.5, 0.4 | 1 |
+| 5 | 0.3 | 2, one per person |
+| 5 | 0.2 | 3, the third a duplicate of the first |
+| 5 | 0.1 | 4, two of them duplicates |
+
+So 0.3 is where the default stops. Below it the model returns the same body twice rather than
+finding anybody new, and `posesFound` counts those duplicates because they are what the model
+returned.
+
+The exact crossing point moves with the device. The same photo through the same model on an Android
+emulator needed 0.2 before the second person appeared, where a desktop found them at 0.3, because a
+body sitting near the threshold falls either side of it on small numeric differences between builds.
+Treat 0.3 as a starting point rather than a constant: if a body you can see is not being found, lower
+it and watch for the same skeleton appearing twice, which is the sign you have gone too far.
+
+Two things it will not do. A person cropped by the frame with no torso or head in view is not found
+at any setting, because the detector that feeds the landmarker anchors on a torso and legs alone do
+not give it one. And a body small and blurred in the background is never found however low the
+threshold goes. If your app needs a reliable skeleton per player in a crowded frame, this model is
+the wrong tool and no option here changes that.
 
 ## What comes back
 

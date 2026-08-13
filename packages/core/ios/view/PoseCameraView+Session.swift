@@ -81,8 +81,11 @@ extension PoseCameraView {
     // either has to rebuild it rather than wait for the next unrelated restart to notice.
     let request = delegateRequest()
     let live = detector.value != nil || detectorPending
-    if live && (request != detectorRequest || propMaxPoses != detectorMaxPoses) {
-      PoseLog.info(.detector, "delegate or maxPoses changed, rebuilding")
+    let changed = request != detectorRequest
+      || propMaxPoses != detectorMaxPoses
+      || resolvedMinConfidence() != detectorMinConfidence
+    if live && changed {
+      PoseLog.info(.detector, "delegate, maxPoses or minConfidence changed, rebuilding")
       releaseDetector()
     }
     ensureDetector()
@@ -105,10 +108,12 @@ extension PoseCameraView {
 
     let request = delegateRequest()
     let maxPoses = propMaxPoses
+    let minConfidence = resolvedMinConfidence()
     let generation = detectorGeneration
     detectorPending = true
     detectorRequest = request
     detectorMaxPoses = maxPoses
+    detectorMinConfidence = minConfidence
 
     analysisQueue.async { [weak self] in
       guard let self = self else { return }
@@ -117,7 +122,7 @@ extension PoseCameraView {
           modelPath: model,
           request: request,
           maxPoses: maxPoses,
-          minConfidence: PoseCameraView.minConfidence
+          minConfidence: minConfidence
         )
         DispatchQueue.main.async { self.adoptDetector(created, request: request, generation: generation) }
       } catch {

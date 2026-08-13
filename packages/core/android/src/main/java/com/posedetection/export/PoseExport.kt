@@ -8,6 +8,8 @@ import android.graphics.RectF
 import android.net.Uri
 import com.google.mediapipe.framework.image.BitmapImageBuilder
 import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarkerResult
+import com.posedetection.LogCategory
+import com.posedetection.PoseLog
 import com.posedetection.Skeleton
 import com.posedetection.detector.PoseDetector
 import com.posedetection.detector.StaticDetection
@@ -79,6 +81,12 @@ internal object PoseExport {
                 .substringAfterLast('/')
                 .substringBeforeLast('.')
         val options = ExportOptions.parse(context, raw, sourceName)
+        // The two values that decide who gets painted, and the pair most worth seeing when an
+        // export finds fewer bodies than expected: `minConfidence` follows `maxPoses` unless the
+        // caller set it, and the resolved number is not visible from JavaScript otherwise.
+        PoseLog.info(LogCategory.ENGINE) {
+            "export maxPoses=${options.maxPoses} minConfidence=${options.minConfidence}"
+        }
 
         // An entry exists only while the job runs, so cancelling a task nobody started is a no-op
         // rather than a note kept for the life of the process.
@@ -116,6 +124,7 @@ internal object PoseExport {
                     StaticDetection.requireModel(context),
                     options.maxPoses,
                     video = false,
+                    minConfidence = options.minConfidence,
                 )
             result = detector.detectImage(BitmapImageBuilder(source).build())
         } finally {
@@ -168,40 +177,45 @@ internal object PoseExport {
         // `android.graphics` so it can run under a plain JVM test.
         canvas.drawBitmap(source, null, projection.rect(), null)
 
-        val landmarks = FloatArray(Skeleton.LANDMARK_COUNT * Skeleton.LANDMARK_STRIDE)
-        if (!options.drawOverlay || !fill(landmarks, result)) return
+        if (!options.drawOverlay) return
 
         val renderer = OverlayRenderer(ExportCanvas.overlayScale(target.width, target.height))
         renderer.config = options.overlay
-        renderer.draw(
-            canvas,
-            landmarks,
-            projection,
-            // A file is never mirrored: what was picked is what gets painted.
-            mirrored = false,
-            sourceWidth = source.width,
-            sourceHeight = source.height,
-        )
+        for (landmarks in poses(result)) {
+            renderer.draw(
+                canvas,
+                landmarks,
+                projection,
+                // A file is never mirrored: what was picked is what gets painted.
+                mirrored = false,
+                sourceWidth = source.width,
+                sourceHeight = source.height,
+            )
+        }
     }
 
     private fun OverlayProjection.rect(): RectF = RectF(left, top, left + width, top + height)
 
-    /** The primary pose as the flat buffer the renderer and the geometry both read. */
-    fun fill(
-        landmarks: FloatArray,
-        result: PoseLandmarkerResult,
-    ): Boolean {
-        val pose = result.landmarks().firstOrNull() ?: return false
-        val count = minOf(Skeleton.LANDMARK_COUNT, pose.size)
-        for (index in 0 until count) {
-            val point = pose[index]
-            val base = index * Skeleton.LANDMARK_STRIDE
-            landmarks[base + Skeleton.OFFSET_X] = point.x()
-            landmarks[base + Skeleton.OFFSET_Y] = point.y()
-            landmarks[base + Skeleton.OFFSET_Z] = point.z()
-            landmarks[base + Skeleton.OFFSET_VISIBILITY] =
-                if (point.visibility().isPresent) point.visibility().get() else 0f
+    /**
+     * Every pose in the frame as flat buffers the renderer reads, empty when nobody was in it.
+     *
+     * All of them, not the front one: `maxPoses` is an export option, and painting one skeleton
+     * onto a frame the caller asked to have five detected in would silently ignore what they asked
+     * for.
+     */
+    fun poses(result: PoseLandmarkerResult): List<FloatArray> =
+        result.landmarks().map { pose ->
+            val landmarks = FloatArray(Skeleton.LANDMARK_COUNT * Skeleton.LANDMARK_STRIDE)
+            val count = minOf(Skeleton.LANDMARK_COUNT, pose.size)
+            for (index in 0 until count) {
+                val point = pose[index]
+                val base = index * Skeleton.LANDMARK_STRIDE
+                landmarks[base + Skeleton.OFFSET_X] = point.x()
+                landmarks[base + Skeleton.OFFSET_Y] = point.y()
+                landmarks[base + Skeleton.OFFSET_Z] = point.z()
+                landmarks[base + Skeleton.OFFSET_VISIBILITY] =
+                    if (point.visibility().isPresent) point.visibility().get() else 0f
+            }
+            landmarks
         }
-        return true
-    }
 }

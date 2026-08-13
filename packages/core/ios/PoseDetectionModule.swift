@@ -123,6 +123,7 @@ extension PoseDetectionModule {
       // prop on this view, and every event off it, behaves the same either way.
       Prop("detection") { (view: PoseCameraView, value: Bool?) in view.setDetection(value ?? true) }
       Prop("maxPoses") { (view: PoseCameraView, value: Int?) in view.setMaxPoses(value ?? 1) }
+      Prop("minConfidence") { (view: PoseCameraView, value: Double?) in view.setMinConfidence(value) }
       Prop("resolution") { (view: PoseCameraView, value: String?) in view.setResolution(value ?? "auto") }
       Prop("analysisResolution") { (view: PoseCameraView, value: String?) in
         view.setAnalysisResolution(value ?? "auto")
@@ -193,6 +194,12 @@ extension PoseDetectionModule {
         view.applyProfile(Profile.from(profile))
       }
 
+      // These three warn that `PoseCameraView`'s main-actor-isolated `AnyArgument` conformance is
+      // used from a nonisolated context, and that it is an error under the Swift 6 language mode.
+      // The conformance comes from `ExpoView` and the closure's isolation from `AsyncFunction`, so
+      // neither side is ours: annotating the closure `@MainActor` adds a second warning about
+      // losing that isolation on the way in rather than removing the first. Left as it is, and
+      // recorded here so the next person does not repeat the experiment. See docs/native-modules.md.
       AsyncFunction("drainFrames") { (view: PoseCameraView) -> NativeArrayBuffer in view.drainFrames() }
       AsyncFunction("snapshotFrame") { (view: PoseCameraView) -> NativeArrayBuffer in view.snapshotFrame() }
       AsyncFunction("takeTriggerSnapshot") { (view: PoseCameraView, snapshotId: Int) -> NativeArrayBuffer in

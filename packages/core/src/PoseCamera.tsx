@@ -305,6 +305,7 @@ export const PoseCamera = React.forwardRef<PoseCameraRef, PoseCameraProps>(funct
       analysisResolution={props.analysisResolution}
       thermalPolicy={props.thermalPolicy}
       maxPoses={props.maxPoses}
+      minConfidence={props.minConfidence}
       smoothing={props.smoothing}
       active={active}
       detection={detection}

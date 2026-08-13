@@ -87,6 +87,16 @@ internal class PoseDetector private constructor(
     ): PoseLandmarkerResult = landmarker.detectForVideo(image, timestampMs)
 
     companion object {
+        /** MediaPipe's own default, and what one subject in a file is detected at. */
+        const val DEFAULT_STILL_CONFIDENCE = 0.5f
+
+        /** Asking for more than one body needs a lower bar, or the model returns one however high it is. */
+        const val MULTI_POSE_STILL_CONFIDENCE = 0.3f
+
+        /** The threshold `maxPoses` implies when the caller has not chosen one. */
+        fun stillConfidence(maxPoses: Int): Float =
+            if (maxPoses > 1) MULTI_POSE_STILL_CONFIDENCE else DEFAULT_STILL_CONFIDENCE
+
         /**
          * A detector for a file rather than a camera. CPU rather than the GPU probe: a still input
          * runs once, and the probe would cost more than the inference it is choosing for.
@@ -96,6 +106,7 @@ internal class PoseDetector private constructor(
             modelFileName: String,
             maxPoses: Int,
             video: Boolean,
+            minConfidence: Float = DEFAULT_STILL_CONFIDENCE,
         ): PoseDetector {
             val landmarker =
                 build(
@@ -103,7 +114,7 @@ internal class PoseDetector private constructor(
                     modelFileName = modelFileName,
                     delegate = Delegate.CPU,
                     maxPoses = maxPoses,
-                    minConfidence = 0.5f,
+                    minConfidence = minConfidence,
                     runningMode = if (video) RunningMode.VIDEO else RunningMode.IMAGE,
                     onResult = null,
                     onError = null,

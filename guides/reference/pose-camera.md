@@ -32,7 +32,8 @@ against the analysis frame either way, so nothing about the layout moves them.
 | `resolution` | `'auto' \| '480p' \| '720p' \| '1080p'` | `'auto'` | preview |
 | `analysisResolution` | `'auto' \| '360p' \| '480p' \| '720p'` | `'auto'` | what the model sees |
 | `thermalPolicy` | `'adaptive' \| 'critical-only' \| 'off'` | `'adaptive'` | `off` stops the response, not the reporting |
-| `maxPoses` | `number` (1 to 5) | `1` | above 1, triggers and frames use the primary pose: largest box, ties by distance from center |
+| `maxPoses` | `number` (1 to 5) | `1` | above 1, triggers and frames use the primary pose: largest box, ties by distance from center. A ceiling, not a promise: pair it with `minConfidence` |
+| `minConfidence` | `number` (0.1 to 1) | from `maxPoses` | how sure the model has to be before it calls something a body. Rebuilds the landmarker when it changes |
 | `smoothing` | `boolean \| { minCutoff, beta }` | `true` | One-Euro filter over x, y and z. Visibility is never smoothed |
 
 Any explicit value pins that axis. The rest stay automatic.
@@ -155,3 +156,43 @@ registered twice needs two `remove()` calls. See [debugging](../debugging.md).
 ## Callbacks
 
 See [events](./events.md).
+
+### maxPoses and minConfidence
+
+MediaPipe's landmarker is built around one primary subject, and the confidence a single subject
+wants is higher than the one that lets a second person be found at all. They are one decision, so
+leaving `minConfidence` out takes it from `maxPoses`:
+
+| `maxPoses` | Threshold used | Why |
+| --- | --- | --- |
+| `1` | `0.6` | one subject, tracked cleanly, with scenery not offered as a body |
+| `2` to `5` | `0.3` | the point where a second person appears rather than the first one twice |
+
+```tsx
+<PoseCamera />                                   {/* maxPoses 1, so 0.6 */}
+<PoseCamera maxPoses={5} />                      {/* 0.3, because more than one was asked for */}
+<PoseCamera maxPoses={5} minConfidence={0.4} />  {/* your number wins */}
+```
+
+Measured against `pose_landmarker_full` on a photo of two separated, mostly whole people:
+
+| `maxPoses` | `minConfidence` | Poses returned |
+| --- | --- | --- |
+| 1 | anything | 1 |
+| 5 | 0.5, 0.4 | 1 |
+| 5 | 0.3 | 2, one per person |
+| 5 | 0.2 | 3, the third a duplicate of the first |
+| 5 | 0.1 | 4, two of them duplicates |
+
+So 0.3 is where the default stops: below it the model starts returning the same body twice rather
+than finding anybody new. A person cropped by the frame with no torso or head in view is not found at
+any setting, because the detector that feeds the landmarker anchors on a torso.
+
+The exact crossing point moves with the device. The same photo through the same model on an Android
+emulator needed 0.2 before the second person appeared, where a desktop found them at 0.3, because a
+body sitting near the threshold falls either side of it on small numeric differences between builds.
+Treat 0.3 as a starting point rather than a constant: if a body you can see is not being found, lower
+it and watch for the same skeleton appearing twice, which is the sign you have gone too far.
+
+Both values are baked into the landmarker when it is built, so changing either rebuilds it. Put them
+in state that settles rather than state that moves.

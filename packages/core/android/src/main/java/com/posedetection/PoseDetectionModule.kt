@@ -180,6 +180,9 @@ class PoseDetectionModule : Module() {
                 Prop("maxPoses") { view: PoseCameraView, value: Int? ->
                     view.setMaxPoses(value ?: 1)
                 }
+                Prop("minConfidence") { view: PoseCameraView, value: Double? ->
+                    view.setMinConfidence(value)
+                }
                 Prop("resolution") { view: PoseCameraView, value: String? ->
                     view.setResolution(value ?: "auto")
                 }

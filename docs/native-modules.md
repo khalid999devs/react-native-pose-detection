@@ -208,11 +208,17 @@ Google does not publish every version to CocoaPods, so iOS choices are narrower 
 - **The preview is a view, not a layer somebody keeps in sync.** `PreviewView` overrides
   `layerClass`, so UIKit resizes the preview layer during layout and there is no frame assignment
   to mistime on rotation.
-- **`AVAssetImageGenerator.copyCGImage` and `AVAsset.duration` are deprecated in iOS 16** and their
-  replacements are async and 16-only. This package supports 15.1, so both are still called, both
-  warn, and both are isolated in `StaticDetection` so the warning names the one decision behind
-  them. Raising the floor to 16 is the fix, and it is a compatibility decision rather than a
-  cleanup.
+- **Six AVFoundation reads are deprecated in iOS 16** and every replacement is async and 16-only.
+  This package supports 15.1, the floor React Native 0.74 sets, so the old calls are still the ones
+  that run and each one warns. They live in `AssetCompat` and nowhere else, so one comment explains
+  all of them rather than a warning appearing wherever a track or a frame is read. Raising the floor
+  to 16 is the fix, and it is a compatibility decision rather than a cleanup.
+- **Three view functions warn under Swift 6 strict concurrency.** `drainFrames`, `snapshotFrame`
+  and `takeTriggerSnapshot` use `PoseCameraView`'s `AnyArgument` conformance, which `ExpoView`
+  isolates to the main actor, from the nonisolated closure `AsyncFunction` takes. Both halves are
+  Expo's, so there is nothing to change here: marking the closure `@MainActor` adds a second warning
+  about losing that isolation instead of removing the first. They are warnings under the Swift 5
+  language mode this package builds in, and the fix is upstream.
 - **Expo SDK 57 requires iOS 16.4**, so an app that targets lower gets every Expo pod silently
   skipped by autolinking, and this package fails to resolve `ExpoModulesCore`. `example/bare`
   pins 16.4 for exactly that reason. The podspec itself declares 15.1, which is this package's own

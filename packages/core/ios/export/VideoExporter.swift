@@ -80,12 +80,12 @@ final class VideoExporter {
 
   func run() throws -> ExportSummary {
     let asset = AVURLAsset(url: source)
-    guard let track = asset.tracks(withMediaType: .video).first else {
+    guard let track = AssetCompat.tracks(asset, of: .video).first else {
       throw ExportError("no video track in \(source.lastPathComponent)")
     }
 
-    let transform = track.preferredTransform
-    let natural = track.naturalSize
+    let transform = AssetCompat.preferredTransform(track)
+    let natural = AssetCompat.naturalSize(track)
     let display = CGSize(
       width: abs(natural.width * transform.a + natural.height * transform.c),
       height: abs(natural.width * transform.b + natural.height * transform.d)
@@ -148,11 +148,8 @@ final class VideoExporter {
     // for a track this feature does not touch.
     var audio: AVAssetReaderTrackOutput?
     var audioFormat: CMFormatDescription?
-    // Cast the array rather than its first element: `formatDescriptions` is `[Any]`, and a
-    // conditional downcast of one CoreFoundation value is a compile error because it can never
-    // fail, while the array form is an ordinary checked cast.
-    if let audioTrack = asset.tracks(withMediaType: .audio).first,
-       let format = (audioTrack.formatDescriptions as? [CMFormatDescription])?.first {
+    if let audioTrack = AssetCompat.tracks(asset, of: .audio).first,
+       let format = AssetCompat.formatDescription(audioTrack) {
       let output = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: nil)
       output.alwaysCopiesSampleData = false
       if reader.canAdd(output) {

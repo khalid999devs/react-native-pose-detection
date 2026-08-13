@@ -26,6 +26,7 @@ export const theme = {
     overlay: '#00E5FF',
 
     danger: '#D93A4B',
+    dangerSoft: '#FDECEE',
     good: '#12925A',
 
     /** Behind glass over the camera, so a control stays readable on a bright frame. */

@@ -34,8 +34,29 @@ export type PoseCameraProps = {
   /** What the model sees. Independent of `resolution`, which only affects the preview. */
   analysisResolution?: 'auto' | AnalysisResolutionPreset;
   thermalPolicy?: ThermalPolicy;
-  /** 1 to 5. Triggers evaluate against the primary pose. */
+  /**
+   * 1 to 5. Triggers evaluate against the primary pose, which is the largest body in frame.
+   *
+   * A ceiling rather than a promise. MediaPipe returns a second body only when it is separate and
+   * mostly whole, and only at a lower confidence than one subject wants, which is why raising this
+   * also lowers `minConfidence` unless you have set that yourself.
+   */
   maxPoses?: number;
+  /**
+   * How sure the model has to be before it calls something a body, 0.1 to 1.
+   *
+   * Left out, it comes from `maxPoses`, because the two are one decision: `0.6` at `maxPoses: 1`,
+   * high enough that scenery is not offered as a body and the one subject is tracked well, and
+   * `0.3` above that, which is where the model starts returning a second person rather than the
+   * same one twice.
+   *
+   * Set it to take that decision yourself. Lower finds bodies that are distant, cropped or half
+   * hidden, at the cost of false ones; higher tracks one subject more surely.
+   *
+   * Changing it rebuilds the landmarker, so it belongs in state that settles rather than state that
+   * changes every frame.
+   */
+  minConfidence?: number;
   smoothing?: boolean | SmoothingConfig;
 
   /** Camera on or off. The lowest power state short of unmounting. */

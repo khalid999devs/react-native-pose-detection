@@ -112,6 +112,7 @@ class PoseCameraView(
     private var detectorGeneration = 0
     private var detectorRequest: DelegateRequest? = null
     private var detectorMaxPoses = 0
+    private var detectorMinConfidence = 0f
 
     /** Survives [releaseDetector] so `getState` reports the pipeline, not instance liveness. */
     private var resolvedDelegate: String? = null
@@ -263,6 +264,10 @@ class PoseCameraView(
     private var propActive: Boolean = true
     private var propDetection: Boolean = true
     private var propMaxPoses: Int = 1
+
+    /** null is `'auto'`, resolved by [resolvedMinConfidence]. */
+    private var propMinConfidence: Float? = null
+
     private var propPreview: String = "auto"
     private var propAnalysis: String = "auto"
     private var overlayEnabled: Boolean = true
@@ -337,6 +342,15 @@ class PoseCameraView(
     fun setMaxPoses(value: Int) {
         propMaxPoses = value.coerceIn(1, 5)
     }
+
+    /** Baked into the landmarker at construction, so a change rebuilds it. See `applyDetectionState`. */
+    fun setMinConfidence(value: Double?) {
+        propMinConfidence = value?.toFloat()?.coerceIn(0.1f, 1f)
+    }
+
+    /** The prop, or the value `maxPoses` implies when nobody has chosen one. */
+    private fun resolvedMinConfidence(): Float =
+        propMinConfidence ?: if (propMaxPoses > 1) MULTI_POSE_CONFIDENCE else MIN_CONFIDENCE
 
     fun setResolution(value: String) {
         propPreview = value
@@ -526,13 +540,16 @@ class PoseCameraView(
             return
         }
 
-        // maxPoses and the delegate are baked into the landmarker at construction, so a change to
-        // either has to rebuild it rather than wait for the next unrelated restart to notice.
+        // The delegate, maxPoses and minConfidence are baked into the landmarker at construction,
+        // so a change to any of them has to rebuild it rather than wait for the next unrelated
+        // restart to notice.
         val request = delegateRequest()
-        if ((detector != null || detectorPending) &&
-            (request != detectorRequest || propMaxPoses != detectorMaxPoses)
-        ) {
-            PoseLog.info(LogCategory.DETECTOR) { "delegate or maxPoses changed, rebuilding" }
+        val changed =
+            request != detectorRequest ||
+                propMaxPoses != detectorMaxPoses ||
+                resolvedMinConfidence() != detectorMinConfidence
+        if ((detector != null || detectorPending) && changed) {
+            PoseLog.info(LogCategory.DETECTOR) { "delegate, maxPoses or minConfidence changed, rebuilding" }
             releaseDetector()
         }
         ensureDetector()
@@ -555,10 +572,12 @@ class PoseCameraView(
 
         val request = delegateRequest()
         val maxPoses = propMaxPoses
+        val minConfidence = resolvedMinConfidence()
         val generation = detectorGeneration
         detectorPending = true
         detectorRequest = request
         detectorMaxPoses = maxPoses
+        detectorMinConfidence = minConfidence
 
         val submitted =
             onAnalysisThread {
@@ -569,7 +588,7 @@ class PoseCameraView(
                             modelFileName = model,
                             request = request,
                             maxPoses = maxPoses,
-                            minConfidence = MIN_CONFIDENCE,
+                            minConfidence = minConfidence,
                             onResult = ::onLandmarks,
                             onError = ::onDetectionError,
                         )
@@ -827,7 +846,8 @@ class PoseCameraView(
             return
         }
 
-        val pose = poses[primaryPose(poses)]
+        val primaryIndex = primaryPose(poses)
+        val pose = poses[primaryIndex]
         if (pose.size < Skeleton.LANDMARK_COUNT) return
 
         // Same monotonic clock the log channel stamps entries with, so a log line maps to the frame
@@ -865,7 +885,7 @@ class PoseCameraView(
 
         overlayView.submit(landmarkBuffer, frameWidth, frameHeight)
 
-        buildFrame(result, pose.size, frameWidth, frameHeight, nowMs, comparable, elapsedSeconds)
+        buildFrame(result, primaryIndex, pose.size, frameWidth, frameHeight, nowMs, comparable, elapsedSeconds)
     }
 
     /**
@@ -929,6 +949,7 @@ class PoseCameraView(
     @Suppress("LongParameterList")
     private fun buildFrame(
         result: PoseLandmarkerResult,
+        pose: Int,
         poseSize: Int,
         frameWidth: Int,
         frameHeight: Int,
@@ -954,7 +975,7 @@ class PoseCameraView(
         }
 
         if (layout.worldLandmarks) {
-            fillWorldBuffer(result, poseSize)
+            fillWorldBuffer(result, pose, poseSize)
             for (position in indices.indices) {
                 val base = indices[position] * Skeleton.LANDMARK_STRIDE
                 scratch[cursor] = worldBuffer[base]
@@ -1121,12 +1142,21 @@ class PoseCameraView(
         if (tickPending.compareAndSet(false, true)) mainHandler.post(emitFramesTick)
     }
 
+    /**
+     * The world landmarks of the pose the rest of the frame describes.
+     *
+     * Indexed rather than taken from the front: with `maxPoses` above one, the pose everything else
+     * reads is the largest body in the frame, and `worldLandmarks()[0]` is whichever one MediaPipe
+     * happened to detect first. Taking the front would pair one person's screen coordinates with
+     * another person's metric ones in a single frame.
+     */
     private fun fillWorldBuffer(
         result: PoseLandmarkerResult,
+        pose: Int,
         poseSize: Int,
     ) {
         val world = result.worldLandmarks()
-        val points = if (world.isEmpty()) null else world[0]
+        val points = if (pose < world.size) world[pose] else null
 
         if (points == null || points.size < poseSize) {
             java.util.Arrays.fill(worldBuffer, 0f)
@@ -1506,7 +1536,16 @@ class PoseCameraView(
     }
 
     private companion object {
+        /**
+         * Confidence for one subject and for several, which is one decision rather than two.
+         *
+         * 0.6 keeps a single subject cleanly tracked and keeps scenery from being offered as a
+         * body. It also means the model returns one pose whatever `maxPoses` says, so asking for
+         * more than one drops to 0.3, which is measured to be where a second person actually
+         * appears rather than the first person twice. See guides/reference/pose-camera.md.
+         */
         const val MIN_CONFIDENCE = 0.6f
+        const val MULTI_POSE_CONFIDENCE = 0.3f
         const val DEFAULT_THROTTLE_MS = 100L
         const val DEFAULT_FLUSH_MS = 500L
         const val MILLIS_PER_SECOND = 1_000.0

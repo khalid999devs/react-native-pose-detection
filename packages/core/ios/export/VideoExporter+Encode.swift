@@ -22,6 +22,7 @@ extension VideoExporter {
     let detector = try PoseDetector.createForStillInput(
       modelPath: try StaticDetection.requireModel(),
       maxPoses: options.maxPoses,
+      minConfidence: options.minConfidence,
       video: true
     )
     let scale = overlayScale(canvas: geometry.canvas)
@@ -37,11 +38,10 @@ extension VideoExporter {
     let durationMs = max(1, StaticDetection.durationMilliseconds(of: asset))
     let stepMs = max(1, 1000 / options.sampleFps)
 
-    // One buffer for the pose, reused every frame. The renderer takes it by value, and Swift's
-    // copy on write means that is a retain rather than 132 floats, so the steady state allocates
-    // nothing at all.
-    var landmarks = [Float](repeating: 0, count: Skeleton.landmarkCount * Skeleton.landmarkStride)
-    var hasPose = false
+    // Held between samples and redrawn every frame, exactly as the live overlay holds the last
+    // pose between inferences. The renderer takes each buffer by value, and Swift's copy on write
+    // makes that a retain rather than 132 floats, so the steady state allocates nothing at all.
+    var poses = [[Float]]()
     var nextSampleMs = 0
     var lastTimestampMs = -1
     var frameCount = 0
@@ -50,50 +50,54 @@ extension VideoExporter {
     var pendingAudio: CMSampleBuffer?
 
     while let sample = reader.video.copyNextSampleBuffer() {
-      if isCancelled() { throw ExportCancelled() }
-      guard let buffer = CMSampleBufferGetImageBuffer(sample) else { continue }
+      // MPImage, the CGImage over the source and everything MediaPipe allocates behind them are
+      // autoreleased. Without a pool per frame they are held until this function returns, which
+      // for a long clip is thousands of frames of decoded video, and is the one thing that would
+      // turn a bounded export into the memory-pressure kill it exists to avoid.
+      try autoreleasepool {
+        if isCancelled() { throw ExportCancelled() }
+        guard let buffer = CMSampleBufferGetImageBuffer(sample) else { return }
 
-      let presentation = CMSampleBufferGetPresentationTimeStamp(sample)
-      if !started {
-        writer.writer.startSession(atSourceTime: presentation)
-        started = true
+        let presentation = CMSampleBufferGetPresentationTimeStamp(sample)
+        if !started {
+          writer.writer.startSession(atSourceTime: presentation)
+          started = true
+        }
+        let positionMs = Int(CMTimeGetSeconds(presentation) * 1000)
+
+        if positionMs >= nextSampleMs {
+          // VIDEO mode rejects a timestamp that does not move forward, and a variable frame rate
+          // clip can hand back two frames on the same millisecond.
+          let timestamp = max(positionMs, lastTimestampMs + 1)
+          lastTimestampMs = timestamp
+          let image = try MPImage(pixelBuffer: buffer, orientation: geometry.orientation)
+          let result = try detector.detectVideo(image, timestampMs: timestamp)
+          poses = PoseExport.poses(result)
+          if !poses.isEmpty { posesFound += 1 }
+          nextSampleMs = positionMs + stepMs
+        }
+
+        let renderers = poses.map {
+          makeRenderer(palette: palette, landmarks: $0, geometry: geometry, scale: scale)
+        }
+
+        try paint(
+          source: buffer,
+          into: writer.adaptor,
+          writer: writer.writer,
+          at: presentation,
+          geometry: geometry,
+          renderers: renderers
+        )
+        frameCount += 1
+
+        try drain(audio: reader, into: writer, upTo: presentation, pending: &pendingAudio)
+        report(Float(positionMs) / Float(durationMs))
       }
-      let positionMs = Int(CMTimeGetSeconds(presentation) * 1000)
-
-      if positionMs >= nextSampleMs {
-        // VIDEO mode rejects a timestamp that does not move forward, and a variable frame rate
-        // clip can hand back two frames on the same millisecond.
-        let timestamp = max(positionMs, lastTimestampMs + 1)
-        lastTimestampMs = timestamp
-        let image = try MPImage(pixelBuffer: buffer, orientation: geometry.orientation)
-        let result = try detector.detectVideo(image, timestampMs: timestamp)
-        hasPose = PoseExport.fill(&landmarks, from: result)
-        if hasPose { posesFound += 1 }
-        nextSampleMs = positionMs + stepMs
-      }
-
-      let renderer = hasPose ? makeRenderer(
-        palette: palette,
-        landmarks: landmarks,
-        geometry: geometry,
-        scale: scale
-      ) : nil
-
-      try paint(
-        source: buffer,
-        into: writer.adaptor,
-        at: presentation,
-        geometry: geometry,
-        renderer: renderer
-      )
-      frameCount += 1
-
-      drain(audio: reader, into: writer, upTo: presentation, pending: &pendingAudio)
-      report(Float(positionMs) / Float(durationMs))
     }
 
     if isCancelled() { throw ExportCancelled() }
-    drain(audio: reader, into: writer, upTo: .positiveInfinity, pending: &pendingAudio)
+    try drain(audio: reader, into: writer, upTo: .positiveInfinity, pending: &pendingAudio)
 
     if reader.reader.status == .failed {
       throw ExportError(reader.reader.error?.localizedDescription ?? "the video could not be decoded")
@@ -147,9 +151,10 @@ extension VideoExporter {
   private func paint(
     source: CVPixelBuffer,
     into adaptor: AVAssetWriterInputPixelBufferAdaptor,
+    writer: AVAssetWriter,
     at time: CMTime,
     geometry: ExportGeometry,
-    renderer: OverlayRenderer?
+    renderers: [OverlayRenderer?]
   ) throws {
     let canvas = geometry.canvas
     guard let pool = adaptor.pixelBufferPool else {
@@ -196,13 +201,30 @@ extension VideoExporter {
       // and the landmarks, detected against the same orientation, already match it.
       UIImage(cgImage: image, scale: 1, orientation: geometry.orientation).draw(in: geometry.projection.rect)
     }
-    renderer?.draw(into: context)
-
-    while !adaptor.assetWriterInput.isReadyForMoreMediaData {
-      Thread.sleep(forTimeInterval: VideoExporter.encoderPollSeconds)
+    for renderer in renderers {
+      renderer?.draw(into: context)
     }
+
+    try awaitReady(adaptor.assetWriterInput, writer: writer)
     guard adaptor.append(destination, withPresentationTime: time) else {
-      throw ExportError("the encoder rejected a frame")
+      throw ExportError(writer.error?.localizedDescription ?? "the encoder rejected a frame")
+    }
+  }
+
+  /**
+   Waits for the encoder to take more data, and gives up on the two ways that never happens.
+
+   `isReadyForMoreMediaData` stops turning true for good once the writer fails, so a disk that
+   fills mid-export would otherwise leave this spinning on a background queue for the life of the
+   process. Cancellation is checked here too, because a wait is exactly where a cancel arrives.
+   */
+  private func awaitReady(_ input: AVAssetWriterInput, writer: AVAssetWriter) throws {
+    while !input.isReadyForMoreMediaData {
+      guard writer.status == .writing else {
+        throw ExportError(writer.error?.localizedDescription ?? "the export stopped being written")
+      }
+      if isCancelled() { throw ExportCancelled() }
+      Thread.sleep(forTimeInterval: VideoExporter.encoderPollSeconds)
     }
   }
 
@@ -247,7 +269,7 @@ extension VideoExporter {
     into writer: WriteSide,
     upTo time: CMTime,
     pending: inout CMSampleBuffer?
-  ) {
+  ) throws {
     guard let output = reader.audio, let input = writer.audio else { return }
     while true {
       guard let sample = pending ?? output.copyNextSampleBuffer() else { return }
@@ -256,10 +278,12 @@ extension VideoExporter {
         pending = sample
         return
       }
-      while !input.isReadyForMoreMediaData {
-        Thread.sleep(forTimeInterval: VideoExporter.encoderPollSeconds)
+      try awaitReady(input, writer: writer.writer)
+      // A refused audio sample is not worth failing an export over: the picture is the point, and
+      // a file with a gap in its sound beats no file at all.
+      if !input.append(sample) {
+        PoseLog.warn(.engine, "the export dropped an audio sample")
       }
-      input.append(sample)
     }
   }
 

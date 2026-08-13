@@ -29,6 +29,13 @@
         {
           "photosPermission": "This example runs pose detection on an image or video you pick."
         }
+      ],
+      [
+        "expo-video",
+        {
+          "supportsBackgroundPlayback": false,
+          "supportsPictureInPicture": true
+        }
       ]
     ],
     "updates": {

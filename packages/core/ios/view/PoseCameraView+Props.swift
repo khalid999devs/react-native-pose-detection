@@ -9,6 +9,17 @@ extension PoseCameraView {
 
   func setDetection(_ value: Bool) { propDetection = value }
   func setMaxPoses(_ value: Int) { propMaxPoses = min(max(value, 1), 5) }
+
+  /// Baked into the landmarker at construction, so a change rebuilds it. See `applyDetectionState`.
+  func setMinConfidence(_ value: Double?) {
+    propMinConfidence = value.map { Float(min(max($0, 0.1), 1)) }
+  }
+
+  /// The prop, or the value `maxPoses` implies when nobody has chosen one.
+  func resolvedMinConfidence() -> Float {
+    if let chosen = propMinConfidence { return chosen }
+    return propMaxPoses > 1 ? PoseCameraView.multiPoseConfidence : PoseCameraView.minConfidence
+  }
   func setResolution(_ value: String) { propPreview = value }
   func setAnalysisResolution(_ value: String) { propAnalysis = value }
 

@@ -156,21 +156,24 @@ enum StaticDetection {
     var positionMs = start
 
     while positionMs <= end && !running.isCancelled(taskId) {
-      let time = CMTime(value: CMTimeValue(positionMs), timescale: timescale)
-      if let cgImage = copyFrame(from: generator, at: time) {
+      // The decoded frame, the MPImage over it and everything MediaPipe allocates behind them are
+      // autoreleased, and this loop never returns to a run loop, so without a pool per sample a
+      // long clip holds every frame it has decoded until the whole video is done.
+      try autoreleasepool {
+        let time = CMTime(value: CMTimeValue(positionMs), timescale: timescale)
+        guard let cgImage = copyFrame(from: generator, at: time) else { return }
         let image = UIImage(cgImage: cgImage)
         let result = try detector.detectVideo(try MPImage(uiImage: image), timestampMs: Int(positionMs))
-        if !result.landmarks.isEmpty {
-          frames.append(encodePose(
-            result,
-            poseIndex: 0,
-            shape: shape,
-            width: cgImage.width,
-            height: cgImage.height,
-            smoothing: smoothing
-          ))
-          timestamps.append(Double(positionMs))
-        }
+        guard !result.landmarks.isEmpty else { return }
+        frames.append(encodePose(
+          result,
+          poseIndex: 0,
+          shape: shape,
+          width: cgImage.width,
+          height: cgImage.height,
+          smoothing: smoothing
+        ))
+        timestamps.append(Double(positionMs))
       }
 
       onProgress(min(1, max(0, Float(positionMs - start) / Float(span))))
@@ -183,21 +186,13 @@ enum StaticDetection {
 
   // MARK: - Decoding
 
-  /**
-   `copyCGImage` and `duration` are what iOS 16 replaced with `image(at:)` and `load(.duration)`,
-   both of which are async and neither of which exists on 15.1, the floor this package supports.
-   Both calls warn, deliberately, and both are isolated here so the warning names the one decision
-   behind them rather than appearing wherever a frame happens to be read. See docs/native-modules.md.
-
-   Marking these `@available(iOS, deprecated: 16.0)` would move the warning to their call sites
-   rather than remove it, so the annotation is left off and the reason written down instead.
-   */
+  /// Both reads are deprecated in iOS 16 and both still run on the 15.1 floor. See `AssetCompat`.
   static func copyFrame(from generator: AVAssetImageGenerator, at time: CMTime) -> CGImage? {
-    return try? generator.copyCGImage(at: time, actualTime: nil)
+    return AssetCompat.copyFrame(from: generator, at: time)
   }
 
   static func durationMilliseconds(of asset: AVURLAsset) -> Int64 {
-    let seconds = CMTimeGetSeconds(asset.duration)
+    let seconds = AssetCompat.durationSeconds(asset)
     guard seconds.isFinite, seconds > 0 else { return 0 }
     return Int64(seconds * Double(millisPerSecond))
   }

@@ -8,6 +8,15 @@ struct ExportOptions {
   let overlay: OverlayConfig
   let drawOverlay: Bool
   let maxPoses: Int
+  /**
+   How sure the model has to be before it calls something a body.
+
+   Left out, it follows `maxPoses`, because the two are one decision: 0.5 for a single subject,
+   which is MediaPipe's own, and 0.3 above that, which is where a second person actually appears
+   rather than the first person twice. A number overrides it, and what the right number is for a
+   given piece of footage is the caller's to know.
+   */
+  let minConfidence: Float
   /// Detection samples a second. Between samples the last pose is held, exactly as the live
   /// overlay holds one between inferences.
   let sampleFps: Int
@@ -22,6 +31,7 @@ struct ExportOptions {
   static let defaultSampleFps = 10
 
   static func parse(_ raw: [String: Any]?, sourceName: String) throws -> ExportOptions {
+    let maxPoses = clampedCount(raw?["maxPoses"], fallback: 1, limit: 5)
     var drawOverlay = true
     var overlay = OverlayConfig()
     if let value = JS.bool(raw?["overlay"]) {
@@ -33,13 +43,19 @@ struct ExportOptions {
     return ExportOptions(
       overlay: overlay,
       drawOverlay: drawOverlay,
-      maxPoses: clampedCount(raw?["maxPoses"], fallback: 1, limit: 5),
+      maxPoses: maxPoses,
+      minConfidence: minConfidence(raw?["minConfidence"], maxPoses: maxPoses),
       sampleFps: clampedCount(raw?["fps"], fallback: defaultSampleFps, limit: 60),
       maxSize: maxSize(raw?["maxSize"]),
       directory: try directory(JS.string(raw?["directory"])),
       fileName: fileName(JS.string(raw?["fileName"]), sourceName: sourceName),
       quality: CGFloat(clamped(JS.number(raw?["quality"]) ?? 0.9, 0.1, 1, 0.9))
     )
+  }
+
+  private static func minConfidence(_ raw: Any?, maxPoses: Int) -> Float {
+    let auto = Double(PoseDetector.stillConfidence(forMaxPoses: maxPoses))
+    return Float(clamped(JS.number(raw) ?? auto, 0.1, 0.9, auto))
   }
 
   /**

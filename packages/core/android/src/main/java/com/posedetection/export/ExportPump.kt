@@ -11,10 +11,10 @@ import com.posedetection.view.OverlayProjection
 import com.posedetection.view.OverlayRenderer
 import java.util.concurrent.atomic.AtomicBoolean
 
-/** One sampled frame that had somebody in it. */
+/** One sampled frame, and everybody who was in it. */
 internal class Pose(
     val timeMs: Long,
-    val landmarks: FloatArray,
+    val bodies: List<FloatArray>,
 )
 
 /**
@@ -64,15 +64,17 @@ internal class OverlayPainter(
         painted = index
         canvas.drawColor(0, PorterDuff.Mode.CLEAR)
         if (index >= 0 && options.drawOverlay) {
-            renderer.draw(
-                canvas,
-                poses[index].landmarks,
-                projection,
-                // A file is never mirrored: what was picked is what gets painted.
-                mirrored = false,
-                sourceWidth = sourceWidth,
-                sourceHeight = sourceHeight,
-            )
+            for (landmarks in poses[index].bodies) {
+                renderer.draw(
+                    canvas,
+                    landmarks,
+                    projection,
+                    // A file is never mirrored: what was picked is what gets painted.
+                    mirrored = false,
+                    sourceWidth = sourceWidth,
+                    sourceHeight = sourceHeight,
+                )
+            }
         }
         return true
     }

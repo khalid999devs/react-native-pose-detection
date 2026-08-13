@@ -42,7 +42,8 @@ extension PoseCameraView: PoseDetectorObserver {
       onPoseLost()
       return
     }
-    let primary = poses[poses.count > 1 ? primaryPose(poses) : 0]
+    let primaryIndex = poses.count > 1 ? primaryPose(poses) : 0
+    let primary = poses[primaryIndex]
     guard primary.count >= Skeleton.landmarkCount else { return }
 
     // The same monotonic clock the log channel stamps entries with, so a log line maps to the frame
@@ -77,7 +78,7 @@ extension PoseCameraView: PoseDetectorObserver {
     let size = frameSize.value
     overlayView.submit(landmarkBuffer, width: size.width, height: size.height)
 
-    buildFrame(result: result, poseSize: primary.count, timing: FrameTiming(
+    buildFrame(result: result, pose: primaryIndex, poseSize: primary.count, timing: FrameTiming(
       size: size,
       nowMs: nowMs,
       comparable: comparable,
@@ -161,7 +162,7 @@ extension PoseCameraView: PoseDetectorObserver {
    recorded whatever the mode is, because `snapshotFrame()` is documented to answer at `mode: 'off'`;
    only buffering and the tick are the mode's business.
    */
-  private func buildFrame(result: PoseLandmarkerResult, poseSize: Int, timing: FrameTiming) {
+  private func buildFrame(result: PoseLandmarkerResult, pose: Int, poseSize: Int, timing: FrameTiming) {
     let size = timing.size
     let nowMs = timing.nowMs
     let elapsedSeconds = timing.elapsedSeconds
@@ -171,7 +172,7 @@ extension PoseCameraView: PoseDetectorObserver {
     guard let layout = frameLayout.value else { return }
 
     if layout.worldLandmarks {
-      fillWorldBuffer(result, poseSize: poseSize)
+      fillWorldBuffer(result, pose: pose, poseSize: poseSize)
     }
     let cursor = writeBlocks(into: layout, size: size)
     let timestampMs = Double(nowMs)
@@ -296,8 +297,18 @@ extension PoseCameraView: PoseDetectorObserver {
     return FrameScalars(comX: comX, comY: comY, velocityX: velocityX, velocityY: velocityY)
   }
 
-  private func fillWorldBuffer(_ result: PoseLandmarkerResult, poseSize: Int) {
-    guard let points = result.worldLandmarks.first, points.count >= poseSize else {
+  /**
+   The world landmarks of the pose the rest of the frame describes.
+
+   Indexed rather than taken from the front: with `maxPoses` above one, the pose everything else
+   reads is the largest body in the frame, and `worldLandmarks[0]` is whichever one MediaPipe
+   happened to detect first. Taking the front would pair one person's screen coordinates with
+   another person's metric ones in a single frame.
+   */
+  private func fillWorldBuffer(_ result: PoseLandmarkerResult, pose: Int, poseSize: Int) {
+    let world = result.worldLandmarks
+    let points = pose < world.count ? world[pose] : []
+    guard points.count >= poseSize else {
       for index in worldBuffer.indices {
         worldBuffer[index] = 0
       }

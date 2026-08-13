@@ -8,8 +8,21 @@ export type ExportOptions = {
    * a normalized, size-capped copy and nothing else.
    */
   overlay?: boolean | OverlayConfig;
-  /** 1 to 5. Only the first pose is painted; the rest are counted in `posesFound`. */
+  /**
+   * 1 to 5. Every pose found is painted, and `posesFound` counts them. Default 1.
+   *
+   * A ceiling rather than a promise: MediaPipe's landmarker is built around one primary subject and
+   * usually returns one body however high this goes. See guides/export.md before relying on it.
+   */
   maxPoses?: number;
+  /**
+   * How sure the model has to be before it calls something a body, 0.1 to 1.
+   *
+   * Left out, it follows `maxPoses`: `0.5` for a single subject, which is MediaPipe's own, and
+   * `0.3` above that, which is where a second person actually appears rather than the first person
+   * twice. Give it a number to override that. Costs nothing either way.
+   */
+  minConfidence?: number;
   /**
    * Detection samples a second, not the video's frame rate. Default 10. Frames in between are
    * painted with the pose detected most recently, which is what the live overlay does between

@@ -2,6 +2,7 @@ package com.posedetection.export
 
 import android.content.Context
 import android.net.Uri
+import com.posedetection.detector.PoseDetector
 import com.posedetection.view.OverlayConfig
 import com.posedetection.view.parseOverlay
 import java.io.File
@@ -15,6 +16,15 @@ internal class ExportOptions(
     val overlay: OverlayConfig,
     val drawOverlay: Boolean,
     val maxPoses: Int,
+    /**
+     * How sure the model has to be before it calls something a body.
+     *
+     * Left out, it follows [maxPoses], because the two are one decision: 0.5 for a single subject,
+     * which is MediaPipe's own, and 0.3 above that, which is where a second person actually appears
+     * rather than the first person twice. A number overrides it, and what the right number is for a
+     * given piece of footage is the caller's to know.
+     */
+    val minConfidence: Float,
     /**
      * Detection samples a second. Between samples the last pose is held, exactly as the live
      * overlay holds one between inferences.
@@ -37,10 +47,14 @@ internal class ExportOptions(
             sourceName: String,
         ): ExportOptions {
             val overlayRaw = raw?.get("overlay")
+            val maxPoses = count(raw?.get("maxPoses"), 1, 5)
             return ExportOptions(
                 overlay = (overlayRaw as? Map<*, *>)?.let { parseOverlay(it) } ?: OverlayConfig(),
                 drawOverlay = overlayRaw as? Boolean ?: true,
-                maxPoses = count(raw?.get("maxPoses"), 1, 5),
+                maxPoses = maxPoses,
+                minConfidence =
+                    ((raw?.get("minConfidence") as? Number)?.toFloat() ?: PoseDetector.stillConfidence(maxPoses))
+                        .coerceIn(0.1f, 0.9f),
                 sampleFps = count(raw?.get("fps"), DEFAULT_SAMPLE_FPS, 60),
                 maxSize = maxSize(raw?.get("maxSize")),
                 directory = directory(context, raw?.get("directory") as? String),

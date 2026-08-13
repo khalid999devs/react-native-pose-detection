@@ -15,7 +15,16 @@ import UIKit
  - **the session queue**, inside `CameraSource`, owns the capture session.
  */
 public class PoseCameraView: ExpoView {
+  /**
+   Confidence for one subject and for several, which is one decision rather than two.
+
+   0.6 keeps a single subject cleanly tracked and keeps scenery from being offered as a body. It
+   also means the model returns one pose whatever `maxPoses` says, so asking for more than one
+   drops to 0.3, which is measured to be where a second person actually appears rather than the
+   first person twice. See guides/reference/pose-camera.md.
+   */
   static let minConfidence: Float = 0.6
+  static let multiPoseConfidence: Float = 0.3
   static let millisPerSecond = 1_000.0
   static let nanosPerMilli = 1_000_000.0
 
@@ -77,6 +86,7 @@ public class PoseCameraView: ExpoView {
   var detectorGeneration = 0
   var detectorRequest: DelegateRequest?
   var detectorMaxPoses = 0
+  var detectorMinConfidence: Float = 0
 
   /// Survives `releaseDetector` so `getState` reports the pipeline, not instance liveness.
   var resolvedDelegate: String?
@@ -167,6 +177,8 @@ public class PoseCameraView: ExpoView {
   var propActive = true
   var propDetection = true
   var propMaxPoses = 1
+  /// nil is `'auto'`, resolved by `resolvedMinConfidence()`.
+  var propMinConfidence: Float?
   var propPreview = "auto"
   var propAnalysis = "auto"
   var overlayEnabled = true

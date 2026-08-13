@@ -38,6 +38,10 @@ const PROFILES = ['auto', 'efficient', 'balanced', 'quality', 'unrestricted'] as
 const THERMAL = ['adaptive', 'critical-only', 'off'] as const;
 const DATA_MODES = ['off', 'throttled', 'batched', 'live'] as const;
 const MAX_POSES = ['1', '2', '3', '4', '5'] as const;
+// 'auto' passes nothing, which is what makes the package take the threshold from People: 0.6 for a
+// single subject, 0.3 above that. The numbers override it, and 0.3 is the floor worth offering
+// because below it the model returns the same body twice rather than finding a second one.
+const CONFIDENCE = ['auto', '0.3', '0.4', '0.5', '0.6', '0.7'] as const;
 
 /**
  * What the angle toggle draws when it is on.
@@ -84,6 +88,7 @@ export function LiveScreen({ onClose }: { onClose: () => void }) {
   const [thermalPolicy, setThermalPolicy] = React.useState<(typeof THERMAL)[number]>('adaptive');
   const [dataMode, setDataMode] = React.useState<(typeof DATA_MODES)[number]>('off');
   const [maxPoses, setMaxPoses] = React.useState<(typeof MAX_POSES)[number]>('1');
+  const [confidence, setConfidence] = React.useState<(typeof CONFIDENCE)[number]>('auto');
   const [smoothing, setSmoothing] = React.useState(true);
   const [poseCount, setPoseCount] = React.useState(0);
   const [snapshot, setSnapshot] = React.useState<string | null>(null);
@@ -179,6 +184,7 @@ export function LiveScreen({ onClose }: { onClose: () => void }) {
         profile={profile}
         thermalPolicy={thermalPolicy}
         maxPoses={Number(maxPoses)}
+        minConfidence={confidence === 'auto' ? undefined : Number(confidence)}
         smoothing={smoothing}
         data={{ mode: dataMode }}
         onPose={dataMode === 'off' ? undefined : () => setPoseCount((value) => value + 1)}
@@ -340,6 +346,12 @@ export function LiveScreen({ onClose }: { onClose: () => void }) {
                   options={MAX_POSES}
                   value={maxPoses}
                   onChange={setMaxPoses}
+                />
+                <Choice
+                  title="Confidence"
+                  options={CONFIDENCE}
+                  value={confidence}
+                  onChange={setConfidence}
                 />
                 <Choice title="Profile" options={PROFILES} value={profile} onChange={setProfile} />
               </>

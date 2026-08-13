@@ -52,6 +52,16 @@ final class PoseDetector {
   private static let dispatchSlots = 8
   private static let probeSize: CGFloat = 256
 
+  /// MediaPipe's own default, and what one subject in a file is detected at.
+  static let defaultStillConfidence: Float = 0.5
+  /// Asking for more than one body needs a lower bar, or the model returns one however high it is.
+  static let multiPoseStillConfidence: Float = 0.3
+
+  /// The threshold `maxPoses` implies when the caller has not chosen one.
+  static func stillConfidence(forMaxPoses maxPoses: Int) -> Float {
+    return maxPoses > 1 ? multiPoseStillConfidence : defaultStillConfidence
+  }
+
   private let landmarker: PoseLandmarker
   /// Held strongly here and weakly by the landmarker, which is what keeps it alive to be called.
   private let relay: LiveStreamRelay?
@@ -177,12 +187,17 @@ extension PoseDetector {
    A detector for a file rather than a camera. CPU rather than the GPU probe: a still input runs
    once, and the probe would cost more than the inference it is choosing for.
    */
-  static func createForStillInput(modelPath: String, maxPoses: Int, video: Bool) throws -> PoseDetector {
+  static func createForStillInput(
+    modelPath: String,
+    maxPoses: Int,
+    minConfidence: Float = defaultStillConfidence,
+    video: Bool
+  ) throws -> PoseDetector {
     let landmarker = try build(LandmarkerSpec(
       modelPath: modelPath,
       delegateKind: .CPU,
       maxPoses: maxPoses,
-      minConfidence: 0.5,
+      minConfidence: minConfidence,
       runningMode: video ? .video : .image
     ), observer: nil)
     return PoseDetector(
