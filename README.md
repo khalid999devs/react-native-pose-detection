@@ -43,7 +43,13 @@ until you ask.
 ## Installation
 
 One package, two setups. Both end in the same place: the model inside your native projects and
-the camera permission declared. Models are `lite`, `full` or `heavy`; exactly one ships.
+the camera permission declared. Exactly one model ships, whichever you pick:
+
+| Model | Installed size (Android) | Best for |
+| --- | --- | --- |
+| `lite` | ~19.7 MB | budget devices, high frame rates |
+| `full` *(default)* | ~23.2 MB | most apps |
+| `heavy` | ~43.4 MB | accuracy-critical work on flagships |
 
 ### Expo
 
@@ -240,8 +246,15 @@ Every axis is still yours: `profile`, `targetFps`, `resolution`, `analysisResolu
 
 ## Requirements
 
-React Native 0.74+ · Expo SDK 51+ · iOS 15.1+ · Android API 24+. The `full` model adds ~23 MB
-installed on Android; the JavaScript is 62.5 KB.
+| | Minimum |
+| --- | --- |
+| React Native | 0.74 |
+| Expo SDK | 51 |
+| iOS | 15.1 |
+| Android | API 24 |
+
+Expo Go cannot run native code, so use a development build. The JavaScript itself is 62.5 KB
+with zero runtime dependencies.
 
 ## Documentation
 
