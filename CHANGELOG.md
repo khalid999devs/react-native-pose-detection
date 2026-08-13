@@ -25,7 +25,7 @@ Nothing here has run on a physical device.
 - iOS: the podspec, `CameraSource` on AVFoundation, `PoseDetector` with the GPU probe,
   `OverlayView`, static image and video input, and the module definition. Written and
   type-checked against the iOS SDK, never run on a device
-- Native unit tests on both platforms: 54 under JUnit, 58 under XCTest, over the same behavior
+- Native unit tests on both platforms: 65 under JUnit, 69 under XCTest, over the same behavior
 - Frame delivery on the JavaScript side: the self-describing wire format, `decodeFrames`, the
   drain loop, and `onFramesDropped` for frames the native ring buffer had to drop
 - `npm test`: 73 tests on Node's built-in runner, no test framework dependency, covering the wire

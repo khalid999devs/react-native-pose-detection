@@ -20,7 +20,20 @@ let package = Package(
       path: ".",
       exclude: [
         "Tests",
-        "view",
+        // `view` is listed file by file rather than as a directory so that OverlayProjection can
+        // be compiled in: the alignment between the picture and the skeleton is exactly the kind
+        // of arithmetic that deserves tests, and the rest of `view` needs UIKit.
+        "view/OverlayParsing.swift",
+        "view/OverlayView.swift",
+        "view/OverlayView+Angles.swift",
+        "view/PoseCameraView.swift",
+        "view/PoseCameraView+Capture.swift",
+        "view/PoseCameraView+Delivery.swift",
+        "view/PoseCameraView+Frames.swift",
+        "view/PoseCameraView+Lifecycle.swift",
+        "view/PoseCameraView+Props.swift",
+        "view/PoseCameraView+Ref.swift",
+        "view/PoseCameraView+Session.swift",
         "camera",
         "detector",
         "PoseDetectionModule.swift",
@@ -34,7 +47,8 @@ let package = Package(
         "PoseLog.swift",
         "JSCoercion.swift",
         "engine",
-        "performance"
+        "performance",
+        "view/OverlayProjection.swift"
       ]
     ),
     .testTarget(

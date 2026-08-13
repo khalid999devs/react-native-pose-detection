@@ -171,7 +171,7 @@ video files, cheap to add rather than requiring a fork. See [ADR 0001](./adr/000
 
 The condition evaluator and geometry exist twice, Swift and Kotlin. They must produce identical
 output for identical input; a divergence is a bug even when each side looks correct alone. 54
-JUnit tests and 58 XCTests assert the same behavior, and the wire parity test reads both native
+JUnit tests and 69 XCTests assert the same behavior, and the wire parity test reads both native
 constant tables plus the TypeScript one and fails when any of the three drifts. See
 [testing](./testing.md).
 

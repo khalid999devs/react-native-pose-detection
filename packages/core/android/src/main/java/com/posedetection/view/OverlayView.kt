@@ -166,10 +166,33 @@ internal class OverlayView(
 
     // The fill scale and offsets are constant within a draw, so they are computed once per frame
     // rather than on each of the hundred-odd project() calls a frame makes.
-    private var fillScaleX = 0f
-    private var fillScaleY = 0f
-    private var fillOffsetX = 0f
-    private var fillOffsetY = 0f
+    // Constant within a draw, so it is built once per frame rather than on each of the
+    // hundred-odd projections a frame makes.
+    private var projection = OverlayProjection(0, 0, 0f, 0f, ContentFit.FILL)
+
+    /**
+     * `FILL` matches `PreviewView` FILL_CENTER. `FIT` is what a picked image or video wants, and a
+     * media surface is positioned with [contentRect] so the picture and the skeleton come from one
+     * computation rather than two that can disagree.
+     */
+    var contentFit = ContentFit.FILL
+        set(value) {
+            if (field == value) return
+            field = value
+            postInvalidateOnAnimation()
+        }
+
+    /** Where the source lands inside this view, for whatever surface is showing it. */
+    fun contentRect(): OverlayProjection {
+        val sourceSize = synchronized(frameLock) { incomingWidth to incomingHeight }
+        return OverlayProjection(
+            sourceSize.first,
+            sourceSize.second,
+            width.toFloat(),
+            height.toFloat(),
+            contentFit,
+        )
+    }
 
     init {
         setWillNotDraw(false)
@@ -407,39 +430,16 @@ internal class OverlayView(
         return length
     }
 
-    /** Matches `PreviewView` FILL_CENTER: scale to cover, crop the overflowing axis evenly. */
     private fun updateProjection() {
-        val sourceAspect = sourceWidth.toFloat() / sourceHeight.toFloat()
-        val viewAspect = width.toFloat() / height.toFloat()
-
-        val scaledWidth: Float
-        val scaledHeight: Float
-        if (sourceAspect > viewAspect) {
-            scaledHeight = height.toFloat()
-            scaledWidth = scaledHeight * sourceAspect
-        } else {
-            scaledWidth = width.toFloat()
-            scaledHeight = scaledWidth / sourceAspect
-        }
-
-        fillScaleX = scaledWidth
-        fillScaleY = scaledHeight
-        fillOffsetX = (width - scaledWidth) / 2f
-        fillOffsetY = (height - scaledHeight) / 2f
+        projection =
+            OverlayProjection(sourceWidth, sourceHeight, width.toFloat(), height.toFloat(), contentFit)
     }
 
-    /** Normalized frame coordinates to view pixels, using the fill `updateProjection` computed. */
+    /** Normalized frame coordinates to view pixels, through the projection [updateProjection] built. */
     private fun project(joint: Int) {
         val base = joint * Skeleton.LANDMARK_STRIDE
-        var x = landmarks[base + Skeleton.OFFSET_X]
-        val y = landmarks[base + Skeleton.OFFSET_Y]
-
-        // Landmarks are un-mirrored so they describe the real world. The preview is mirrored on the
-        // front camera, so the overlay mirrors here to stay aligned with what is on screen.
-        if (mirrored) x = 1f - x
-
-        screen[0] = fillOffsetX + x * fillScaleX
-        screen[1] = fillOffsetY + y * fillScaleY
+        screen[0] = projection.x(landmarks[base + Skeleton.OFFSET_X], mirrored)
+        screen[1] = projection.y(landmarks[base + Skeleton.OFFSET_Y])
     }
 
     private companion object {
