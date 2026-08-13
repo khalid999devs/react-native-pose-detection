@@ -13,7 +13,7 @@ until you ask.
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 ![platforms](https://img.shields.io/badge/platforms-iOS%20%7C%20Android-black)
 
-[Installation](#installation) · [Quick start](#quick-start) · [Do more](#do-more) · [Docs](#documentation)
+[Installation](#installation) · [Quick start](#quick-start) · [Do more](#do-more) · [Full surface](#the-whole-surface-at-a-glance) · [Docs](#documentation)
 
 ![A frame of an exported video with the skeleton painted in](./ss/export-frame.png)
 
@@ -43,13 +43,7 @@ until you ask.
 ## Installation
 
 One package, two setups. Both end in the same place: the model inside your native projects and
-the camera permission declared. Exactly one model ships, whichever you pick:
-
-| Model | Installed size (Android) | Best for |
-| --- | --- | --- |
-| `lite` | ~19.7 MB | budget devices, high frame rates |
-| `full` *(default)* | ~23.2 MB | most apps |
-| `heavy` | ~43.4 MB | accuracy-critical work on flagships |
+the camera permission declared.
 
 ### Expo
 
@@ -59,13 +53,16 @@ npx expo install react-native-pose-detection
 
 In **`app.json`**, add the config plugin:
 
-```json
+```jsonc
 {
   "expo": {
     "plugins": [
       [
         "react-native-pose-detection",
-        { "model": "full", "cameraPermissionText": "We use the camera to analyze your movement." }
+        {
+          "model": "full", // 'lite' | 'full' | 'heavy'
+          "cameraPermissionText": "We use the camera to analyze your movement."
+        }
       ]
     ]
   }
@@ -106,6 +103,18 @@ Either setup can be verified with `npx react-native-pose-detection doctor`, whic
 install and names anything missing. Full detail, including EAS and release builds:
 [installation guide](./guides/installation.md).
 
+### Choosing a model
+
+Exactly one ships, whichever you pick. Changing it is one word in the config plus a rebuild.
+
+| Model | Best for |
+| --- | --- |
+| `lite` | budget devices, the highest frame rates |
+| `full` *(default)* | most apps: the accuracy and cost balance |
+| `heavy` | accuracy-critical work on flagship hardware |
+
+Sizes and the full trade-off table: [app size](./guides/performance.md#app-size).
+
 ## Quick start
 
 **`App.tsx`**
@@ -123,10 +132,62 @@ export default function App() {
 
 That is a live camera with a tracked skeleton, tuned to the device, zero bridge traffic.
 
+## Do more
+
+**Count reps without streaming a single coordinate.** The condition runs on the camera thread;
+you hear about it once per rep:
+
+```tsx
+<PoseCamera
+  triggers={[
+    {
+      id: 'squat',
+      enter: { angle: 'leftKnee', below: 90 },
+      exit: { angle: 'leftKnee', above: 160 },
+      emit: 'cycle',
+      debounceMs: 300,
+    },
+  ]}
+  onTrigger={(e) => setReps(e.count)}
+/>
+```
+
+**Read landmarks when you actually want them**, as typed arrays from one shared buffer:
+
+```tsx
+<PoseCamera
+  data={{ mode: 'throttled', throttleMs: 100 }}
+  onPose={(frame) => track(frame.landmarks)}
+/>
+```
+
+**Paint a photo or video** into a full-quality copy, without slowing the live camera:
+
+```ts
+import { exportPose } from 'react-native-pose-detection';
+
+const { uri } = await exportPose(videoUri, { directory: 'documents' }).result;
+```
+
+## It tunes itself
+
+No frame-rate table to maintain. The package measures what inference costs on each phone,
+converges on the fastest rate that phone sustains, steps down with heat, and caches the answer:
+
+```ts
+await cam.current.getProfile();
+// { phase: 'settled', tier: 'high',
+//   resolved: { delegate: 'GPU', targetFps: 34, preview: '1080p', analysis: '480p' },
+//   p50InferenceMs: 16.2, measuredFps: 33 }
+```
+
+Every axis is still yours: `profile`, `targetFps`, `resolution`, `analysisResolution`,
+`delegate`, `thermalPolicy`.
+
 ## The whole surface at a glance
 
-Every prop on one component. All of them optional; an explicit value pins that axis and the rest
-stay automatic.
+Every prop on one component. All of them optional; an explicit value pins that axis and the
+rest stay automatic.
 
 ```tsx
 <PoseCamera
@@ -191,58 +252,6 @@ stay automatic.
 | `onReady` … `onLog` | none | Lifecycle, errors, performance, triggers, frames, logs |
 
 Exact types, clamping rules and edge behavior: [`<PoseCamera>` reference](./guides/reference/pose-camera.md).
-
-## Do more
-
-**Count reps without streaming a single coordinate.** The condition runs on the camera thread;
-you hear about it once per rep:
-
-```tsx
-<PoseCamera
-  triggers={[
-    {
-      id: 'squat',
-      enter: { angle: 'leftKnee', below: 90 },
-      exit: { angle: 'leftKnee', above: 160 },
-      emit: 'cycle',
-      debounceMs: 300,
-    },
-  ]}
-  onTrigger={(e) => setReps(e.count)}
-/>
-```
-
-**Read landmarks when you actually want them**, as typed arrays from one shared buffer:
-
-```tsx
-<PoseCamera
-  data={{ mode: 'throttled', throttleMs: 100 }}
-  onPose={(frame) => track(frame.landmarks)}
-/>
-```
-
-**Paint a photo or video** into a full-quality copy, without slowing the live camera:
-
-```ts
-import { exportPose } from 'react-native-pose-detection';
-
-const { uri } = await exportPose(videoUri, { directory: 'documents' }).result;
-```
-
-## It tunes itself
-
-No frame-rate table to maintain. The package measures what inference costs on each phone,
-converges on the fastest rate that phone sustains, steps down with heat, and caches the answer:
-
-```ts
-await cam.current.getProfile();
-// { phase: 'settled', tier: 'high',
-//   resolved: { delegate: 'GPU', targetFps: 34, preview: '1080p', analysis: '480p' },
-//   p50InferenceMs: 16.2, measuredFps: 33 }
-```
-
-Every axis is still yours: `profile`, `targetFps`, `resolution`, `analysisResolution`,
-`delegate`, `thermalPolicy`.
 
 ## Requirements
 
