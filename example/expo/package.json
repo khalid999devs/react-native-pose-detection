@@ -11,11 +11,16 @@
     "prebuild:android": "expo prebuild --platform android --clean"
   },
   "dependencies": {
+    "@expo/vector-icons": "^15.1.1",
     "expo": "^57.0.12",
+    "expo-blur": "^57.0.2",
+    "expo-file-system": "^57.0.2",
     "expo-image-picker": "^57.0.9",
+    "expo-video": "^57.0.2",
     "react": "^19.2.3",
     "react-native": "0.86.2",
-    "react-native-pose-detection": "*"
+    "react-native-pose-detection": "*",
+    "react-native-safe-area-context": "^5.9.0"
   },
   "devDependencies": {
     "@types/react": "^19.2.18",

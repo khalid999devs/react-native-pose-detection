@@ -118,14 +118,14 @@ type ExportResult = {
 `posesFound: 0` is worth handling. It means the export succeeded and painted nothing, which is a
 different thing from a failure and usually means the body was out of frame or too small.
 
-Images are written as JPEG and videos as H.264 in an MP4. Rotation is baked into the output rather
-than carried as a track transform, so a clip shot in portrait plays upright everywhere, including
-in the players and server side transcoders that ignore the transform.
+Images are written as JPEG and videos as H.264 in an MP4, with the original audio copied through
+rather than re-encoded. Rotation is baked into the output rather than carried as a track transform,
+so a clip shot in portrait plays upright everywhere, including in the players and server side
+transcoders that ignore the transform.
 
-On iOS the original audio track is copied through untouched. **On Android the export is currently
-silent**: the video path is written and the audio passthrough is not, so a clip comes back with its
-picture painted and its sound dropped. That is the one behavioral difference between the platforms
-and it is worth knowing before you ship a feature that depends on the audio.
+An audio codec an MP4 cannot hold, which a few source containers allow, is dropped with a warning
+on the `detector` log channel rather than failing the export: a painted video with no sound beats
+no video at all.
 
 ## When you want the numbers instead
 

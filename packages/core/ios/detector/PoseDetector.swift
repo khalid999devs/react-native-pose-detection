@@ -199,12 +199,7 @@ extension PoseDetector {
     maxPoses: Int,
     minConfidence: Float
   ) throws -> PoseDetector {
-    let delegateKind: Delegate
-    switch request {
-    case .cpu: delegateKind = .CPU
-    case .gpu: delegateKind = .GPU
-    case .auto: delegateKind = gpuProducesAnInference(modelPath: modelPath) ? .GPU : .CPU
-    }
+    let delegateKind = resolveDelegate(request, modelPath: modelPath)
 
     let relay = LiveStreamRelay()
     let landmarker = try build(LandmarkerSpec(
@@ -225,6 +220,33 @@ extension PoseDetector {
     let kind = delegateKind == .GPU ? "GPU" : "CPU"
     PoseLog.info(.detector, "landmarker ready on \(kind) with \(detector.modelFileName)")
     return detector
+  }
+
+  /**
+   Which delegate to actually build with.
+
+   **The simulator never gets the GPU.** MediaPipe converts a frame to a tensor through Metal, and
+   on a simulator that conversion fails inside an `absl` check, which calls `abort()`. There is no
+   catching that: the process is gone, and the crash lands on the first camera frame rather than at
+   setup, so nothing before it looks wrong. The probe below cannot help, because a probe that
+   reproduced the failure would take the app down with it.
+
+   Simulators have no real GPU to measure anyway, so the only thing lost is a configuration that
+   could not have told anyone anything true about performance.
+   */
+  private static func resolveDelegate(_ request: DelegateRequest, modelPath: String) -> Delegate {
+    #if targetEnvironment(simulator)
+    if request != .cpu {
+      PoseLog.warn(.detector, "the simulator has no usable GPU for MediaPipe, using CPU")
+    }
+    return .CPU
+    #else
+    switch request {
+    case .cpu: return .CPU
+    case .gpu: return .GPU
+    case .auto: return gpuProducesAnInference(modelPath: modelPath) ? .GPU : .CPU
+    }
+    #endif
   }
 
   /**

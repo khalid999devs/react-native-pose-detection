@@ -1,5 +1,20 @@
 # Troubleshooting
 
+## The app dies the moment the camera opens, in a simulator
+
+It is not your code. MediaPipe converts each frame to a tensor through Metal, and on a simulator
+that conversion fails inside an `absl` check, which calls `abort()`. The process is gone before
+anything can catch it, and because it happens on the first camera frame rather than at setup, every
+step before it looks like it worked.
+
+**This package forces the CPU delegate in a simulator**, so it should not reach you. If you see it
+anyway, check that `delegate` is not pinned to `'gpu'` by something in your own build, and look for
+`the simulator has no usable GPU for MediaPipe` on the `detector` log channel, which is printed
+whenever the request is overridden.
+
+Nothing is lost by it: a simulator has no real GPU to measure, so a GPU reading there could never
+have told you anything true about a phone.
+
 ## "Native module not found" / blank screen in Expo Go
 
 **Expo Go cannot run this package.** It contains native code. Build a development build:

@@ -1,4 +1,5 @@
 abifilters
+absl
 analyse
 analysing
 armeabi
@@ -23,6 +24,7 @@ deadcode
 deinit
 detekt
 diataxis
+dimezis
 Diátaxis
 downscaled
 downscales
@@ -42,6 +44,7 @@ ktlint
 Landmarker
 landmarker
 landmarkers
+lede
 letterboxed
 libmediapipe
 litert

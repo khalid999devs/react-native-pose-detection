@@ -91,6 +91,7 @@ internal class ExportPump(
     private val encoder: MediaCodec,
     private val muxer: MediaMuxer,
     private val gl: ExportGl,
+    private val audio: ExportAudio?,
     private val cancelled: AtomicBoolean,
 ) {
     /** The last presentation time written, which is the export's real duration. */
@@ -131,6 +132,7 @@ internal class ExportPump(
                         gl.present(info.presentationTimeUs * NANOS_PER_MICRO)
                         frames++
                         lastTimeUs = info.presentationTimeUs
+                        audio?.drain(muxer, info.presentationTimeUs)
                         if (durationUs > 0) onProgress(info.presentationTimeUs.toFloat() / durationUs)
                     }
                     if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
@@ -183,7 +185,10 @@ internal class ExportPump(
                 }
 
                 index == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
+                    // The only moment a track can be added, and the video's real format is not
+                    // known until the encoder publishes it, so the audio track waits for it too.
                     muxerTrack = muxer.addTrack(encoder.outputFormat)
+                    audio?.addTo(muxer)
                     muxer.start()
                 }
 
@@ -198,7 +203,12 @@ internal class ExportPump(
                         muxer.writeSampleData(muxerTrack, buffer, info)
                     }
                     encoder.releaseOutputBuffer(index, false)
-                    if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) return FINISHED
+                    if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
+                        // Whatever audio outlasts the last video frame, so a track that runs a
+                        // fraction longer than the picture is not cut off.
+                        audio?.drain(muxer, Long.MAX_VALUE)
+                        return FINISHED
+                    }
                 }
             }
         }

@@ -35,6 +35,8 @@
 	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>This example uses the camera to detect your pose on device.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>This example runs pose detection on an image or video you pick.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string></string>
 	<key>RCTNewArchEnabled</key>

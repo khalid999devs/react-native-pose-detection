@@ -104,6 +104,7 @@ internal class VideoExporter(
         var muxer: MediaMuxer? = null
         var gl: ExportGl? = null
         var overlay: Bitmap? = null
+        var audio: ExportAudio? = null
         val output = File(options.directory, "${options.fileName}.mp4")
         var complete = false
 
@@ -144,8 +145,10 @@ internal class VideoExporter(
             muxer = MediaMuxer(output.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
             overlay = Bitmap.createBitmap(canvas[0], canvas[1], Bitmap.Config.ARGB_8888)
 
+            audio = ExportAudio.open(context, uri)
+
             val painter = OverlayPainter(overlay, canvas, naturalWidth, naturalHeight, upright, options)
-            val pump = ExportPump(decoder, encoder, muxer, gl, cancelled)
+            val pump = ExportPump(decoder, encoder, muxer, gl, audio, cancelled)
             val frames =
                 pump.run(extractor, rotation, poses, painter) { done ->
                     report(DETECT_SHARE + (1f - DETECT_SHARE) * done)
@@ -169,6 +172,7 @@ internal class VideoExporter(
             overlay?.recycle()
             runCatching { if (complete) muxer?.stop() }
             muxer?.release()
+            audio?.release()
             extractor.release()
             // A half written file looks like a finished export to anything that finds it later.
             if (!complete) output.delete()
