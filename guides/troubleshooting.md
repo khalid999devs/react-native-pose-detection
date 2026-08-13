@@ -68,8 +68,13 @@ sources (`abs` ambiguous under C++ interop, `sending 'emitter' risks causing dat
 symptom rather than the cause. Xcode 26.6 or newer builds it.
 
 Check which Xcode is actually selected before concluding anything: `xcode-select -p` can point at
-an old copy while a current one sits in `/Applications`, and a current one can be missing the iOS
-platform entirely, which `xcodebuild -showsdks` will tell you.
+an old copy while a current one sits in `/Applications`. `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`
+overrides it for one command, and `sudo xcode-select -s /Applications/Xcode.app` makes it the default.
+
+**`Unable to find a destination matching the provided destination specifier`** means the iOS
+platform is not installed, which is separate from the SDK and is the one thing `xcodebuild
+-showsdks` will happily list as present while builds fail. `xcodebuild -downloadPlatform iOS`
+installs it, about 8.5 GB.
 
 The MediaPipe pin is settled: `MediaPipeTasksVision 0.10.35`, the same version Android uses, and
 it resolves from CocoaPods trunk. See [ADR 0007](../docs/adr/0007-pin-mediapipe-0-10-35.md).

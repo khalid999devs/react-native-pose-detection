@@ -264,16 +264,16 @@ against a view which is not doing the work yet.
 **Exit:** the example app behaves identically on both platforms, and the same 100-switch stress
 test passes. Both wait on a device, which is Phase 6. Zero jump-detection code present.
 
-> **CI builds iOS; this machine cannot, and the reason is not what it first looked like.** Expo
-> SDK 57 ships `ExpoModulesCore` precompiled with Swift 6.3.1, so a toolchain older than that
-> rejects it, and the `abs`-is-ambiguous and `sending 'emitter'` errors seen while compiling
-> Expo's sources were symptoms of an old compiler rather than a new one. The machine has two
-> Xcodes and neither is complete: 26.3 has the iOS platform but Swift 6.2.4, and 26.6 has Swift
-> 6.3.3 but no iOS platform installed. One download from Xcode's Components pane fixes it.
+> **iOS builds, in CI and locally, and the blocker was never what it looked like.** Expo SDK 57
+> ships `ExpoModulesCore` precompiled with Swift 6.3.1, so a toolchain older than that rejects it;
+> the `abs`-is-ambiguous and `sending 'emitter'` errors seen while compiling Expo's sources were a
+> symptom of an old compiler rather than a new one. Xcode 26.6 builds this cleanly. What it needed
+> was the iOS platform, 8.5 GB through `xcodebuild -downloadPlatform iOS`, which is separate from
+> the SDK and is what `-showsdks` will not tell you is missing.
 >
-> The `ios-expo` and `ios-bare` cells build on `macos-latest`, which is Xcode 26.6, and that is
-> where iOS compiles today. It is also what caught `Either.value` being internal to
-> ExpoModulesCore, which the hand-written stub used for the earlier type-check could not.
+> The `ios-expo` and `ios-bare` cells run on `macos-latest`, which is the same Xcode 26.6. CI is
+> what caught `Either.value` being internal to ExpoModulesCore, which the hand-written stub used
+> for the earlier type-check could not.
 
 ## Phase 6: Hardening
 

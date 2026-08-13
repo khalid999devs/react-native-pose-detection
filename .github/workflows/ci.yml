@@ -421,9 +421,12 @@ jobs:
         run: |
           app=$(find build/Build/Products -maxdepth 2 -name '*.app' | head -1)
           binary="$app/$(basename "$app" .app)"
-          # Two ways of asking, because a release app target is stripped: nm sees the symbol when
-          # it survived, and the mangled name is in Swift's type metadata either way.
-          nm -gU "$binary" 2>/dev/null | grep -q 'PoseDetectionModule' \
+          # `nm` without -g, deliberately. The module arrives from a static library and is
+          # reached only through Expo's generated provider, so its class metadata is a local
+          # symbol: -gU lists globals and would miss it, then pass on the strings fallback and
+          # look like it had checked something. strings stays as a backstop for a fully stripped
+          # binary, where the mangled name still sits in Swift's type metadata.
+          nm "$binary" 2>/dev/null | grep -q 'PoseDetectionModule' \
             || strings -a "$binary" | grep -q 'PoseDetectionModule' \
             || { echo "::error::PoseDetectionModule is not in the release binary."; exit 1; }
           test "$(find "$app" -name '*.task' | wc -l | tr -d ' ')" -eq 1
