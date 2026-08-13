@@ -3,6 +3,10 @@ exclude_path = ["node_modules", "ideation", "build", ".test-build"]
 exclude = [
   # repository is new; some links point at pages that do not exist yet
   "^https://github\\.com/khalid999devs/react-native-pose-detection",
+  "^https://raw\\.githubusercontent\\.com/khalid999devs/react-native-pose-detection",
+  # resolves only after the first publish
+  "^https://www\\.npmjs\\.com/package/react-native-pose-detection",
+  "^https://img\\.shields\\.io/npm/",
 ]
 accept = [200, 206, 429]
 max_retries = 2

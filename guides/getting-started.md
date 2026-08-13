@@ -1,8 +1,7 @@
 # Getting Started
 
-**Pre-1.0, and not yet run on a device.** Both platforms are written and build, so everything on
-this page is implemented on both. What has not happened is a physical device: treat the numbers
-as targets rather than measurements.
+**Pre-1.0.** Both platforms are complete and everything on this page runs on both; iOS is
+verified on physical hardware, and the Android device pass is in progress.
 
 ## Requirements
 
@@ -118,7 +117,7 @@ Nothing crosses the bridge until you ask. Three ways, cheapest first:
 Two crossings per emission rather than one, because native signals and JavaScript pulls. See
 [data delivery](./data-delivery.md#modes) for why.
 
-Prefer triggers. See [triggers.md](./triggers.md) and [recipes.md](./recipes/README.md).
+Prefer triggers. See [triggers.md](./triggers.md) and [what you can build](./recipes.md).
 
 ## Next
 

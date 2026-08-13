@@ -1,7 +1,7 @@
 # Installation
 
-**Not published yet, and not yet run on a device.** Both platforms are written and build. The
-steps below are what installing it looks like.
+**Not published to npm yet.** Both platforms are complete, and the steps below are what
+installing it looks like once it is.
 
 ## Requirements
 

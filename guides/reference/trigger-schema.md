@@ -2,7 +2,7 @@
 
 Conceptual guide: [guides/triggers.md](../triggers.md).
 
-**Both platforms run these.** Neither has run on a physical device.
+**Both platforms run these**, natively, on the camera thread.
 
 ## `Trigger`
 

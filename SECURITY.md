@@ -86,7 +86,7 @@ this repository. A checksum mismatch is a hard failure, never a warning.
 
 No telemetry. No analytics. No network calls at runtime. No data leaves the device.
 
-The [logging channel](./guides/debugging.md) is off by default. When enabled, entries are
+The [logging channel](./guides/troubleshooting.md) is off by default. When enabled, entries are
 delivered only to listeners registered inside your own app and are never transmitted anywhere.
 
 ## For maintainers

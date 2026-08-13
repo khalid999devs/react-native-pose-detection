@@ -151,7 +151,7 @@ exactly like a bug in whatever you were trying to diagnose.
 
 Entries reach Logcat, or `os.Logger` on iOS, whatever is attached, and are batched to JavaScript
 while a listener is. `addLogListener()` is a multiset rather than a set, so the same function
-registered twice needs two `remove()` calls. See [debugging](../debugging.md).
+registered twice needs two `remove()` calls. See [troubleshooting](../troubleshooting.md#watching-it-work-the-log-channel).
 
 ## Callbacks
 

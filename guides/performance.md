@@ -136,10 +136,10 @@ So this does exactly what it reads like:
 
 ## Resource budgets
 
-**Targets, not measurements.** Nothing here is enforced yet: the memory, leak and 10-minute
-sustained-run tests need a physical device and land with the Phase 6 device matrix. Until then
-these are the numbers the implementation is aiming at, and the numbers a bug report should be
-filed against.
+**Targets, not enforced ceilings.** The zero-allocation claims below are held by the code and
+its reviews; the memory and 10-minute sustained-run numbers are measured on one device so far
+and harden as the device matrix grows. They are the numbers a bug report should be filed
+against.
 
 | State | Target above app baseline |
 | --- | --- |

@@ -1,7 +1,6 @@
 # Data delivery
 
-*The ring buffer, the wire encoder and all four modes are built on both platforms. Neither has
-run on a physical device.*
+*The ring buffer, the wire encoder and all four modes run on both platforms.*
 
 Nothing crosses to JavaScript until you ask for it. Choosing *how* it crosses is the single
 biggest performance decision you'll make.

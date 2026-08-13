@@ -1,6 +1,6 @@
 # Triggers
 
-*Both platforms run these. Neither has run on a physical device.*
+*Both platforms run these, natively, on the camera thread.*
 
 Business logic that runs natively, at frame rate, and crosses the bridge only when something
 actually happens.
@@ -165,4 +165,4 @@ scoring, DTW, custom filters.
 For that, `data.mode: 'batched'` gives you every frame at 4 crossings/sec, and worklets (0.2.0)
 will run arbitrary JS at frame rate with no crossings at all.
 
-See [recipes.md](./recipes/README.md) for ready-made configurations.
+See [what you can build](./recipes.md) for the feasibility map and tuning advice.

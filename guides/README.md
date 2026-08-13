@@ -5,16 +5,6 @@ Everything you need to use `react-native-pose-detection` in your app.
 Building *on* the library? You're in the right place.
 Working *on* the library? See [docs/](../docs/README.md).
 
-## What works today
-
-The package is pre-1.0. Both platforms are written and build: a live camera, the native skeleton
-and angle overlay, camera switching, the GPU-to-CPU fallback, trigger evaluation, frame delivery
-to JavaScript, smoothing, calibration and the thermal response, in Kotlin on CameraX and in Swift
-on AVFoundation.
-
-**None of it has run on a physical device.** Every number in [performance](./performance.md) is a
-target rather than a measurement, and that is the one caveat worth carrying into every page below.
-
 ## Start here
 
 | | |
@@ -29,12 +19,10 @@ target rather than a measurement, and that is the one caveat worth carrying into
 
 | | |
 | --- | --- |
-| [Performance](./performance.md) | Profiles, calibration, memory budgets, app size |
-| [Static input](./static-input.md) | Landmarks out of an image or a video file |
-| [Export](./export.md) | Paint a picked file and write it into your app |
-| [Recipes](./recipes/README.md) | Squat, push-up, jump, plank: copy-paste configs |
-| [Debugging](./debugging.md) | Live log streaming, off by default |
-| [Troubleshooting](./troubleshooting.md) | When something doesn't work |
+| [Performance](./performance.md) | Profiles, the governor, thermal ladder, app size |
+| [Photos and video files](./files.md) | Landmarks from a file, and painted copies of one |
+| [What you can build](./recipes.md) | Trigger syntax, feasibility, honest limits |
+| [Troubleshooting](./troubleshooting.md) | When something doesn't work, and the log channel |
 
 ## API reference
 
@@ -60,5 +48,5 @@ Four decisions are yours and they dominate everything else:
 | **Use `select`** to trim the payload | three joints is 48 bytes a frame, not 528 | [data delivery](./data-delivery.md#trimming-the-payload) |
 | **Set `active={isFocused}`** | camera off when the screen isn't visible | [camera control](./camera-control.md#lifecycle) |
 
-The delegate is chosen for you, GPU where it works and CPU where it doesn't. Frame rate,
-resolution and thermal response are meant to be too, once calibration lands.
+Everything else, the delegate, the frame rate, the resolutions and the thermal response, is
+measured and chosen for you, and every one of those choices can still be overridden per axis.

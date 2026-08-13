@@ -163,7 +163,7 @@ video files, cheap to add rather than requiring a fork. See [ADR 0001](./adr/000
 | A new prop | `src/types/`, both native modules, [`guides/reference/pose-camera.md`](../guides/reference/pose-camera.md) |
 | A new trigger condition | `src/types/triggers.ts`, `src/validation/triggers.ts` and its test, **both** evaluators, both native test suites, `guides/reference/trigger-schema.md` |
 | A new derived value (angle, ratio) | `PoseEngine` on both platforms, `PoseFrame` type |
-| Sport-specific logic | **Nowhere.** It's a recipe: `guides/recipes/` |
+| Sport-specific logic | **Nowhere.** It belongs in apps: `guides/recipes.md` explains why |
 | A build-time behavior change | `plugin/`, and `guides/reference/config-plugin.md` |
 | A decision worth remembering | [`docs/adr/`](./adr/README.md) |
 

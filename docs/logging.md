@@ -105,4 +105,4 @@ enabled, so native-only debugging works without a JS listener attached.
 - Assert bounded memory under sustained `trace` with no listener attached
 - Assert `droppedCount` is reported rather than the buffer growing
 
-User-facing documentation: [guides/debugging.md](../guides/debugging.md).
+User-facing documentation: [guides/troubleshooting.md](../guides/troubleshooting.md).

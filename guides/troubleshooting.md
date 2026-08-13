@@ -134,10 +134,11 @@ rate means expensive inference, not a stuck setting. What you can change:
 
 ## Triggers fire twice / not at all
 
-Not at all is expected right now: the native trigger evaluator is not built, so no trigger fires
-on any device. Configs are still validated, and a bad one throws with the path to the problem.
-
-Once it lands, see the tuning table in [recipes.md](./recipes/README.md).
+Firing twice per rep usually means `enter` and `exit` thresholds sit too close together: widen
+the gap and add `debounceMs`. Never firing usually means the joint the condition reads is not
+visible; gate on `{ visibility: joint, above: 0.6 }` to see. The tuning table in
+[what you can build](./recipes.md) covers the rest. A malformed config never fails silently: it throws
+at validation with the path to the problem.
 
 ## Memory grows over time
 
@@ -147,3 +148,76 @@ see [data delivery](./data-delivery.md#retaining-frames).
 
 Otherwise report it. Include `getState()` output, `data.mode`, `maxPoses`, and what your
 `onPose` or `onPoseBatch` handler keeps.
+
+## Watching it work: the log channel
+
+The library ships a diagnostic channel that is **completely off by default** and costs nothing
+until you turn it on. Entries reach Logcat on Android and `os.Logger` on iOS whatever is
+attached, so `adb logcat` and Console.app work with no listener, and are batched to JavaScript
+roughly every 250 ms while one is.
+
+```ts
+import { setLogLevel, addLogListener } from 'react-native-pose-detection';
+
+setLogLevel('debug');
+
+const sub = addLogListener((entries) => {
+  entries.forEach((e) => console.log(`[${e.category}] ${e.message}`));
+});
+
+// later
+sub.remove();
+setLogLevel('off');
+```
+
+Or scoped to one camera with the `logLevel` prop and `onLog` callback. An unknown level or
+category **throws** `PoseConfigError` rather than doing nothing quietly: a level that silently
+failed to apply looks exactly like the bug you were trying to diagnose.
+
+| Level | Shows |
+| --- | --- |
+| `off` *(default)* | nothing |
+| `error` | failures |
+| `warn` | degraded but running: GPU fallback, dropped frames |
+| `info` | lifecycle: camera opened, model loaded, calibration settled |
+| `debug` | state transitions: camera switch phases, trigger phases, thermal steps |
+| `trace` | per-frame timings. Very noisy. |
+
+Turn up only what you are investigating, per category:
+
+```ts
+setLogLevel({ triggers: 'trace', camera: 'debug', engine: 'off' });
+```
+
+Categories: `camera` · `detector` · `engine` · `triggers` · `calibration` · `overlay`.
+`LOG_LEVELS` and `LOG_CATEGORIES` are exported if you are building a level picker.
+
+| Problem | Category | Level |
+| --- | --- | --- |
+| Trigger fires twice, or never | `triggers` | `trace` |
+| Frame rate lower than expected | `calibration` | `debug` |
+| Crash or freeze on camera switch | `camera` | `debug` |
+| Model won't load | `detector` | `info` |
+| Overlay misaligned | `overlay` | `debug` |
+| Phone gets hot | `calibration` | `debug` |
+
+Entries arrive **batched**, an array every ~250 ms rather than one call per line. If your
+listener cannot keep up, the oldest entries are dropped rather than growing memory, and the next
+batch opens with a `warn` entry carrying the count. `LogEntry.timestamp` uses the same monotonic
+clock as `PoseFrame.timestamp`, so a log line can be matched to the exact frame that produced
+it.
+
+In production leave it `off`. While off the cost is a single integer comparison: no strings are
+built and nothing crosses to JavaScript.
+
+## Before filing a bug
+
+```ts
+setLogLevel('debug');
+console.log(cam.current.getState());
+console.log(await cam.current.getProfile());
+```
+
+Include both outputs, the log entries around the failure, your device model and OS version.
+`getProfile()` carries the useful half: the resolved delegate, the rate, the resolutions, and
+the measured inference cost the governor derived them from.

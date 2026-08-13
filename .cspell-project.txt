@@ -32,6 +32,7 @@ cocoapods
 codeql
 commitlint
 cspell
+deadband
 deadcode
 deinit
 detekt

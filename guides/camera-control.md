@@ -70,10 +70,10 @@ recreated:
 - overlay configuration
 - once the engine lands, calibration results and trigger counters and phases
 
-Rapid switching is meant to be safe, and the switch path rolls back to the previous lens on a
-failed bind. Nothing proves it yet: the 100-switch stress test is a Phase 6 exit criterion and
-needs a physical device, so treat the guarantee as intent rather than as something a test holds
-you to.
+Rapid switching is safe by design: a switch is reported only once the new lens delivers a
+frame, a second request mid-switch is refused rather than queued, and the path rolls back to the
+previous lens on a failed bind. The 100-switch stress scenario in the example app is the way to
+hold it to that on your own hardware.
 
 If the new camera can't be opened, the previous one is restored and you get
 `onError({ code: 'CAMERA_SWITCH_FAILED', fatal: false })` plus a rejected promise. This is also
