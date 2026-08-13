@@ -100,8 +100,8 @@ See [camera control](../camera-control.md) for how the three switches combine.
 
 ## Data
 
-The whole `data` surface is validated and shaped in JavaScript, and the native
-ring buffer that would fill it does not exist, so no frame is delivered on any platform today.
+The whole `data` surface is validated and shaped in JavaScript; frames are encoded natively
+into a ring buffer and drained in one zero-copy read per emission.
 
 ```ts
 data?: {

@@ -117,6 +117,75 @@ export default function App() {
 
 That is a live camera with a tracked skeleton, tuned to the device, zero bridge traffic.
 
+## The whole surface at a glance
+
+Every prop on one component. All of them optional; an explicit value pins that axis and the rest
+stay automatic.
+
+```tsx
+<PoseCamera
+  ref={cam}
+  style={{ flex: 1 }}
+  // camera
+  facing="front"                    // 'auto' | 'front' | 'back'
+  active={isFocused}                // the whole session on/off
+  detection={true}                  // inference on/off; false frees the model
+  resolution="auto"                 // preview: '480p' | '720p' | '1080p'
+  // detection
+  maxPoses={1}                      // 1 to 5
+  minConfidence={0.6}               // what counts as a body
+  smoothing={{ minCutoff: 1, beta: 4 }}
+  // performance
+  profile="auto"                    // 'efficient' | 'balanced' | 'quality' | 'unrestricted'
+  targetFps="auto"                  // a number pins the rate
+  analysisResolution="auto"         // what the model sees: '360p' | '480p' | '720p'
+  delegate="auto"                   // 'gpu' | 'cpu'
+  thermalPolicy="adaptive"          // 'critical-only' | 'off'
+  // drawing, all native
+  overlay={{
+    color: '#00E5FF',
+    lineWidth: 3,
+    pointRadius: 4,
+    angles: [{ joint: 'leftKnee' }, { joint: 'rightKnee' }],
+  }}
+  // data out, off unless asked
+  data={{ mode: 'throttled', throttleMs: 100, select: ['leftKnee', 'rightKnee'] }}
+  triggers={[squatTrigger]}
+  logLevel="off"
+  // events
+  onReady={(e) => console.log(e.delegate, e.targetFps)}
+  onError={(e) => console.warn(e.code, e.message)}
+  onCameraChange={(e) => setFacing(e.facing)}
+  onPerformanceChange={(e) => console.log(e.reason, e.targetFps)}
+  onTrigger={(e) => setReps(e.count)}
+  onPose={(frame) => track(frame.landmarks)}
+  onLog={(entries) => entries.forEach(print)}
+/>
+```
+
+| Prop | Default | Controls |
+| --- | --- | --- |
+| `style` | none | Ordinary view style; `{ flex: 1 }` is the usual answer |
+| `facing` | `'auto'` | Lens; auto prefers front, falls back on the first bind |
+| `active` | `true` | Camera session on/off; tie it to screen focus |
+| `detection` | `true` | Inference on/off; `false` keeps the preview and frees GPU memory |
+| `overlay` | `true` | The skeleton; also takes the config object above |
+| `smoothing` | `true` | One-Euro filter over x, y, z; also takes `{ minCutoff, beta }` |
+| `maxPoses` | `1` | Detection ceiling, 1 to 5; pair above 1 with `minConfidence` |
+| `minConfidence` | from `maxPoses` | How sure the model must be before something is a body |
+| `profile` | `'auto'` | The performance envelope; auto measures and converges |
+| `targetFps` | `'auto'` | Inference rate; a number stops the governor moving it |
+| `resolution` | `'auto'` | Preview resolution |
+| `analysisResolution` | `'auto'` | What the model sees; the preview stays sharp regardless |
+| `delegate` | `'auto'` | GPU with a verification probe, CPU fallback |
+| `thermalPolicy` | `'adaptive'` | Heat response; `'off'` stops the response, never the reporting |
+| `data` | `{ mode: 'off' }` | What crosses to JavaScript, and how often |
+| `triggers` | `[]` | Native conditions, validated at render |
+| `logLevel` | `'off'` | The diagnostic channel, scoped to this camera |
+| `onReady` … `onLog` | none | Lifecycle, errors, performance, triggers, frames, logs |
+
+Exact types, clamping rules and edge behavior: [`<PoseCamera>` reference](https://github.com/khalid999devs/react-native-pose-detection/blob/main/guides/reference/pose-camera.md).
+
 ## Do more
 
 **Count reps without streaming a single coordinate.** The condition runs on the camera thread;
