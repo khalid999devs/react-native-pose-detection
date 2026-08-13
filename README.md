@@ -157,7 +157,10 @@ you hear about it once per rep:
 ```tsx
 <PoseCamera
   data={{ mode: 'throttled', throttleMs: 100 }}
-  onPose={(frame) => track(frame.landmarks)}
+  onPose={(frame) => {
+    // frame.landmarks is a Float32Array of [x, y, z, visibility] per joint
+    setLeftKnee(frame.angles?.leftKnee);
+  }}
 />
 ```
 
@@ -225,8 +228,8 @@ rest stay automatic.
   onCameraChange={(e) => setFacing(e.facing)}
   onPerformanceChange={(e) => console.log(e.reason, e.targetFps)}
   onTrigger={(e) => setReps(e.count)}
-  onPose={(frame) => track(frame.landmarks)}
-  onLog={(entries) => entries.forEach(print)}
+  onPose={(frame) => setFrame(frame)}
+  onLog={(entries) => entries.forEach((e) => console.log(e.message))}
 />
 ```
 
