@@ -32,13 +32,30 @@ extension PoseCameraView: PoseDetectorObserver {
   }
 
   private func countResult(_ nowMs: Int64) {
+    let previous = lastResultMs.value
     lastResultMs.value = nowMs
+
+    // A gap resets the window. Averaging across a pause would publish a near-zero rate for the
+    // first second after frames resume, which reads as a session that broke rather than one that
+    // paused.
+    if previous != 0 && nowMs - previous > PoseCameraView.fpsStaleAfterMs {
+      framesInWindow = 0
+      fpsWindowStartMs = nowMs
+    }
+
     framesInWindow += 1
     if fpsWindowStartMs == 0 { fpsWindowStartMs = nowMs }
     let elapsed = nowMs - fpsWindowStartMs
-    guard elapsed >= PoseCameraView.fpsWindowMs else { return }
 
-    measuredFps.value = Int((Int64(framesInWindow) * PoseCameraView.fpsWindowMs) / elapsed)
+    // The very first window publishes early, so the readout is alive within a quarter second of
+    // the first result instead of showing zero under a skeleton that is visibly tracking.
+    let due = elapsed >= PoseCameraView.fpsWindowMs
+      || (measuredFps.value == 0
+        && elapsed >= PoseCameraView.fpsFirstWindowMs
+        && framesInWindow >= PoseCameraView.fpsFirstWindowFrames)
+    guard due else { return }
+
+    measuredFps.value = Int((Int64(framesInWindow) * PoseCameraView.fpsWindowMs) / max(elapsed, 1))
     framesInWindow = 0
     fpsWindowStartMs = nowMs
   }

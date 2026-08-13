@@ -118,12 +118,16 @@ export function LiveScreen({ onClose }: { onClose: () => void }) {
    */
   React.useEffect(() => {
     if (!showStats || !ready) return;
-    const poll = setInterval(() => {
+    const read = () => {
       void camera.current
         ?.getProfile()
         .then((profile) => setFpsLive(profile.measuredFps))
         .catch(() => undefined);
-    }, FPS_POLL_MS);
+    };
+    // Once now, then on the interval: waiting a full period before the first read leaves the
+    // readout at zero next to a skeleton that is already tracking.
+    read();
+    const poll = setInterval(read, FPS_POLL_MS);
     return () => clearInterval(poll);
   }, [showStats, ready]);
 

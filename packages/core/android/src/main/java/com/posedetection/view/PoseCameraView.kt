@@ -821,13 +821,29 @@ class PoseCameraView(
 
     /** On the result thread. An empty result still counts: the model ran. */
     private fun countResult(nowMs: Long) {
+        val previous = lastResultMs
         lastResultMs = nowMs
+
+        // A gap resets the window. Averaging across a pause would publish a near-zero rate for
+        // the first second after frames resume, which reads as a session that broke rather than
+        // one that paused.
+        if (previous != 0L && nowMs - previous > FPS_STALE_AFTER_MS) {
+            framesInWindow = 0
+            fpsWindowStartMs = nowMs
+        }
+
         framesInWindow += 1
         if (fpsWindowStartMs == 0L) fpsWindowStartMs = nowMs
         val elapsed = nowMs - fpsWindowStartMs
-        if (elapsed < FPS_WINDOW_MS) return
 
-        measuredFps = ((framesInWindow * MILLIS_PER_SECOND) / elapsed).toInt()
+        // The very first window publishes early, so the readout is alive within a quarter second
+        // of the first result instead of showing zero under a skeleton that is visibly tracking.
+        val due =
+            elapsed >= FPS_WINDOW_MS ||
+                (measuredFps == 0 && elapsed >= FPS_FIRST_WINDOW_MS && framesInWindow >= FPS_FIRST_WINDOW_FRAMES)
+        if (!due) return
+
+        measuredFps = ((framesInWindow * MILLIS_PER_SECOND) / maxOf(elapsed, 1)).toInt()
         framesInWindow = 0
         fpsWindowStartMs = nowMs
     }
@@ -1601,6 +1617,14 @@ class PoseCameraView(
 
         /** No result for this long means `getState().fps` reports zero rather than the last live value. */
         const val FPS_STALE_AFTER_MS = 2_000L
+
+        /**
+         * The first window publishes early: a readout at zero for a full second next to a
+         * skeleton that is visibly tracking reads as broken. Enough frames that the division
+         * means something.
+         */
+        const val FPS_FIRST_WINDOW_MS = 250L
+        const val FPS_FIRST_WINDOW_FRAMES = 3
 
         /**
          * A sensor frame this close to its due time counts as on time. Sensor clocks jitter by a

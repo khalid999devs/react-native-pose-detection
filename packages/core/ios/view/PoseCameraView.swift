@@ -41,6 +41,11 @@ public class PoseCameraView: ExpoView {
   /// No result for this long means `getState().fps` reports zero rather than the last live value.
   static let fpsStaleAfterMs: Int64 = 2_000
 
+  /// The first window publishes early: a readout at zero for a full second next to a skeleton
+  /// that is visibly tracking reads as broken. Enough frames that the division means something.
+  static let fpsFirstWindowMs: Int64 = 250
+  static let fpsFirstWindowFrames = 3
+
   /// A sensor frame this close to its due time counts as on time. Sensor clocks jitter by a few
   /// milliseconds, and a strict compare would drop a frame that is early by one.
   static let pacingJitterMs = 5.0
