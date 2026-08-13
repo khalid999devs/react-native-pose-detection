@@ -3,6 +3,15 @@
 Real-time pose detection for React Native and Expo. 33 body landmarks, iOS and Android,
 powered by MediaPipe.
 
+[![CI](https://github.com/khalid999devs/react-native-pose-detection/actions/workflows/ci.yml/badge.svg)](https://github.com/khalid999devs/react-native-pose-detection/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/react-native-pose-detection)](https://www.npmjs.com/package/react-native-pose-detection)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+![platforms](https://img.shields.io/badge/platforms-iOS%20%7C%20Android-black)
+
+| Live camera | Paint a clip | The exported file |
+| --- | --- | --- |
+| ![Live camera with the skeleton tracking a person](./ss/live-camera.png) | ![Studio screen painting an uploaded video](./ss/studio-video.png) | ![A frame of the exported video with the skeleton painted](./ss/export-frame.png) |
+
 > **Pre-release, not yet published.** Both platforms are complete: the camera, the detector, the
 > native overlay, the trigger engine, the geometry and the self-tuning performance governor, on
 > Android and iOS. iOS runs on physical hardware; the Android device pass and the sustained-run
@@ -78,7 +87,7 @@ Thirty reps means thirty bridge crossings, not nine hundred. A trigger that asks
 `snapshot: true` pays one more crossing to fetch the frame, and arrives a microtask later than a
 plain one, because a landmark buffer cannot ride an event
 ([ADR 0009](./docs/adr/0009-trigger-snapshots-are-claimed.md)).
-More: [triggers](./guides/triggers.md) · [recipes](./guides/recipes/README.md).
+More: [triggers](./guides/triggers.md) · [what you can build](./guides/recipes.md).
 
 ## Reading landmarks directly
 
@@ -126,12 +135,10 @@ Changing it is one word in `app.json` plus `npx expo prebuild`.
 | [Camera control](./guides/camera-control.md) | Switching, pausing, the three toggles |
 | [Data delivery](./guides/data-delivery.md) | Getting landmarks out efficiently |
 | [Triggers](./guides/triggers.md) | Native business logic |
-| [Performance](./guides/performance.md) | Profiles, calibration, app size, memory |
-| [Static input](./guides/static-input.md) | Images and video files |
-| [Export](./guides/export.md) | Paint a picked file and write it to your app |
-| [Recipes](./guides/recipes/README.md) | Squat, push-up, jump, plank |
-| [Debugging](./guides/debugging.md) | Live log streaming, off by default |
-| [Troubleshooting](./guides/troubleshooting.md) | When something breaks |
+| [Performance](./guides/performance.md) | Profiles, the governor, app size, memory |
+| [Photos and video files](./guides/files.md) | Landmarks from a file, and painted copies of one |
+| [What you can build](./guides/recipes.md) | Trigger syntax, feasibility, honest limits |
+| [Troubleshooting](./guides/troubleshooting.md) | When something breaks, and the log channel |
 | [API reference](./guides/README.md#api-reference) | Props, methods, events, types |
 
 ## Getting the best performance
