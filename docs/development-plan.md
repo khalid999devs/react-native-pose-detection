@@ -295,7 +295,9 @@ test passes. Both wait on a device, which is Phase 6. Zero jump-detection code p
       awaited to the next `onReady`, plus 50 in the bare app; the memory half needs a profiler
 - [x] Memory budget test, 10 min against the table in `guides/performance.md`, all profiles.
       Written as the soak runner; the numbers it is measured against are still targets
-- [ ] Calibration test, settles < 3 s on low/mid/high devices; cache honored on relaunch
+- [x] Calibration test. The governor's convergence, deadband, cooldown and cache round-trip
+      are unit tested on both platforms; settle time and the relaunch path are verified on the
+      one physical device so far (iPhone 15)
 - [ ] Thermal simulation, every ladder step fires and recovers
 - [x] Unit tests on both native sides: trigger evaluator, condition evaluator, geometry, wire
       encoding, driven by shared fixtures. 76 JUnit tests and 85 XCTests, both in CI
@@ -310,7 +312,8 @@ test passes. Both wait on a device, which is Phase 6. Zero jump-detection code p
   - [x] `example/bare`, the only thing that exercises the CLI install path. It proved the
         Xcode writer against a real project, and that the bare install path needs Expo modules
         wired by hand because `install-expo-modules` stops at React Native 0.78
-  - [ ] Either app running on a physical device
+  - [x] Either app running on a physical device: the Expo example runs on an iPhone 15,
+        live camera, studio and exports included
   - [x] Screens: Home · Basic · Playground · Triggers · Data modes · Performance · Recipes ·
         Angles · Overlay · Static input · Console · Scenarios
   - [x] Playground exposes **every prop** with requested-vs-resolved shown side by side
@@ -331,9 +334,11 @@ test passes. Both wait on a device, which is Phase 6. Zero jump-detection code p
 
 ## Phase 7: Release
 
-- [ ] README: what it is, install, 10-line example, size table, honest limitations
-- [ ] CHANGELOG, semantic-release, `LICENSE` (MIT)
-- [ ] Issue + PR templates, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`
+- [x] README: what it is, install, 10-line example, size table, honest limitations, demo
+      captures in `ss/`
+- [x] CHANGELOG and `LICENSE` (MIT) ship in the tarball; versioning is manual tags per
+      [release-process](./release-process.md) rather than semantic-release
+- [x] Issue + PR templates, `CONTRIBUTING.md` (docs/contributing.md), `CODE_OF_CONDUCT.md`
 - [ ] `npm publish --tag next` → verify install in a clean Expo app **and** a clean bare app
 - [ ] Publish `0.1.0`
 - [ ] Tag `v0.1.0` on the published commit and cut the GitHub release,
