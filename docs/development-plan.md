@@ -264,12 +264,16 @@ against a view which is not doing the work yet.
 **Exit:** the example app behaves identically on both platforms, and the same 100-switch stress
 test passes. Both wait on a device, which is Phase 6. Zero jump-detection code present.
 
-> **Local builds need an Xcode that Expo SDK 57 supports.** On Xcode 26.3 / Swift 6.2.4,
-> `expo-modules-jsi` and `expo-modules-core` fail to compile before this package is reached:
-> `abs` is ambiguous under C++ interop in one, and `sending 'emitter' risks causing data races`
-> in the other. Neither is ours. Every Swift source here is type-checked against the real iOS SDK
-> and the real MediaPipe framework, and `swift test` runs the engine suite, so the gap is the
-> final link rather than the code.
+> **CI builds iOS; this machine cannot, and the reason is not what it first looked like.** Expo
+> SDK 57 ships `ExpoModulesCore` precompiled with Swift 6.3.1, so a toolchain older than that
+> rejects it, and the `abs`-is-ambiguous and `sending 'emitter'` errors seen while compiling
+> Expo's sources were symptoms of an old compiler rather than a new one. The machine has two
+> Xcodes and neither is complete: 26.3 has the iOS platform but Swift 6.2.4, and 26.6 has Swift
+> 6.3.3 but no iOS platform installed. One download from Xcode's Components pane fixes it.
+>
+> The `ios-expo` and `ios-bare` cells build on `macos-latest`, which is Xcode 26.6, and that is
+> where iOS compiles today. It is also what caught `Either.value` being internal to
+> ExpoModulesCore, which the hand-written stub used for the earlier type-check could not.
 
 ## Phase 6: Hardening
 

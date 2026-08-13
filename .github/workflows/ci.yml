@@ -383,8 +383,19 @@ jobs:
 
       # The lock is committed, so a resolve that changes it means a transitive pod moved under a
       # constraint that was supposed to pin it.
+      #
+      # Two of its lines are environment rather than dependency and are filtered out: CocoaPods
+      # stamps the version that wrote the file, and React Native generates `hermes-engine`'s
+      # podspec during install, so its checksum differs between any two machines. Comparing those
+      # would fail every time a runner image moved, which is noise rather than a pin escaping.
       - name: Assert Podfile.lock did not move
-        run: git diff --exit-code -- example/bare/ios/Podfile.lock
+        shell: bash
+        run: |
+          strip() { grep -vE '^COCOAPODS: |^  hermes-engine: '; }
+          git show HEAD:example/bare/ios/Podfile.lock | strip > "$RUNNER_TEMP/lock-committed"
+          strip < example/bare/ios/Podfile.lock > "$RUNNER_TEMP/lock-resolved"
+          diff -u "$RUNNER_TEMP/lock-committed" "$RUNNER_TEMP/lock-resolved" \
+            || { echo "::error::A pod moved under a constraint that was supposed to pin it."; exit 1; }
 
       # Release rather than Debug, and this is the only cell that builds it. Release is where the
       # optimizer and the linker's dead-stripping run, and a Swift symbol reached only from the

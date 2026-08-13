@@ -80,6 +80,7 @@ remount
 remounts
 rseidelsohn
 screenshotting
+showsdks
 swiftformat
 swiftlint
 swiftpm
@@ -102,5 +103,6 @@ xcbeautify
 xcframework
 xcframeworks
 xcodeproj
+Xcodes
 xcworkspace
 yolo

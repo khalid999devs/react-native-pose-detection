@@ -61,10 +61,15 @@ package. Raise `platform :ios` in the Podfile and `IPHONEOS_DEPLOYMENT_TARGET` i
 `16.4`. The podspec itself declares 15.1, which is this package's own floor; Expo raises it during
 `pod install` and prints that it did.
 
-**A Swift compile error inside `expo-modules-jsi` or `expo-modules-core`** is a toolchain
-mismatch rather than anything in this package. Expo SDK 57 does not compile on Xcode 26.3: `abs`
-becomes ambiguous under C++ interop in one and `sending 'emitter' risks causing data races` in the
-other. Use an Xcode that the SDK supports.
+**A Swift compile error inside `expo-modules-jsi` or `expo-modules-core`** is a toolchain that is
+too old, not anything in this package. Expo SDK 57 ships `ExpoModulesCore` precompiled with Swift
+6.3.1, and an older compiler rejects it; the errors it produces while falling back to Expo's
+sources (`abs` ambiguous under C++ interop, `sending 'emitter' risks causing data races`) name the
+symptom rather than the cause. Xcode 26.6 or newer builds it.
+
+Check which Xcode is actually selected before concluding anything: `xcode-select -p` can point at
+an old copy while a current one sits in `/Applications`, and a current one can be missing the iOS
+platform entirely, which `xcodebuild -showsdks` will tell you.
 
 The MediaPipe pin is settled: `MediaPipeTasksVision 0.10.35`, the same version Android uses, and
 it resolves from CocoaPods trunk. See [ADR 0007](../docs/adr/0007-pin-mediapipe-0-10-35.md).

@@ -10,7 +10,7 @@ public class PoseDetectionModule: Module {
     Name("PoseDetection")
 
     Function("setLogLevel") { (config: Either<String, [String: String]>?) in
-      applyLogLevel(config?.value)
+      applyLogLevel(unwrap(config))
     }
 
     // The buffer is global because the level mask is. A view runs the flush, see PoseLog.
@@ -116,12 +116,12 @@ extension PoseDetectionModule {
       }
 
       Prop("smoothing") { (view: PoseCameraView, value: Either<Bool, [String: Any]>?) in
-        applySmoothing(view, value?.value)
+        applySmoothing(view, unwrap(value))
       }
 
       // The level is global, and the prop is a convenience for setting it per camera.
       Prop("logLevel") { (_: PoseCameraView, value: Either<String, [String: String]>?) in
-        applyLogLevel(value?.value)
+        applyLogLevel(unwrap(value))
       }
 
       Prop("triggers") { (view: PoseCameraView, value: [[String: Any]]?) in
@@ -129,7 +129,7 @@ extension PoseDetectionModule {
       }
 
       Prop("overlay") { (view: PoseCameraView, value: Either<Bool, [String: Any]>?) in
-        applyOverlay(view, value?.value)
+        applyOverlay(view, unwrap(value))
       }
 
       OnViewDidUpdateProps { (view: PoseCameraView) in
@@ -174,6 +174,23 @@ extension PoseDetectionModule {
       }
     }
   }
+}
+
+/// `Either.value` is internal to ExpoModulesCore, so the typed getters are the way in from out
+/// here. Asked in declaration order because an `NSNumber` bridges to `Bool` and a dictionary never
+/// does: reversing it would read `smoothing: true` as a config object.
+private func unwrap(_ either: Either<String, [String: String]>?) -> Any? {
+  guard let either else { return nil }
+  if let name: String = either.get() { return name }
+  if let map: [String: String] = either.get() { return map }
+  return nil
+}
+
+private func unwrap(_ either: Either<Bool, [String: Any]>?) -> Any? {
+  guard let either else { return nil }
+  if let flag: Bool = either.get() { return flag }
+  if let map: [String: Any] = either.get() { return map }
+  return nil
 }
 
 /// Resolved by JavaScript for the live path, and passed the same way here.
